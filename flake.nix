@@ -21,6 +21,8 @@
       shellHook = ''
         export PS1="(oxwm-dev) $PS1"
       '';
+
+      RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
     };
 
     formatter.${system} = pkgs.alejandra;
