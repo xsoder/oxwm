@@ -3,24 +3,26 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
 
-  outputs = { self, nixpkgs }:
-    let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
-    in
-    {
-      devShells.${system}.default = pkgs.mkShell {
-        buildInputs = [
-          pkgs.rustc
-          pkgs.cargo
-          pkgs.xorg.xorgserver
-          pkgs.xterm
-          pkgs.just
-        ];
-        shellHook = ''
-          export PS1="(oxwm-dev) $PS1"
-        '';
-      };
+  outputs = {
+    self,
+    nixpkgs,
+  }: let
+    system = "x86_64-linux";
+    pkgs = import nixpkgs {inherit system;};
+  in {
+    devShells.${system}.default = pkgs.mkShell {
+      buildInputs = [
+        pkgs.rustc
+        pkgs.cargo
+        pkgs.xorg.xorgserver
+        pkgs.xterm
+        pkgs.just
+      ];
+      shellHook = ''
+        export PS1="(oxwm-dev) $PS1"
+      '';
     };
-}
 
+    formatter.${system} = pkgs.alejandra;
+  };
+}
