@@ -1,17 +1,16 @@
-#+TITLE: oxwm
 #+AUTHOR: Tony
 #+STARTUP: overview
 
-* oxwm
-A dynamic window manager written in Rust, inspired by dwm but designed to evolve
-on its own. Configuration will be done as source code (Rust), keeping with the
-suckless philosophy of "edit + recompile."
+* OxWM — Oxidize Window Manager
+A dynamic window manager written in /Rust🦀/, inspired by dwm but designed to evolve
+on its own. Configuration is done in Rust source code, keeping with the suckless
+philosophy of *"edit + recompile."*
 
-This project is still in its early stages. Right now it can claim ownership of
-an X display and print incoming events.
+This project is still in its early stages. Currently, it can claim ownership of
+an X display and log incoming events.
 
-* Running with Nix flakes
-You can get a reproducible dev environment with Rust, Cargo, Xephyr, xterm, and
+* ⚙ Installation — Running with Nix Flakes
+You can set up a reproducible development environment with Rust, Cargo, Xephyr, xterm, and
 just by using the flake.
 
 #+begin_src sh
@@ -25,36 +24,36 @@ nix develop
 cargo build
 #+end_src
 
-* Running tests with just
+* 🧪 Running Tests with just
 The =justfile= includes a =test= recipe that starts Xephyr on =:1=, launches
-some test clients (xterm, xclock), and runs oxwm in the foreground.
+test clients (xterm, xclock), and runs oxwm in the foreground.
 
 #+begin_src sh
 # inside nix develop
 just test
 #+end_src
 
-You should see a new Xephyr window pop up. oxwm will attach to it and log X11
-events in your host terminal. Clients like xterm/xclock will appear inside
-Xephyr.
+This should open a new Xephyr window. oxwm will attach to it and log X11
+events in your host terminal. Clients like xterm/xclock will appear inside Xephyr.
 
-* Roadmap (high level)
-- **Step 1** :: connect to X, claim =SubstructureRedirect=, print events. (DONE)
-- **Step 2** :: handle =MapRequest= and =ConfigureRequest= so clients can map
-  and appear in Xephyr.
-- **Step 3** :: implement client tracking and a trivial tiling layout.
-- **Step 4** :: add keybindings (Mod+j/k, Mod+Enter, etc).
-- **Step 5** :: per-tag state, multiple layouts, borders, focus handling.
-- **Step 6** :: ICCCM/EWMH basics (WM_DELETE_WINDOW, fullscreen, etc).
-- **Step 7** :: split into =oxwm-core= library and =oxwm-user= config crate,
-  so user configuration is written in Rust code.
-- **Step 8** :: polish developer workflow (Nix flake, just, docs).
+* 🗺 Roadmap (High Level)
+| Step | Task                                                                                  | Status |
+|------+---------------------------------------------------------------------------------------+--------|
+| 1    | Connect to X, claim =SubstructureRedirect=, print events                            | DONE   |
+| 2    | Handle =MapRequest= and =ConfigureRequest= so clients can map and appear in Xephyr | ⏳      |
+| 3    | Implement client tracking and a trivial tiling layout                              | ❌      |
+| 4    | Add keybindings (Mod+j/k, Mod+Enter, etc.)                                          | ❌      |
+| 5    | Per-tag state, multiple layouts, borders, focus handling                           | ❌      |
+| 6    | ICCCM/EWMH basics (WM_DELETE_WINDOW, fullscreen, etc)                              | ❌      |
+| 7    | Split into =oxwm-core= library and =oxwm-user= config crate                        | ❌      |
+| 8    | Polish developer workflow (Nix flake, just, docs)                                   | ❌      |
 
-* Status
+* 📄 Status
 - Rust + x11rb skeleton running
 - Nix flake devShell available
 - =just test= launches Xephyr, clients, and oxwm
 
-* License
-gpl
+* 📜 License
+[[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL]]
+
 
