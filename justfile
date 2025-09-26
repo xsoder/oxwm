@@ -1,8 +1,4 @@
 test:
     pkill Xephyr || true
     Xephyr -screen 1280x800 :1 & sleep 1
-    DISPLAY=:1 cargo run &
-    sleep 1
-    DISPLAY=:1 xterm &
-    DISPLAY=:1 xclock &
-    wait
+    DISPLAY=:1 cargo run
