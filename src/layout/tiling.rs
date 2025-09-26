@@ -10,12 +10,12 @@ impl Layout for TilingLayout {
         screen_width: u32,
         screen_height: u32,
     ) -> Vec<WindowGeometry> {
-        let count = windows.len();
-        if count == 0 {
+        let window_count = windows.len();
+        if window_count == 0 {
             return Vec::new();
         }
 
-        if count == 1 {
+        if window_count == 1 {
             vec![WindowGeometry {
                 x_coordinate: 0,
                 y_coordinate: 0,
@@ -31,8 +31,8 @@ impl Layout for TilingLayout {
                 height: screen_height,
             }];
 
-            let stack_height = screen_height / (count - 1) as u32;
-            for i in 1..count {
+            let stack_height = screen_height / (window_count - 1) as u32;
+            for i in 1..window_count {
                 let y_offset = ((i - 1) as u32) * stack_height;
                 geometries.push(WindowGeometry {
                     x_coordinate: master_width as i32,
