@@ -1,3 +1,4 @@
+use crate::keys;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
 
@@ -11,6 +12,7 @@ use x11rb::rust_connection::RustConnection;
 pub struct WindowManager {
     connection: RustConnection,
     screen_number: usize,
+    root: Window,
     screen: Screen,
     windows: Vec<Window>,
     layout: Box<dyn Layout>,
@@ -28,7 +30,8 @@ impl WindowManager {
                 &ChangeWindowAttributesAux::new().event_mask(
                     EventMask::SUBSTRUCTURE_REDIRECT
                         | EventMask::SUBSTRUCTURE_NOTIFY
-                        | EventMask::PROPERTY_CHANGE,
+                        | EventMask::PROPERTY_CHANGE
+                        | EventMask::KEY_PRESS,
                 ),
             )?
             .check()?;
@@ -36,6 +39,7 @@ impl WindowManager {
         return Ok(Self {
             connection,
             screen_number,
+            root,
             screen,
             windows: Vec::new(),
             layout: Box::new(TilingLayout),
@@ -44,6 +48,8 @@ impl WindowManager {
 
     pub fn run(&mut self) -> Result<()> {
         println!("oxwm started on display {}", self.screen_number);
+
+        keys::setup_keybinds(&self.connection, self.root)?;
 
         loop {
             let event = self.connection.wait_for_event()?;
@@ -64,6 +70,10 @@ impl WindowManager {
                     x11rb::CURRENT_TIME,
                 )?;
                 self.connection.flush()?;
+            }
+            Event::KeyPress(event) => {
+                println!("KeyPress event received!");
+                keys::handle_key_press(&self.connection, event)?;
             }
             _ => {}
         }

@@ -1,7 +1,7 @@
 #+AUTHOR: Tony
 #+STARTUP: overview
 
-* OxWM — Oxidize Window Manager
+* OXWM — DWM but Better (and oxidized)
 A dynamic window manager written in /Rust🦀/, inspired by dwm but designed to evolve
 on its own. Configuration is done in Rust source code, keeping with the suckless
 philosophy of *"edit + recompile."*
@@ -24,7 +24,7 @@ nix develop
 cargo build
 #+end_src
 
-* 🧪 Running Tests with just
+* Testing Xephyr with Justfile
 The =justfile= includes a =test= recipe that starts Xephyr on =:1=, launches
 test clients (xterm, xclock), and runs oxwm in the foreground.
 
@@ -36,24 +36,55 @@ just test
 This should open a new Xephyr window. oxwm will attach to it and log X11
 events in your host terminal. Clients like xterm/xclock will appear inside Xephyr.
 
-* 🗺 Roadmap (High Level)
-| Step | Task                                                                                  | Status |
-|------+---------------------------------------------------------------------------------------+--------|
-| 1    | Connect to X, claim =SubstructureRedirect=, print events                            | DONE   |
-| 2    | Handle =MapRequest= and =ConfigureRequest= so clients can map and appear in Xephyr | ⏳      |
-| 3    | Implement client tracking and a trivial tiling layout                              | ❌      |
-| 4    | Add keybindings (Mod+j/k, Mod+Enter, etc.)                                          | ❌      |
-| 5    | Per-tag state, multiple layouts, borders, focus handling                           | ❌      |
-| 6    | ICCCM/EWMH basics (WM_DELETE_WINDOW, fullscreen, etc)                              | ❌      |
-| 7    | Split into =oxwm-core= library and =oxwm-user= config crate                        | ❌      |
-| 8    | Polish developer workflow (Nix flake, just, docs)                                   | ❌      |
+* OXWM Todo List:
+** Reorganization Tasks
+- [ ] Move keyboard module to folder structure:
+  - [ ] Create =src/keyboard/mod.rs= with re-exports
+  - [ ] Move constants to =src/keyboard/keycodes.rs=
+  - [ ] Move key handlers to =src/keyboard/handlers.rs=
+  - [ ] Update imports in main.rs and window_manager.rs
+- [ ] Create =src/config.rs= in root directory for future configuration system
 
-* 📄 Status
+** Core Window Management
+- [ ] Fix layout after program is closed (handle UnmapNotify events)
+  - [ ] Add UnmapNotify to event handling
+  - [ ] Remove closed windows from windows vector
+  - [ ] Re-apply layout after window removal
+- [ ] Add keybind to swap focus between windows
+  - [ ] Track focused window in WindowManager struct
+  - [ ] Implement focus cycling logic
+  - [ ] Add visual focus indication (borders/colors)
+
+** Key System Improvements
+- [ ] Connect config.rs to keyboard system for dynamic keybind generation
+- [ ] Add more dwm-like keybinds:
+  - [ ] Window focus switching (Alt+J/K)
+  - [ ] Master area resizing
+  - [ ] Layout switching
+  - [ ] Workspace/tag management
+- [ ] Better error handling for failed key grabs
+
+** Layout System
+- [ ] Add more layout types (monocle, floating)
+- [ ] Handle window resize requests properly
+- [ ] Add configurable gaps between windows
+- [ ] Implement layout switching keybinds
+
+** Polish & Features
+- [ ] Clean window destruction/cleanup
+- [ ] Handle edge cases (empty window list, invalid windows)
+- [ ] Add status bar integration
+- [ ] Better error messages and logging
+
+** Priority
+Reorganization and UnmapNotify handling should be immediate priorities.
+
+* Status
 - Rust + x11rb skeleton running
 - Nix flake devShell available
 - =just test= launches Xephyr, clients, and oxwm
 
-* 📜 License
+* License
 [[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL]]
 
 
