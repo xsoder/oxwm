@@ -1,4 +1,5 @@
-use crate::keys;
+use crate::keyboard;
+// use crate::keys;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
 
@@ -49,7 +50,7 @@ impl WindowManager {
     pub fn run(&mut self) -> Result<()> {
         println!("oxwm started on display {}", self.screen_number);
 
-        keys::setup_keybinds(&self.connection, self.root)?;
+        keyboard::setup_keybinds(&self.connection, self.root)?;
 
         loop {
             let event = self.connection.wait_for_event()?;
@@ -73,7 +74,7 @@ impl WindowManager {
             }
             Event::KeyPress(event) => {
                 println!("KeyPress event received!");
-                keys::handle_key_press(&self.connection, event)?;
+                keyboard::handle_key_press(&self.connection, event)?;
             }
             _ => {}
         }
