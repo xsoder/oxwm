@@ -2,12 +2,83 @@
 #+STARTUP: overview
 
 * OXWM — DWM but Better (and oxidized)
-A dynamic window manager written in /Rust🦀/, inspired by dwm but designed to evolve
+A dynamic window manager written in Rust, inspired by dwm but designed to evolve
 on its own. Configuration is done in Rust source code, keeping with the suckless
 philosophy of *"edit + recompile."*
 
 This project is still in its early stages. Currently, it can claim ownership of
 an X display and log incoming events.
+
+* Project Structure
+
+** src/
+*** main.rs
+- main() :: Creates WindowManager and calls .run()
+
+*** window_manager.rs (CORE)
+Handles all X11 events and window management
+
+**** struct WindowManager
+- connection :: X11 connection
+- windows :: Vec<Window> (all managed windows)
+- focused_window :: Option<Window>
+- layout :: Box<dyn Layout>
+
+**** Methods
+- new() :: Initialize WM, grab root window
+- run() :: Main event loop
+- handle_event() :: Routes X11 events
+  - MapRequest → add window, apply layout
+  - UnmapNotify → remove window
+  - DestroyNotify → remove window
+  - KeyPress → get action, handle it
+- handle_key_action() :: Execute keyboard actions
+- remove_window() :: Remove from Vec, reapply layout
+- set_focus() :: Focus window, update visuals
+- cycle_focus() :: Move focus to next window
+- update_focus_visuals() :: Set border colors
+- apply_layout() :: Position all windows
+
+*** keyboard/
+**** mod.rs
+- Re-exports public interface
+
+**** keycodes.rs
+- Key constants (Q, J, RETURN, etc)
+
+**** handlers.rs
+- enum KeyAction :: SpawnTerminal, CloseWindow, CycleWindow, Quit, None
+- setup_keybinds() :: Register keys with X11
+- handle_key_press() :: Parse key → return KeyAction
+
+*** layout/
+**** mod.rs
+- Layout trait definition
+
+**** tiling.rs
+- TilingLayout :: Implementation
+  - arrange() :: Calculate window positions
+
+* Event Flow
+
+1. X11 event arrives → run() receives it
+2. handle_event() matches event type
+3. For KeyPress:
+   - keyboard::handle_key_press() → KeyAction
+   - handle_key_action() executes action
+4. For Map/Unmap:
+   - Modify windows Vec
+   - apply_layout() repositions everything
+   - update_focus_visuals() redraws borders
+
+* Key Bindings
+
+| Binding       | Action               |
+|---------------+----------------------|
+| Alt+Return    | Spawn terminal       |
+| Alt+J         | Cycle focus          |
+| Alt+Shift+Q   | Close focused window |
+| Alt+Shift+Q   | Quit WM              |
 
 * ⚙ Installation — Running with Nix Flakes
 You can set up a reproducible development environment with Rust, Cargo, Xephyr, xterm, and
@@ -37,19 +108,19 @@ This should open a new Xephyr window. oxwm will attach to it and log X11
 events in your host terminal. Clients like xterm/xclock will appear inside Xephyr.
 
 * OXWM Todo List:
-** Reorganization Tasks
-- [ ] Move keyboard module to folder structure:
-  - [ ] Create =src/keyboard/mod.rs= with re-exports
-  - [ ] Move constants to =src/keyboard/keycodes.rs=
-  - [ ] Move key handlers to =src/keyboard/handlers.rs=
-  - [ ] Update imports in main.rs and window_manager.rs
+** TODO Reorganization Tasks [1/2]
+- [X] Move keyboard module to folder structure:
+  - [X] Create =src/keyboard/mod.rs= with re-exports
+  - [X] Move constants to =src/keyboard/keycodes.rs=
+  - [X] Move key handlers to =src/keyboard/handlers.rs=
+  - [X] Update imports in main.rs and window_manager.rs
 - [ ] Create =src/config.rs= in root directory for future configuration system
 
-** Core Window Management
-- [ ] Fix layout after program is closed (handle UnmapNotify events)
-  - [ ] Add UnmapNotify to event handling
-  - [ ] Remove closed windows from windows vector
-  - [ ] Re-apply layout after window removal
+** TODO Core Window Management [1/2]
+- [X] Fix layout after program is closed (handle UnmapNotify events)
+  - [X] Add UnmapNotify to event handling
+  - [X] Remove closed windows from windows vector
+  - [X] Re-apply layout after window removal
 - [ ] Add keybind to swap focus between windows
   - [ ] Track focused window in WindowManager struct
   - [ ] Implement focus cycling logic

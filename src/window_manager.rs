@@ -1,5 +1,4 @@
-use crate::keyboard;
-// use crate::keys;
+use crate::keyboard::{self, KeyAction}; // Add KeyAction to the import
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
 
@@ -16,6 +15,7 @@ pub struct WindowManager {
     root: Window,
     screen: Screen,
     windows: Vec<Window>,
+    pub focused_window: Option<Window>,
     layout: Box<dyn Layout>,
 }
 
@@ -43,6 +43,7 @@ impl WindowManager {
             root,
             screen,
             windows: Vec::new(),
+            focused_window: None,
             layout: Box::new(TilingLayout),
         });
     }
@@ -59,28 +60,116 @@ impl WindowManager {
         }
     }
 
+    fn handle_key_action(&mut self, action: keyboard::KeyAction) -> Result<()> {
+        match action {
+            keyboard::KeyAction::SpawnTerminal => {
+                println!("Spawning terminal");
+                std::process::Command::new("xclock").spawn()?;
+            }
+            keyboard::KeyAction::CloseWindow => {
+                println!("Closing focused window");
+                if let Some(focused) = self.focused_window {
+                    match self.connection.kill_client(focused) {
+                        Ok(_) => {
+                            self.connection.flush()?;
+                            println!("Killed window {}", focused);
+                        }
+                        Err(e) => {
+                            println!("Failed to kill window {}: {}", focused, e);
+                        }
+                    }
+                }
+            }
+            keyboard::KeyAction::CycleWindow => {
+                println!("Cycling focus");
+                self.cycle_focus()?;
+            }
+            keyboard::KeyAction::Quit => {
+                println!("Quitting window manager");
+                std::process::exit(0);
+            }
+            keyboard::KeyAction::None => {
+                //no-op
+            }
+        }
+        Ok(())
+    }
+    pub fn cycle_focus(&mut self) -> Result<()> {
+        if self.windows.is_empty() {
+            return Ok(());
+        }
+
+        let next_window = if let Some(current) = self.focused_window {
+            if let Some(current_index) = self.windows.iter().position(|&w| w == current) {
+                let next_index = (current_index + 1) % self.windows.len();
+                self.windows[next_index]
+            } else {
+                self.windows[0]
+            }
+        } else {
+            self.windows[0]
+        };
+
+        self.set_focus(Some(next_window))?;
+        Ok(())
+    }
+
+    pub fn set_focus(&mut self, window: Option<Window>) -> Result<()> {
+        self.focused_window = window;
+
+        if let Some(win) = window {
+            self.connection
+                .set_input_focus(InputFocus::POINTER_ROOT, win, x11rb::CURRENT_TIME)?;
+        }
+
+        self.update_focus_visuals()?;
+        Ok(())
+    }
+
+    fn update_focus_visuals(&self) -> Result<()> {
+        for &window in &self.windows {
+            let border_color = if self.focused_window == Some(window) {
+                0xff0000
+            } else {
+                0x888888
+            };
+
+            self.connection.change_window_attributes(
+                window,
+                &ChangeWindowAttributesAux::new().border_pixel(border_color),
+            )?;
+        }
+        Ok(())
+    }
     fn handle_event(&mut self, event: Event) -> Result<()> {
         match event {
             Event::MapRequest(event) => {
                 self.connection.map_window(event.window)?;
                 self.windows.push(event.window);
                 self.apply_layout()?;
-                self.connection.set_input_focus(
-                    InputFocus::POINTER_ROOT,
-                    event.window,
-                    x11rb::CURRENT_TIME,
-                )?;
+                self.set_focus(Some(event.window))?;
                 self.connection.flush()?;
             }
+            Event::UnmapNotify(event) => {
+                if self.windows.contains(&event.window) {
+                    println!("Window {} unmapped, removing from layout", event.window);
+                    self.remove_window(event.window)?;
+                }
+            }
+            Event::DestroyNotify(event) => {
+                if self.windows.contains(&event.window) {
+                    println!("Window {} destroyed, removing from layout", event.window);
+                    self.remove_window(event.window)?;
+                }
+            }
             Event::KeyPress(event) => {
-                println!("KeyPress event received!");
-                keyboard::handle_key_press(&self.connection, event)?;
+                let action = keyboard::handle_key_press(event)?; // Remove &self.connection
+                self.handle_key_action(action)?;
             }
             _ => {}
         }
-        return Ok(());
+        Ok(())
     }
-
     fn apply_layout(&self) -> Result<()> {
         let screen_width = self.screen.width_in_pixels as u32;
         let screen_height = self.screen.height_in_pixels as u32;
@@ -101,5 +190,27 @@ impl WindowManager {
             )?;
         }
         return Ok(());
+    }
+
+    fn remove_window(&mut self, window: Window) -> Result<()> {
+        let initial_count = self.windows.len();
+        self.windows.retain(|&w| w != window);
+
+        if self.windows.len() < initial_count {
+            println!("Removed window {} from management", window);
+
+            if self.focused_window == Some(window) {
+                self.focused_window = if self.windows.is_empty() {
+                    None
+                } else {
+                    Some(self.windows[self.windows.len() - 1])
+                };
+            }
+
+            self.apply_layout()?;
+            self.connection.flush()?;
+        }
+
+        Ok(())
     }
 }
