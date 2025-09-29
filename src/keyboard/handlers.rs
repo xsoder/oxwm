@@ -3,117 +3,105 @@ use anyhow::Result;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum KeyAction {
-    SpawnTerminal,
-    CloseWindow,
-    CycleWindow,
+    Spawn,
+    KillClient,
+    FocusStack,
     Quit,
     None,
 }
 
-pub fn setup_keybinds(connection: &impl Connection, root: Window) -> Result<()> {
-    connection.grab_key(
-        false,
-        root,
-        ModMask::M1.into(),
+#[derive(Debug)]
+pub enum Arg {
+    Str(&'static str),
+    Int(i32),
+    None,
+}
+
+pub struct Key {
+    pub(crate) modifiers: &'static [KeyButMask],
+    pub(crate) key: Keycode,
+    pub(crate) func: KeyAction,
+    pub(crate) arg: Arg,
+}
+
+impl Key {
+    pub const fn new(
+        modifiers: &'static [KeyButMask],
+        key: Keycode,
+        func: KeyAction,
+        arg: Arg,
+    ) -> Self {
+        Self {
+            modifiers,
+            key,
+            func,
+            arg,
+        }
+    }
+}
+
+const KEYBINDINGS: &[Key] = &[
+    Key::new(
+        &[KeyButMask::MOD1],
         keycodes::RETURN,
-        GrabMode::ASYNC,
-        GrabMode::ASYNC,
-    )?;
-
-    connection.grab_key(
-        false,
-        root,
-        (ModMask::M1 | ModMask::SHIFT).into(),
+        KeyAction::Spawn,
+        Arg::Str("xclock"),
+    ),
+    Key::new(
+        &[KeyButMask::MOD1, KeyButMask::SHIFT],
         keycodes::Q,
-        GrabMode::ASYNC,
-        GrabMode::ASYNC,
-    )?;
-
-    connection.grab_key(
-        false,
-        root,
-        ModMask::M1.into(),
-        keycodes::Q,
-        GrabMode::ASYNC,
-        GrabMode::ASYNC,
-    )?;
-
-    connection.grab_key(
-        false,
-        root,
-        ModMask::M1.into(),
+        KeyAction::KillClient,
+        Arg::None,
+    ),
+    Key::new(&[KeyButMask::MOD1], keycodes::Q, KeyAction::Quit, Arg::None),
+    Key::new(
+        &[KeyButMask::MOD1],
         keycodes::J,
-        GrabMode::ASYNC,
-        GrabMode::ASYNC,
-    )?;
+        KeyAction::FocusStack,
+        Arg::Int(1),
+    ),
+    Key::new(
+        &[KeyButMask::MOD1],
+        keycodes::K,
+        KeyAction::FocusStack,
+        Arg::Int(-1),
+    ),
+];
 
+fn modifiers_to_mask(modifiers: &[KeyButMask]) -> u16 {
+    modifiers
+        .iter()
+        .fold(0u16, |acc, &modifier| acc | u16::from(modifier))
+}
+
+pub fn setup_keybinds(connection: &impl Connection, root: Window) -> Result<()> {
+    for keybinding in KEYBINDINGS {
+        let modifier_mask = modifiers_to_mask(keybinding.modifiers);
+
+        connection.grab_key(
+            false,
+            root,
+            modifier_mask.into(),
+            keybinding.key,
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+        )?;
+    }
     Ok(())
 }
 
-pub fn handle_key_press(event: KeyPressEvent) -> Result<KeyAction> {
+pub fn handle_key_press(event: KeyPressEvent) -> Result<(KeyAction, &'static Arg)> {
     println!("KeyPress: detail={}, state={:?}", event.detail, event.state);
-    let action = match (event.detail, event.state) {
-        (keycodes::RETURN, state) if state.contains(KeyButMask::MOD1) => KeyAction::SpawnTerminal,
-        (keycodes::Q, state) if state.contains(KeyButMask::MOD1 | KeyButMask::SHIFT) => {
-            KeyAction::CloseWindow
-        }
-        (keycodes::Q, state) if state.contains(KeyButMask::MOD1) => KeyAction::Quit,
-        (keycodes::J, state) if state.contains(KeyButMask::MOD1) => KeyAction::CycleWindow,
-        _ => KeyAction::None,
-    };
-    Ok(action)
-}
 
-// pub struct Key {
-//     pub(crate) modifiers: &'static [KeyButMask], // List of modifiers
-//     pub(crate) key: Keycode,
-//     pub(crate) func: KeyAction,
-//     pub(crate) arg: Arg,
-// }
-//
-// impl Key {
-//     pub const fn new(
-//         modifiers: &'static [KeyButMask],
-//         key: Keycode,
-//         func: KeyAction,
-//         arg: Arg,
-//     ) -> Self {
-//         Self {
-//             modifiers,
-//             key,
-//             func,
-//             arg,
-//         }
-//     }
-// }
-//
-// const KEYBINDINGS: &[Key] = &[
-//     Key::new(
-//         &[KeyButMask::MOD1],
-//         keycodes::RETURN,
-//         KeyAction::Spawn,
-//         Arg::Str("xclock"),
-//     ),
-//     Key::new(
-//         &[KeyButMask::MOD1, KeyButMask::SHIFT],
-//         keycodes::Q,
-//         KeyAction::KillClient,
-//         Arg::None,
-//     ),
-//     Key::new(&[KeyButMask::MOD1], keycodes::Q, KeyAction::Quit, Arg::None),
-//     Key::new(
-//         &[KeyButMask::MOD1],
-//         keycodes::J,
-//         KeyAction::FocusStack,
-//         Arg::Int(1),
-//     ),
-//     Key::new(
-//         &[KeyButMask::MOD1],
-//         keycodes::K,
-//         KeyAction::FocusStack,
-//         Arg::Int(-1),
-//     ),
-// ];
-//
+    for keybinding in KEYBINDINGS {
+        let modifier_mask = modifiers_to_mask(keybinding.modifiers);
+
+        if event.detail == keybinding.key && event.state == modifier_mask.into() {
+            return Ok((keybinding.func, &keybinding.arg));
+        }
+    }
+
+    Ok((KeyAction::None, &Arg::None))
+}

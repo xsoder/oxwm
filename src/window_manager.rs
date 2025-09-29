@@ -1,4 +1,4 @@
-use crate::keyboard::{self, KeyAction}; // Add KeyAction to the import
+use crate::keyboard::{self, Arg, KeyAction};
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
 
@@ -15,7 +15,7 @@ pub struct WindowManager {
     root: Window,
     screen: Screen,
     windows: Vec<Window>,
-    pub focused_window: Option<Window>,
+    focused_window: Option<Window>,
     layout: Box<dyn Layout>,
 }
 
@@ -60,13 +60,15 @@ impl WindowManager {
         }
     }
 
-    fn handle_key_action(&mut self, action: keyboard::KeyAction) -> Result<()> {
+    fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> Result<()> {
         match action {
-            keyboard::KeyAction::SpawnTerminal => {
-                println!("Spawning terminal");
-                std::process::Command::new("xclock").spawn()?;
+            KeyAction::Spawn => {
+                if let Arg::Str(command) = arg {
+                    println!("Spawning: {}", command);
+                    std::process::Command::new(command).spawn()?;
+                }
             }
-            keyboard::KeyAction::CloseWindow => {
+            KeyAction::KillClient => {
                 println!("Closing focused window");
                 if let Some(focused) = self.focused_window {
                     match self.connection.kill_client(focused) {
@@ -80,28 +82,42 @@ impl WindowManager {
                     }
                 }
             }
-            keyboard::KeyAction::CycleWindow => {
-                println!("Cycling focus");
-                self.cycle_focus()?;
+            KeyAction::FocusStack => {
+                if let Arg::Int(direction) = arg {
+                    println!("FocusStack called with direction: {}", direction);
+                    println!("Windows: {:?}", self.windows);
+                    println!("Current focused: {:?}", self.focused_window);
+                    self.cycle_focus(*direction)?;
+                    println!("New focused: {:?}", self.focused_window);
+                }
             }
-            keyboard::KeyAction::Quit => {
+            KeyAction::Quit => {
                 println!("Quitting window manager");
                 std::process::exit(0);
             }
-            keyboard::KeyAction::None => {
+            KeyAction::None => {
                 //no-op
             }
         }
         Ok(())
     }
-    pub fn cycle_focus(&mut self) -> Result<()> {
+
+    pub fn cycle_focus(&mut self, direction: i32) -> Result<()> {
         if self.windows.is_empty() {
             return Ok(());
         }
 
         let next_window = if let Some(current) = self.focused_window {
             if let Some(current_index) = self.windows.iter().position(|&w| w == current) {
-                let next_index = (current_index + 1) % self.windows.len();
+                let next_index = if direction > 0 {
+                    (current_index + 1) % self.windows.len()
+                } else {
+                    if current_index == 0 {
+                        self.windows.len() - 1
+                    } else {
+                        current_index - 1
+                    }
+                };
                 self.windows[next_index]
             } else {
                 self.windows[0]
@@ -115,11 +131,13 @@ impl WindowManager {
     }
 
     pub fn set_focus(&mut self, window: Option<Window>) -> Result<()> {
+        println!("set_focus called with: {:?}", window);
         self.focused_window = window;
 
         if let Some(win) = window {
             self.connection
                 .set_input_focus(InputFocus::POINTER_ROOT, win, x11rb::CURRENT_TIME)?;
+            self.connection.flush()?;
         }
 
         self.update_focus_visuals()?;
@@ -127,20 +145,30 @@ impl WindowManager {
     }
 
     fn update_focus_visuals(&self) -> Result<()> {
+        println!("Updating focus visuals for {} windows", self.windows.len());
         for &window in &self.windows {
-            let border_color = if self.focused_window == Some(window) {
-                0xff0000
+            let (border_color, border_width) = if self.focused_window == Some(window) {
+                println!("Window {} is FOCUSED (red border)", window);
+                (0xff0000, 2)
             } else {
-                0x888888
+                println!("Window {} is unfocused (gray border)", window);
+                (0x888888, 2)
             };
+
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new().border_width(border_width),
+            )?;
 
             self.connection.change_window_attributes(
                 window,
                 &ChangeWindowAttributesAux::new().border_pixel(border_color),
             )?;
         }
+        self.connection.flush()?;
         Ok(())
     }
+
     fn handle_event(&mut self, event: Event) -> Result<()> {
         match event {
             Event::MapRequest(event) => {
@@ -148,7 +176,6 @@ impl WindowManager {
                 self.windows.push(event.window);
                 self.apply_layout()?;
                 self.set_focus(Some(event.window))?;
-                self.connection.flush()?;
             }
             Event::UnmapNotify(event) => {
                 if self.windows.contains(&event.window) {
@@ -163,32 +190,38 @@ impl WindowManager {
                 }
             }
             Event::KeyPress(event) => {
-                let action = keyboard::handle_key_press(event)?; // Remove &self.connection
-                self.handle_key_action(action)?;
+                let (action, arg) = keyboard::handle_key_press(event)?;
+                self.handle_key_action(action, arg)?;
             }
             _ => {}
         }
         Ok(())
     }
+
     fn apply_layout(&self) -> Result<()> {
         let screen_width = self.screen.width_in_pixels as u32;
         let screen_height = self.screen.height_in_pixels as u32;
+        let border_width = 2u32;
 
         let geometries = self
             .layout
             .arrange(&self.windows, screen_width, screen_height);
 
         for (window, geometry) in self.windows.iter().zip(geometries.iter()) {
+            // Adjust for full borders
+            let adjusted_width = geometry.width.saturating_sub(2 * border_width);
+            let adjusted_height = geometry.height.saturating_sub(2 * border_width);
+
             self.connection.configure_window(
                 *window,
                 &ConfigureWindowAux::new()
                     .x(geometry.x_coordinate)
                     .y(geometry.y_coordinate)
-                    .width(geometry.width)
-                    .height(geometry.height)
-                    .border_width(1),
+                    .width(adjusted_width)
+                    .height(adjusted_height),
             )?;
         }
+        self.connection.flush()?;
         return Ok(());
     }
 
@@ -200,15 +233,15 @@ impl WindowManager {
             println!("Removed window {} from management", window);
 
             if self.focused_window == Some(window) {
-                self.focused_window = if self.windows.is_empty() {
+                let new_focus = if self.windows.is_empty() {
                     None
                 } else {
                     Some(self.windows[self.windows.len() - 1])
                 };
+                self.set_focus(new_focus)?;
             }
 
             self.apply_layout()?;
-            self.connection.flush()?;
         }
 
         Ok(())
