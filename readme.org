@@ -47,9 +47,9 @@ src/
 │       └── handle_key_press()           [Parse KeyPressEvent → KeyAction]
 │
 └── layout/
-├── mod.rs                           [Layout trait definition]
-└── tiling.rs
-└── TilingLayout::arrange()      [Calculate window positions]
+        ├── mod.rs                       [Layout trait definition]
+        └── tiling.rs
+           └── TilingLayout::arrange()      [Calculate window positions]
 #+end_src
 
 * Event Flow
