@@ -11,53 +11,46 @@ an X display and log incoming events.
 
 * Project Structure
 
-** src/
-*** main.rs
-- main() :: Creates WindowManager and calls .run()
-
-*** window_manager.rs (CORE)
-Handles all X11 events and window management
-
-**** struct WindowManager
-- connection :: X11 connection
-- windows :: Vec<Window> (all managed windows)
-- focused_window :: Option<Window>
-- layout :: Box<dyn Layout>
-
-**** Methods
-- new() :: Initialize WM, grab root window
-- run() :: Main event loop
-- handle_event() :: Routes X11 events
-  - MapRequest → add window, apply layout
-  - UnmapNotify → remove window
-  - DestroyNotify → remove window
-  - KeyPress → get action, handle it
-- handle_key_action() :: Execute keyboard actions
-- remove_window() :: Remove from Vec, reapply layout
-- set_focus() :: Focus window, update visuals
-- cycle_focus() :: Move focus to next window
-- update_focus_visuals() :: Set border colors
-- apply_layout() :: Position all windows
-
-*** keyboard/
-**** mod.rs
-- Re-exports public interface
-
-**** keycodes.rs
-- Key constants (Q, J, RETURN, etc)
-
-**** handlers.rs
-- enum KeyAction :: SpawnTerminal, CloseWindow, CycleWindow, Quit, None
-- setup_keybinds() :: Register keys with X11
-- handle_key_press() :: Parse key → return KeyAction
-
-*** layout/
-**** mod.rs
-- Layout trait definition
-
-**** tiling.rs
-- TilingLayout :: Implementation
-  - arrange() :: Calculate window positions
+#+begin_src sh
+src/
+├── main.rs
+│   └── main()
+│       └── Creates WindowManager and calls .run()
+│
+├── window_manager.rs                    [CORE - X11 event handling]
+│   ├── struct WindowManager
+│   │   ├── connection: RustConnection   [X11 connection]
+│   │   ├── windows: Vec<Window>         [All managed windows]
+│   │   ├── focused_window: Option<Window>
+│   │   └── layout: Box<dyn Layout>
+│   │
+│   ├── new()                            [Initialize WM, grab root]
+│   ├── run()                            [Main event loop]
+│   ├── handle_event()                   [Route X11 events]
+│   │   ├── MapRequest    → add window, apply layout
+│   │   ├── UnmapNotify   → remove window
+│   │   ├── DestroyNotify → remove window
+│   │   └── KeyPress      → get action, handle it
+│   ├── handle_key_action()              [Execute keyboard actions]
+│   ├── remove_window()                  [Remove from Vec, reapply layout]
+│   ├── set_focus()                      [Focus window, update visuals]
+│   ├── cycle_focus()                    [Move focus to next window]
+│   ├── update_focus_visuals()           [Set border colors]
+│   └── apply_layout()                   [Position all windows]
+│
+├── keyboard/
+│   ├── mod.rs                           [Re-exports]
+│   ├── keycodes.rs                      [Key constants: Q, J, RETURN, etc]
+│   └── handlers.rs
+│       ├── enum KeyAction               [SpawnTerminal, CloseWindow, CycleWindow, Quit, None]
+│       ├── setup_keybinds()             [Register keys with X11]
+│       └── handle_key_press()           [Parse KeyPressEvent → KeyAction]
+│
+└── layout/
+├── mod.rs                           [Layout trait definition]
+└── tiling.rs
+└── TilingLayout::arrange()      [Calculate window positions]
+#+end_src
 
 * Event Flow
 
