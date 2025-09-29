@@ -65,3 +65,55 @@ pub fn handle_key_press(event: KeyPressEvent) -> Result<KeyAction> {
     };
     Ok(action)
 }
+
+// pub struct Key {
+//     pub(crate) modifiers: &'static [KeyButMask], // List of modifiers
+//     pub(crate) key: Keycode,
+//     pub(crate) func: KeyAction,
+//     pub(crate) arg: Arg,
+// }
+//
+// impl Key {
+//     pub const fn new(
+//         modifiers: &'static [KeyButMask],
+//         key: Keycode,
+//         func: KeyAction,
+//         arg: Arg,
+//     ) -> Self {
+//         Self {
+//             modifiers,
+//             key,
+//             func,
+//             arg,
+//         }
+//     }
+// }
+//
+// const KEYBINDINGS: &[Key] = &[
+//     Key::new(
+//         &[KeyButMask::MOD1],
+//         keycodes::RETURN,
+//         KeyAction::Spawn,
+//         Arg::Str("xclock"),
+//     ),
+//     Key::new(
+//         &[KeyButMask::MOD1, KeyButMask::SHIFT],
+//         keycodes::Q,
+//         KeyAction::KillClient,
+//         Arg::None,
+//     ),
+//     Key::new(&[KeyButMask::MOD1], keycodes::Q, KeyAction::Quit, Arg::None),
+//     Key::new(
+//         &[KeyButMask::MOD1],
+//         keycodes::J,
+//         KeyAction::FocusStack,
+//         Arg::Int(1),
+//     ),
+//     Key::new(
+//         &[KeyButMask::MOD1],
+//         keycodes::K,
+//         KeyAction::FocusStack,
+//         Arg::Int(-1),
+//     ),
+// ];
+//
