@@ -67,7 +67,6 @@ impl WindowManager {
 
         keyboard::setup_keybinds(&self.connection, self.root)?;
 
-        // Initial bar draw
         self.update_bar()?;
 
         loop {
@@ -174,7 +173,7 @@ impl WindowManager {
         self.selected_tags = tag_mask(tag_index);
         self.update_window_visibility()?;
         self.apply_layout()?;
-        self.update_bar()?; // Update bar to show new tag
+        self.update_bar()?;
 
         let visible = self.visible_windows();
         self.set_focus(visible.first().copied())?;
@@ -192,7 +191,7 @@ impl WindowManager {
             self.window_tags.insert(focused, mask);
             self.update_window_visibility()?;
             self.apply_layout()?;
-            self.update_bar()?; // Update bar to show occupied tags changed
+            self.update_bar()?;
         }
 
         Ok(())
@@ -284,7 +283,6 @@ impl WindowManager {
                 self.handle_key_action(action, arg)?;
             }
             Event::ButtonPress(event) => {
-                // Check if click was on the bar
                 if event.event == self.bar.window() {
                     if let Some(tag_index) = self.bar.handle_click(event.event_x) {
                         self.view_tag(tag_index)?;
