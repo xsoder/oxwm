@@ -140,10 +140,11 @@ impl Bar {
                 .draw_text(&self.font, scheme.foreground, x_position + 5, text_y, tag);
 
             if is_selected {
-                let underline_height = 2;
-                let spacing_from_text = 4;
+                let underline_height = 3;
+                let gap_above_underline = 3;
 
-                let underline_y = text_y + spacing_from_text;
+                let underline_y =
+                    self.height as i16 - underline_height as i16 - gap_above_underline;
 
                 connection.change_gc(
                     self.graphics_context,
