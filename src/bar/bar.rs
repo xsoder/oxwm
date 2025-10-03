@@ -32,7 +32,6 @@ impl Bar {
             anyhow::bail!("Failed to open X11 display for XFT");
         }
         let font = Font::new(display, screen_num as i32, FONT)?;
-
         let height = font.height() + 4;
 
         connection.create_window(
@@ -68,13 +67,13 @@ impl Bar {
 
         let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
 
+        let horizontal_padding = (font.height() as f32 * 0.6) as u16;
+
         let tag_widths = TAGS
             .iter()
             .map(|tag| {
                 let text_width = font.text_width(tag);
-                let left_padding = 10;
-                let right_padding = 10;
-                text_width + left_padding + right_padding
+                text_width + (horizontal_padding * 2)
             })
             .collect();
 
@@ -145,9 +144,9 @@ impl Bar {
                 &SCHEME_NORMAL
             };
 
+            // Center text horizontally in tag box
             let text_width = self.font.text_width(tag);
-            let left_padding = (tag_width - text_width) / 2;
-            let text_x = x_position + left_padding as i16;
+            let text_x = x_position + ((tag_width - text_width) / 2) as i16;
 
             let text_height = self.font.height();
             let top_margin = (self.height as i16 - text_height as i16) / 4;
@@ -157,13 +156,13 @@ impl Bar {
                 .draw_text(&self.font, scheme.foreground, text_x, text_y, tag);
 
             if is_selected {
-                let underline_height = 3;
+                // Scale underline thickness with font size (roughly 1/8 of font height)
+                let underline_height = (self.font.height() / 8).max(2) as u16;
                 let bottom_margin = 4;
                 let underline_y = self.height as i16 - underline_height as i16 - bottom_margin;
 
-                let text_width = self.font.text_width(tag);
-                let underline_width = text_width + 4;
-                let underline_x = x_position + ((tag_width - underline_width) / 2) as i16;
+                // Make underline same width and position as text
+                let underline_x = text_x;
 
                 connection.change_gc(
                     self.graphics_context,
@@ -175,7 +174,7 @@ impl Bar {
                     &[Rectangle {
                         x: underline_x,
                         y: underline_y,
-                        width: underline_width,
+                        width: text_width,
                         height: underline_height,
                     }],
                 )?;
