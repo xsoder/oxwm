@@ -49,7 +49,7 @@ pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
 pub const SCHEME_OCCUPIED: ColorScheme = ColorScheme {
     foreground: GRAY_LIGHTEST,
     background: GRAY_DARK,
-    border: GRAY_MID,
+    border: CYAN,
 };
 
 // ========================================

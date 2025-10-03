@@ -104,7 +104,6 @@ impl Bar {
         if !self.needs_redraw {
             return Ok(());
         }
-
         connection.change_gc(
             self.graphics_context,
             &ChangeGCAux::new().foreground(SCHEME_NORMAL.background),
@@ -152,7 +151,14 @@ impl Bar {
                         height: self.height,
                     }],
                 )?;
-            } else if is_occupied {
+            }
+
+            let text_y = (self.height as i16 / 2) + (self.font.ascent() / 2);
+            self.font_draw
+                .draw_text(&self.font, scheme.foreground, x_position + 5, text_y, tag);
+
+            if is_selected {
+                let underline_height = 2;
                 connection.change_gc(
                     self.graphics_context,
                     &ChangeGCAux::new().foreground(scheme.border),
@@ -162,16 +168,12 @@ impl Bar {
                     self.graphics_context,
                     &[Rectangle {
                         x: x_position,
-                        y: 0,
+                        y: (self.height - underline_height) as i16,
                         width: tag_width,
-                        height: 2,
+                        height: underline_height,
                     }],
                 )?;
             }
-
-            let text_y = (self.height as i16 / 2) + (self.font.ascent() / 2);
-            self.font_draw
-                .draw_text(&self.font, scheme.foreground, x_position + 5, text_y, tag);
 
             x_position += tag_width as i16;
         }
