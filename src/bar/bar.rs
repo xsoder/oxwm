@@ -1,5 +1,5 @@
 use super::font::{Font, FontDraw};
-use crate::config::{BAR_HEIGHT, FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
+use crate::config::{BAR_HEIGHT, FONT, SCHEME_NORMAL, SCHEME_SELECTED, TAGS};
 use anyhow::Result;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;
@@ -104,6 +104,7 @@ impl Bar {
         if !self.needs_redraw {
             return Ok(());
         }
+
         connection.change_gc(
             self.graphics_context,
             &ChangeGCAux::new().foreground(SCHEME_NORMAL.background),
@@ -128,30 +129,11 @@ impl Bar {
 
             let tag_width = self.tag_widths[tag_index];
 
-            let scheme = if is_selected {
+            let scheme = if is_selected || is_occupied {
                 &SCHEME_SELECTED
-            } else if is_occupied {
-                &SCHEME_OCCUPIED
             } else {
                 &SCHEME_NORMAL
             };
-
-            if is_selected {
-                connection.change_gc(
-                    self.graphics_context,
-                    &ChangeGCAux::new().foreground(scheme.background),
-                )?;
-                connection.poly_fill_rectangle(
-                    self.window,
-                    self.graphics_context,
-                    &[Rectangle {
-                        x: x_position,
-                        y: 0,
-                        width: tag_width,
-                        height: self.height,
-                    }],
-                )?;
-            }
 
             let text_y = (self.height as i16 / 2) + (self.font.ascent() / 2);
             self.font_draw
@@ -174,7 +156,6 @@ impl Bar {
                     }],
                 )?;
             }
-
             x_position += tag_width as i16;
         }
 

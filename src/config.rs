@@ -8,7 +8,7 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 1;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const BAR_HEIGHT: u16 = 30;
+pub const BAR_HEIGHT: u16 = 32;
 pub const FONT: &str = "JetBrainsMono Nerd Font:size=16";
 
 // ========================================
@@ -25,7 +25,7 @@ pub const MODKEY: KeyButMask = KeyButMask::MOD1;
 const GRAY_DARK: u32 = 0x222222;
 const GRAY_MID: u32 = 0x444444;
 const GRAY_LIGHT: u32 = 0xbbbbbb;
-const GRAY_LIGHTEST: u32 = 0xeeeeee;
+// const GRAY_LIGHTEST: u32 = 0xeeeeee;
 const CYAN: u32 = 0x6dade3;
 
 pub struct ColorScheme {
@@ -40,14 +40,14 @@ pub const SCHEME_NORMAL: ColorScheme = ColorScheme {
     border: GRAY_MID,
 };
 
-pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
-    foreground: GRAY_LIGHTEST,
-    background: CYAN,
-    border: CYAN,
-};
+// pub const SCHEME_OCCUPIED: ColorScheme = ColorScheme {
+//     foreground: CYAN,
+//     background: GRAY_DARK,
+//     border: CYAN,
+// };
 
-pub const SCHEME_OCCUPIED: ColorScheme = ColorScheme {
-    foreground: GRAY_LIGHTEST,
+pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
+    foreground: CYAN,
     background: GRAY_DARK,
     border: CYAN,
 };
