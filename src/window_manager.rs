@@ -1,3 +1,4 @@
+use crate::bar::Bar;
 use crate::config::{BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, TAG_COUNT};
 use crate::keyboard::{self, Arg, KeyAction};
 use crate::layout::Layout;
@@ -24,6 +25,7 @@ pub struct WindowManager {
     layout: Box<dyn Layout>,
     window_tags: std::collections::HashMap<Window, TagMask>,
     selected_tags: TagMask,
+    bar: Bar,
 }
 
 impl WindowManager {
@@ -44,6 +46,8 @@ impl WindowManager {
             )?
             .check()?;
 
+        let bar = Bar::new(&connection, &screen)?;
+
         return Ok(Self {
             connection,
             screen_number,
@@ -54,6 +58,7 @@ impl WindowManager {
             layout: Box::new(TilingLayout),
             window_tags: std::collections::HashMap::new(),
             selected_tags: tag_mask(0),
+            bar,
         });
     }
 
@@ -62,19 +67,40 @@ impl WindowManager {
 
         keyboard::setup_keybinds(&self.connection, self.root)?;
 
+        // Initial bar draw
+        self.update_bar()?;
+
         loop {
             let event = self.connection.wait_for_event()?;
             self.handle_event(event)?;
         }
     }
 
+    fn update_bar(&mut self) -> Result<()> {
+        let mut occupied_tags: TagMask = 0;
+        for &tags in self.window_tags.values() {
+            occupied_tags |= tags;
+        }
+
+        self.bar.invalidate();
+        self.bar
+            .draw(&self.connection, self.selected_tags, occupied_tags)?;
+        Ok(())
+    }
+
     fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> Result<()> {
         match action {
-            KeyAction::Spawn => {
-                if let Arg::Str(command) = arg {
+            KeyAction::Spawn => match arg {
+                Arg::Str(command) => {
                     std::process::Command::new(command).spawn()?;
                 }
-            }
+                Arg::Array(cmd) => {
+                    if let Some((program, args)) = cmd.split_first() {
+                        std::process::Command::new(program).args(args).spawn()?;
+                    }
+                }
+                _ => {}
+            },
             KeyAction::KillClient => {
                 if let Some(focused) = self.focused_window {
                     match self.connection.kill_client(focused) {
@@ -148,6 +174,7 @@ impl WindowManager {
         self.selected_tags = tag_mask(tag_index);
         self.update_window_visibility()?;
         self.apply_layout()?;
+        self.update_bar()?; // Update bar to show new tag
 
         let visible = self.visible_windows();
         self.set_focus(visible.first().copied())?;
@@ -165,6 +192,7 @@ impl WindowManager {
             self.window_tags.insert(focused, mask);
             self.update_window_visibility()?;
             self.apply_layout()?;
+            self.update_bar()?; // Update bar to show occupied tags changed
         }
 
         Ok(())
@@ -238,6 +266,7 @@ impl WindowManager {
                 self.windows.push(event.window);
                 self.window_tags.insert(event.window, self.selected_tags);
                 self.apply_layout()?;
+                self.update_bar()?;
                 self.set_focus(Some(event.window))?;
             }
             Event::UnmapNotify(event) => {
@@ -245,13 +274,6 @@ impl WindowManager {
                     self.remove_window(event.window)?;
                 }
             }
-            // Event::UnmapNotify(event) => {
-            //     if self.windows.contains(&event.window) {
-            //         if self.is_window_visible(event.window) {
-            //             self.remove_window(event.window)?;
-            //         }
-            //     }
-            // }
             Event::DestroyNotify(event) => {
                 if self.windows.contains(&event.window) {
                     self.remove_window(event.window)?;
@@ -260,6 +282,20 @@ impl WindowManager {
             Event::KeyPress(event) => {
                 let (action, arg) = keyboard::handle_key_press(event)?;
                 self.handle_key_action(action, arg)?;
+            }
+            Event::ButtonPress(event) => {
+                // Check if click was on the bar
+                if event.event == self.bar.window() {
+                    if let Some(tag_index) = self.bar.handle_click(event.event_x) {
+                        self.view_tag(tag_index)?;
+                    }
+                }
+            }
+            Event::Expose(event) => {
+                if event.window == self.bar.window() {
+                    self.bar.invalidate();
+                    self.update_bar()?;
+                }
             }
             _ => {}
         }
@@ -271,18 +307,23 @@ impl WindowManager {
         let screen_height = self.screen.height_in_pixels as u32;
         let border_width = BORDER_WIDTH;
 
+        let bar_height = self.bar.height() as u32;
+        let usable_height = screen_height.saturating_sub(bar_height);
+
         let visible = self.visible_windows();
-        let geometries = self.layout.arrange(&visible, screen_width, screen_height);
+        let geometries = self.layout.arrange(&visible, screen_width, usable_height);
 
         for (window, geometry) in visible.iter().zip(geometries.iter()) {
             let adjusted_width = geometry.width.saturating_sub(2 * border_width);
             let adjusted_height = geometry.height.saturating_sub(2 * border_width);
 
+            let adjusted_y = geometry.y_coordinate + bar_height as i32;
+
             self.connection.configure_window(
                 *window,
                 &ConfigureWindowAux::new()
                     .x(geometry.x_coordinate)
-                    .y(geometry.y_coordinate)
+                    .y(adjusted_y)
                     .width(adjusted_width)
                     .height(adjusted_height),
             )?;
@@ -307,6 +348,7 @@ impl WindowManager {
             }
 
             self.apply_layout()?;
+            self.update_bar()?;
         }
         Ok(())
     }

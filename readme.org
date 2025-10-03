@@ -6,9 +6,6 @@ A dynamic window manager written in Rust, inspired by dwm but designed to evolve
 on its own. Configuration is done in Rust source code, keeping with the suckless
 philosophy of *"edit + recompile."*
 
-This project is still in its early stages. Currently, it can claim ownership of
-an X display and log incoming events.
-
 * Project Structure
 
 #+begin_src sh
@@ -22,34 +19,58 @@ src/
 │   │   ├── connection: RustConnection   [X11 connection]
 │   │   ├── windows: Vec<Window>         [All managed windows]
 │   │   ├── focused_window: Option<Window>
-│   │   └── layout: Box<dyn Layout>
+│   │   ├── layout: Box<dyn Layout>
+│   │   ├── window_tags: HashMap<Window, TagMask>
+│   │   ├── selected_tags: TagMask
+│   │   └── bar: Bar                     [Status bar]
 │   │
-│   ├── new()                            [Initialize WM, grab root]
+│   ├── new()                            [Initialize WM, grab root, create bar]
 │   ├── run()                            [Main event loop]
 │   ├── handle_event()                   [Route X11 events]
-│   │   ├── MapRequest    → add window, apply layout
-│   │   ├── UnmapNotify   → remove window
-│   │   ├── DestroyNotify → remove window
-│   │   └── KeyPress      → get action, handle it
+│   │   ├── MapRequest    → add window, apply layout, update bar
+│   │   ├── UnmapNotify   → remove window, update bar
+│   │   ├── DestroyNotify → remove window, update bar
+│   │   ├── KeyPress      → get action, handle it
+│   │   ├── ButtonPress   → handle bar clicks
+│   │   └── Expose        → redraw bar
 │   ├── handle_key_action()              [Execute keyboard actions]
 │   ├── remove_window()                  [Remove from Vec, reapply layout]
 │   ├── set_focus()                      [Focus window, update visuals]
-│   ├── cycle_focus()                    [Move focus to next window]
+│   ├── cycle_focus()                    [Move focus to next/prev window]
+│   ├── view_tag()                       [Switch to tag/workspace]
+│   ├── move_to_tag()                    [Move window to tag]
+│   ├── update_bar()                     [Calculate occupied tags, redraw bar]
 │   ├── update_focus_visuals()           [Set border colors]
-│   └── apply_layout()                   [Position all windows]
+│   └── apply_layout()                   [Position all windows below bar]
+│
+├── config.rs                            [CONFIGURATION - all settings here]
+│   ├── BORDER_WIDTH, BORDER_FOCUSED, BORDER_UNFOCUSED
+│   ├── TAG_COUNT, TAGS                  [Workspace configuration]
+│   ├── TERMINAL, MODKEY
+│   └── KEYBINDINGS                      [All keybinds as const array]
+│
+├── bar/
+│   ├── mod.rs                           [Re-exports, constants]
+│   └── bar.rs
+│       ├── struct Bar                   [Status bar window]
+│       ├── new()                        [Create bar X11 window]
+│       ├── draw()                       [Render tags with state indicators]
+│       ├── handle_click()               [Detect which tag was clicked]
+│       └── invalidate()                 [Mark bar as needing redraw]
 │
 ├── keyboard/
 │   ├── mod.rs                           [Re-exports]
 │   ├── keycodes.rs                      [Key constants: Q, J, RETURN, etc]
 │   └── handlers.rs
-│       ├── enum KeyAction               [SpawnTerminal, CloseWindow, CycleWindow, Quit, None]
+│       ├── enum KeyAction               [Spawn, KillClient, FocusStack, ViewTag, etc]
+│       ├── enum Arg                     [None, Int, Str, Array]
 │       ├── setup_keybinds()             [Register keys with X11]
 │       └── handle_key_press()           [Parse KeyPressEvent → KeyAction]
 │
 └── layout/
-        ├── mod.rs                       [Layout trait definition]
-        └── tiling.rs
-           └── TilingLayout::arrange()      [Calculate window positions]
+    ├── mod.rs                           [Layout trait definition]
+    └── tiling.rs
+        └── TilingLayout::arrange()      [Calculate window positions]
 #+end_src
 
 * Event Flow
@@ -59,19 +80,27 @@ src/
 3. For KeyPress:
    - keyboard::handle_key_press() → KeyAction
    - handle_key_action() executes action
+   - update_bar() if tags/windows changed
 4. For Map/Unmap:
-   - Modify windows Vec
-   - apply_layout() repositions everything
+   - Modify windows Vec and window_tags HashMap
+   - apply_layout() repositions everything (accounting for bar)
+   - update_bar() shows occupied tags
    - update_focus_visuals() redraws borders
+5. For ButtonPress on bar:
+   - bar.handle_click() determines clicked tag
+   - view_tag() switches workspace
 
 * Key Bindings
 
-| Binding       | Action               |
-|---------------+----------------------|
-| Alt+Return    | Spawn terminal       |
-| Alt+J         | Cycle focus          |
-| Alt+Shift+Q   | Close focused window |
-| Alt+Shift+Q   | Quit WM              |
+| Binding         | Action                  |
+|-----------------+-------------------------|
+| Alt+Return      | Spawn terminal          |
+| Alt+J/K         | Cycle focus down/up     |
+| Alt+Q           | Kill focused window     |
+| Alt+Shift+Q     | Quit WM                 |
+| Alt+1-9         | View tag 1-9            |
+| Alt+Shift+1-9   | Move window to tag 1-9  |
+| Alt+S           | Screenshot (maim)       |
 
 * ⚙ Installation — Running with Nix Flakes
 You can set up a reproducible development environment with Rust, Cargo, Xephyr, xterm, and
@@ -100,55 +129,97 @@ just test
 This should open a new Xephyr window. oxwm will attach to it and log X11
 events in your host terminal. Clients like xterm/xclock will appear inside Xephyr.
 
-* OXWM Todo List:
-** TODO Reorganization Tasks [1/2]
-- [X] Move keyboard module to folder structure:
-  - [X] Create =src/keyboard/mod.rs= with re-exports
-  - [X] Move constants to =src/keyboard/keycodes.rs=
-  - [X] Move key handlers to =src/keyboard/handlers.rs=
-  - [X] Update imports in main.rs and window_manager.rs
-- [ ] Create =src/config.rs= in root directory for future configuration system
+* Current Status
+** Working Features
+- ✓ X11 event handling and window management
+- ✓ Tag system (9 workspaces) with keyboard switching
+- ✓ Window focus cycling (Alt+J/K)
+- ✓ Tiling layout with border indicators
+- ✓ Status bar showing tags
+  - Visual indicators: selected (white), occupied (gray line), empty (dim)
+  - Click-to-switch tags
+  - Performance-optimized redrawing
+- ✓ Basic keybindings (spawn, kill, focus, tags)
+- ✓ Configuration via Rust constants in config.rs
 
-** TODO Core Window Management [1/2]
+** Immediate Next Steps
+- [ ] Status text in bar (date, time, system info)
+- [ ] dmenu integration for application launcher
+- [ ] Additional widgets (clock, battery, etc.)
+
+** Long Term Roadmap
+- [ ] Multi-monitor support
+- [ ] Additional layouts (monocle, floating, etc.)
+- [ ] Per-window floating behavior
+- [ ] Per-program rules (auto-tag assignment, floating rules)
+- [ ] Master area resizing
+- [ ] Window swapping in layout
+- [ ] Configurable gaps between windows
+- [ ] External bar support (polybar, lemonbar, etc.)
+
+* OXWM Development Todo
+** DONE Core Window Management [2/2]
 - [X] Fix layout after program is closed (handle UnmapNotify events)
   - [X] Add UnmapNotify to event handling
   - [X] Remove closed windows from windows vector
   - [X] Re-apply layout after window removal
-- [ ] Add keybind to swap focus between windows
-  - [ ] Track focused window in WindowManager struct
-  - [ ] Implement focus cycling logic
-  - [ ] Add visual focus indication (borders/colors)
+- [X] Add keybind to swap focus between windows
+  - [X] Track focused window in WindowManager struct
+  - [X] Implement focus cycling logic
+  - [X] Add visual focus indication (borders/colors)
 
-** Key System Improvements
-- [ ] Connect config.rs to keyboard system for dynamic keybind generation
-- [ ] Add more dwm-like keybinds:
-  - [ ] Window focus switching (Alt+J/K)
-  - [ ] Master area resizing
-  - [ ] Layout switching
-  - [ ] Workspace/tag management
-- [ ] Better error handling for failed key grabs
+** DONE Tag System [3/3]
+- [X] Implement tag/workspace system (9 tags)
+- [X] Keybinds to switch tags (Alt+1-9)
+- [X] Keybinds to move windows to tags (Alt+Shift+1-9)
 
-** Layout System
-- [ ] Add more layout types (monocle, floating)
+** DONE Status Bar [2/2]
+- [X] Create basic bar window at screen top
+- [X] Display tag indicators with state (selected/occupied/empty)
+
+** IN PROGRESS Bar Enhancements [0/3]
+- [ ] Add status text area (right side of bar)
+- [ ] Implement clock widget
+- [ ] Add system information widgets
+
+** TODO Key System Improvements [0/2]
+- [ ] dmenu integration for application launching
+- [ ] More spawn commands in config (screenshot, volume, etc.)
+
+** TODO Layout System [0/4]
+- [ ] Add monocle layout
+- [ ] Add floating layout mode
 - [ ] Handle window resize requests properly
 - [ ] Add configurable gaps between windows
-- [ ] Implement layout switching keybinds
+
+** TODO Advanced Features [0/3]
+- [ ] Multi-monitor support
+- [ ] Per-window rules (floating, tag assignment)
+- [ ] Master area resizing keybinds
 
 ** Polish & Features
 - [ ] Clean window destruction/cleanup
 - [ ] Handle edge cases (empty window list, invalid windows)
-- [ ] Add status bar integration
 - [ ] Better error messages and logging
+- [ ] Proper font rendering in bar (currently using basic X11 text)
 
-** Priority
-Reorganization and UnmapNotify handling should be immediate priorities.
+* Architecture Notes
+** Tag System
+Tags are implemented as bitmasks (TagMask = u32), allowing windows to belong to
+multiple tags simultaneously (though current UI only supports single tags).
+Each window has an associated TagMask in window_tags HashMap.
 
-* Status
-- Rust + x11rb skeleton running
-- Nix flake devShell available
-- =just test= launches Xephyr, clients, and oxwm
+** Bar Design
+The bar uses a performance-optimized approach:
+- Only redraws when invalidate() is called
+- Pre-calculates tag widths on creation
+- Uses X11 graphics context for efficient drawing
+- Click handling uses O(n) tag width lookup
+
+** Configuration Philosophy
+Following dwm's approach: all configuration is in Rust source code. No runtime
+config files. Edit config.rs and recompile. This ensures type safety and
+compile-time validation of all settings.
 
 * License
 [[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL]]
-
-

@@ -16,9 +16,19 @@ pub const TERMINAL: &str = "alacritty";
 pub const MODKEY: KeyButMask = KeyButMask::MOD1;
 
 // ========================================
+// Commands
+// ========================================
+const SCREENSHOT_CMD: &[&str] = &[
+    "sh",
+    "-c",
+    "maim ~/screenshots/screenshot_$(date +%Y%m%d_%H%M%S).png",
+];
+
+// ========================================
 // TAGS
 // ========================================
 pub const TAG_COUNT: usize = 9;
+pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
 // ========================================
 // KEYBINDINGS
@@ -26,7 +36,8 @@ pub const TAG_COUNT: usize = 9;
 #[rustfmt::skip]
 pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::RETURN, KeyAction::Spawn,      Arg::Str(TERMINAL)),
-    
+
+    Key::new(&[MODKEY],        keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
     Key::new(&[MODKEY],        keycodes::J,      KeyAction::FocusStack, Arg::Int(-1)),

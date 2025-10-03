@@ -16,9 +16,10 @@ pub enum KeyAction {
 
 #[derive(Debug)]
 pub enum Arg {
-    Str(&'static str),
-    Int(i32),
     None,
+    Int(i32),
+    Str(&'static str),
+    Array(&'static [&'static str]),
 }
 
 pub struct Key {
