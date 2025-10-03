@@ -161,8 +161,9 @@ impl Bar {
                 let bottom_margin = 4;
                 let underline_y = self.height as i16 - underline_height as i16 - bottom_margin;
 
-                let underline_padding = 4;
-                let underline_width = tag_width - underline_padding;
+                let text_width = self.font.text_width(tag);
+                let underline_width = text_width + 4;
+                let underline_x = x_position + ((tag_width - underline_width) / 2) as i16;
 
                 connection.change_gc(
                     self.graphics_context,
@@ -172,14 +173,13 @@ impl Bar {
                     self.window,
                     self.graphics_context,
                     &[Rectangle {
-                        x: x_position + (underline_padding / 2) as i16,
+                        x: underline_x,
                         y: underline_y,
                         width: underline_width,
                         height: underline_height,
                     }],
                 )?;
             }
-
             x_position += tag_width as i16;
         }
         connection.flush()?;
