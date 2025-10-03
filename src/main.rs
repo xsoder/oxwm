@@ -1,4 +1,5 @@
 use anyhow::Result;
+mod config;
 mod keyboard;
 mod layout;
 mod window_manager;

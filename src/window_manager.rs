@@ -1,7 +1,7 @@
+use crate::config::{BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, TAG_COUNT};
 use crate::keyboard::{self, Arg, KeyAction};
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
-
 use anyhow::Result;
 
 use x11rb::connection::Connection;
@@ -9,11 +9,7 @@ use x11rb::protocol::Event;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-// TODO: move this to its own file? (tag.rs?)
 pub type TagMask = u32;
-
-pub const TAG_COUNT: usize = 9;
-
 pub fn tag_mask(tag: usize) -> TagMask {
     1 << tag
 }
@@ -68,7 +64,6 @@ impl WindowManager {
 
         loop {
             let event = self.connection.wait_for_event()?;
-            println!("event: {:?}", event);
             self.handle_event(event)?;
         }
     }
@@ -77,35 +72,27 @@ impl WindowManager {
         match action {
             KeyAction::Spawn => {
                 if let Arg::Str(command) = arg {
-                    println!("Spawning: {}", command);
                     std::process::Command::new(command).spawn()?;
                 }
             }
             KeyAction::KillClient => {
-                println!("Closing focused window");
                 if let Some(focused) = self.focused_window {
                     match self.connection.kill_client(focused) {
                         Ok(_) => {
                             self.connection.flush()?;
-                            println!("Killed window {}", focused);
                         }
                         Err(e) => {
-                            println!("Failed to kill window {}: {}", focused, e);
+                            eprintln!("Failed to kill window {}: {}", focused, e);
                         }
                     }
                 }
             }
             KeyAction::FocusStack => {
                 if let Arg::Int(direction) = arg {
-                    println!("FocusStack called with direction: {}", direction);
-                    println!("Windows: {:?}", self.windows);
-                    println!("Current focused: {:?}", self.focused_window);
                     self.cycle_focus(*direction)?;
-                    println!("New focused: {:?}", self.focused_window);
                 }
             }
             KeyAction::Quit => {
-                println!("Quitting window manager");
                 std::process::exit(0);
             }
             KeyAction::ViewTag => {
@@ -159,8 +146,6 @@ impl WindowManager {
         }
 
         self.selected_tags = tag_mask(tag_index);
-        println!("Viewing tag {}", tag_index + 1);
-
         self.update_window_visibility()?;
         self.apply_layout()?;
 
@@ -178,9 +163,6 @@ impl WindowManager {
         if let Some(focused) = self.focused_window {
             let mask = tag_mask(tag_index);
             self.window_tags.insert(focused, mask);
-
-            println!("Moved window {} to tag {}", focused, tag_index + 1);
-
             self.update_window_visibility()?;
             self.apply_layout()?;
         }
@@ -215,7 +197,6 @@ impl WindowManager {
     }
 
     pub fn set_focus(&mut self, window: Option<Window>) -> Result<()> {
-        println!("set_focus called with: {:?}", window);
         self.focused_window = window;
 
         if let Some(win) = window {
@@ -229,14 +210,11 @@ impl WindowManager {
     }
 
     fn update_focus_visuals(&self) -> Result<()> {
-        println!("Updating focus visuals for {} windows", self.windows.len());
         for &window in &self.windows {
             let (border_color, border_width) = if self.focused_window == Some(window) {
-                println!("Window {} is FOCUSED (red border)", window);
-                (0xff0000, 2)
+                (BORDER_FOCUSED, BORDER_WIDTH)
             } else {
-                println!("Window {} is unfocused (gray border)", window);
-                (0x888888, 2)
+                (BORDER_UNFOCUSED, BORDER_WIDTH)
             };
 
             self.connection.configure_window(
@@ -263,27 +241,19 @@ impl WindowManager {
                 self.set_focus(Some(event.window))?;
             }
             Event::UnmapNotify(event) => {
-                if self.windows.contains(&event.window) {
-                    if self.is_window_visible(event.window) {
-                        println!("Visible window {} unmapped, removing", event.window);
-                        self.remove_window(event.window)?;
-                    } else {
-                        println!(
-                            "Hidden window {} unmapped (expected), ignoring",
-                            event.window
-                        );
-                    }
+                if self.windows.contains(&event.window) && self.is_window_visible(event.window) {
+                    self.remove_window(event.window)?;
                 }
             }
             // Event::UnmapNotify(event) => {
             //     if self.windows.contains(&event.window) {
-            //         println!("Window {} unmapped, removing from layout", event.window);
-            //         self.remove_window(event.window)?;
+            //         if self.is_window_visible(event.window) {
+            //             self.remove_window(event.window)?;
+            //         }
             //     }
             // }
             Event::DestroyNotify(event) => {
                 if self.windows.contains(&event.window) {
-                    println!("Window {} destroyed, removing from layout", event.window);
                     self.remove_window(event.window)?;
                 }
             }
@@ -299,7 +269,7 @@ impl WindowManager {
     fn apply_layout(&self) -> Result<()> {
         let screen_width = self.screen.width_in_pixels as u32;
         let screen_height = self.screen.height_in_pixels as u32;
-        let border_width = 2u32;
+        let border_width = BORDER_WIDTH;
 
         let visible = self.visible_windows();
         let geometries = self.layout.arrange(&visible, screen_width, screen_height);
@@ -327,8 +297,6 @@ impl WindowManager {
         self.window_tags.remove(&window);
 
         if self.windows.len() < initial_count {
-            println!("Removed window {} from management", window);
-
             if self.focused_window == Some(window) {
                 let new_focus = if self.windows.is_empty() {
                     None

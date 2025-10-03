@@ -1,4 +1,4 @@
-use crate::keyboard::keycodes;
+use crate::config::KEYBINDINGS;
 use anyhow::Result;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -44,80 +44,6 @@ impl Key {
     }
 }
 
-const KEYBINDINGS: &[Key] = &[
-    Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::RETURN,
-        KeyAction::Spawn,
-        Arg::Str("alacritty"),
-    ),
-    Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::Q,
-        KeyAction::KillClient,
-        Arg::None,
-    ),
-    Key::new(
-        &[KeyButMask::MOD1, KeyButMask::SHIFT],
-        keycodes::Q,
-        KeyAction::Quit,
-        Arg::None,
-    ),
-    Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::K,
-        KeyAction::FocusStack,
-        Arg::Int(1),
-    ),
-    Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::J,
-        KeyAction::FocusStack,
-        Arg::Int(-1),
-    ),
-    // NEW: Tag bindings (Mod+1 through Mod+9)
-    Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::KEY_1,
-        KeyAction::ViewTag,
-        Arg::Int(0),
-    ),
-    Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::KEY_2,
-        KeyAction::ViewTag,
-        Arg::Int(1),
-    ),
-    Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::KEY_3,
-        KeyAction::ViewTag,
-        Arg::Int(2),
-    ),
-    // ... add KEY_4 through KEY_9
-
-    // NEW: Move window to tag (Mod+Shift+1 through Mod+Shift+9)
-    Key::new(
-        &[KeyButMask::MOD1, KeyButMask::SHIFT],
-        keycodes::KEY_1,
-        KeyAction::MoveToTag,
-        Arg::Int(0),
-    ),
-    Key::new(
-        &[KeyButMask::MOD1, KeyButMask::SHIFT],
-        keycodes::KEY_2,
-        KeyAction::MoveToTag,
-        Arg::Int(1),
-    ),
-    Key::new(
-        &[KeyButMask::MOD1, KeyButMask::SHIFT],
-        keycodes::KEY_3,
-        KeyAction::MoveToTag,
-        Arg::Int(2),
-    ),
-    // ... etc
-];
-
 fn modifiers_to_mask(modifiers: &[KeyButMask]) -> u16 {
     modifiers
         .iter()
@@ -141,8 +67,6 @@ pub fn setup_keybinds(connection: &impl Connection, root: Window) -> Result<()> 
 }
 
 pub fn handle_key_press(event: KeyPressEvent) -> Result<(KeyAction, &'static Arg)> {
-    println!("KeyPress: detail={}, state={:?}", event.detail, event.state);
-
     for keybinding in KEYBINDINGS {
         let modifier_mask = modifiers_to_mask(keybinding.modifiers);
 

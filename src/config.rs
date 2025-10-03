@@ -1,0 +1,56 @@
+use crate::keyboard::handlers::Key;
+use crate::keyboard::{Arg, KeyAction, keycodes};
+use x11rb::protocol::xproto::KeyButMask;
+
+// ========================================
+// APPEARANCE
+// ========================================
+pub const BORDER_WIDTH: u32 = 2;
+pub const BORDER_FOCUSED: u32 = 0xff0000;
+pub const BORDER_UNFOCUSED: u32 = 0x888888;
+
+// ========================================
+// DEFAULTS
+// ========================================
+pub const TERMINAL: &str = "alacritty";
+pub const MODKEY: KeyButMask = KeyButMask::MOD1;
+
+// ========================================
+// TAGS
+// ========================================
+pub const TAG_COUNT: usize = 9;
+
+// ========================================
+// KEYBINDINGS
+// ========================================
+#[rustfmt::skip]
+pub const KEYBINDINGS: &[Key] = &[
+    Key::new(&[MODKEY],        keycodes::RETURN, KeyAction::Spawn,      Arg::Str(TERMINAL)),
+    
+    Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
+    Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
+    Key::new(&[MODKEY],        keycodes::J,      KeyAction::FocusStack, Arg::Int(-1)),
+    Key::new(&[MODKEY],        keycodes::K,      KeyAction::FocusStack, Arg::Int(1)),
+    
+    Key::new(&[MODKEY], keycodes::KEY_1, KeyAction::ViewTag, Arg::Int(0)),
+    Key::new(&[MODKEY], keycodes::KEY_2, KeyAction::ViewTag, Arg::Int(1)),
+    Key::new(&[MODKEY], keycodes::KEY_3, KeyAction::ViewTag, Arg::Int(2)),
+    Key::new(&[MODKEY], keycodes::KEY_4, KeyAction::ViewTag, Arg::Int(3)),
+    Key::new(&[MODKEY], keycodes::KEY_5, KeyAction::ViewTag, Arg::Int(4)),
+    Key::new(&[MODKEY], keycodes::KEY_6, KeyAction::ViewTag, Arg::Int(5)),
+    Key::new(&[MODKEY], keycodes::KEY_7, KeyAction::ViewTag, Arg::Int(6)),
+    Key::new(&[MODKEY], keycodes::KEY_8, KeyAction::ViewTag, Arg::Int(7)),
+    Key::new(&[MODKEY], keycodes::KEY_9, KeyAction::ViewTag, Arg::Int(8)),
+    
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_1, KeyAction::MoveToTag, Arg::Int(0)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_2, KeyAction::MoveToTag, Arg::Int(1)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_3, KeyAction::MoveToTag, Arg::Int(2)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_4, KeyAction::MoveToTag, Arg::Int(3)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_5, KeyAction::MoveToTag, Arg::Int(4)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_6, KeyAction::MoveToTag, Arg::Int(5)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_7, KeyAction::MoveToTag, Arg::Int(6)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_8, KeyAction::MoveToTag, Arg::Int(7)),
+    Key::new(&[MODKEY, SHIFT], keycodes::KEY_9, KeyAction::MoveToTag, Arg::Int(8)),
+];
+
+const SHIFT: KeyButMask = KeyButMask::SHIFT;
