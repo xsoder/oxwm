@@ -1,5 +1,5 @@
 use super::font::{Font, FontDraw};
-use crate::config::{BAR_HEIGHT, FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
+use crate::config::{FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
 use anyhow::Result;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;
@@ -26,7 +26,14 @@ impl Bar {
         let graphics_context = connection.generate_id()?;
 
         let width = screen.width_in_pixels;
-        let height = BAR_HEIGHT;
+
+        let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
+        if display.is_null() {
+            anyhow::bail!("Failed to open X11 display for XFT");
+        }
+        let font = Font::new(display, screen_num as i32, FONT)?;
+
+        let height = font.height() + 4;
 
         connection.create_window(
             COPY_DEPTH_FROM_PARENT,
