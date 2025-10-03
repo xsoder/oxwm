@@ -1,4 +1,5 @@
 mod bar;
+mod font;
 // mod widgets;  // TODO: implement later
 
 pub use bar::Bar;

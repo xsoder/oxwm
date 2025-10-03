@@ -46,7 +46,7 @@ impl WindowManager {
             )?
             .check()?;
 
-        let bar = Bar::new(&connection, &screen)?;
+        let bar = Bar::new(&connection, &screen, screen_number)?;
 
         return Ok(Self {
             connection,

@@ -1,9 +1,11 @@
 use super::BAR_HEIGHT;
-use crate::config::{SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
+use super::font::{Font, FontDraw};
+use crate::config::{FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
 use anyhow::Result;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+use x11rb::rust_connection::RustConnection;
 
 pub struct Bar {
     window: Window,
@@ -11,12 +13,16 @@ pub struct Bar {
     height: u16,
     graphics_context: Gcontext,
 
+    font: Font,
+    font_draw: FontDraw,
+    display: *mut x11::xlib::Display,
+
     tag_widths: Vec<u16>,
     needs_redraw: bool,
 }
 
 impl Bar {
-    pub fn new<C: Connection>(connection: &C, screen: &Screen) -> Result<Self> {
+    pub fn new(connection: &RustConnection, screen: &Screen, screen_num: usize) -> Result<Self> {
         let window = connection.generate_id()?;
         let graphics_context = connection.generate_id()?;
 
@@ -51,14 +57,28 @@ impl Bar {
         connection.map_window(window)?;
         connection.flush()?;
 
-        // TODO: actual text width calculation when we add fonts
-        let tag_widths = TAGS.iter().map(|tag| (tag.len() as u16 * 8) + 10).collect();
+        let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
+        if display.is_null() {
+            anyhow::bail!("Failed to open X11 display for XFT");
+        }
+
+        let font = Font::new(display, screen_num as i32, FONT)?;
+
+        let visual = unsafe { x11::xlib::XDefaultVisual(display, screen_num as i32) };
+        let colormap = unsafe { x11::xlib::XDefaultColormap(display, screen_num as i32) };
+
+        let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
+
+        let tag_widths = TAGS.iter().map(|tag| font.text_width(tag) + 10).collect();
 
         Ok(Bar {
             window,
             width,
             height,
             graphics_context,
+            font,
+            font_draw,
+            display,
             tag_widths,
             needs_redraw: true,
         })
@@ -76,9 +96,9 @@ impl Bar {
         self.needs_redraw = true;
     }
 
-    pub fn draw<C: Connection>(
+    pub fn draw(
         &mut self,
-        connection: &C,
+        connection: &RustConnection,
         current_tags: u32,
         occupied_tags: u32,
     ) -> Result<()> {
@@ -150,24 +170,19 @@ impl Bar {
                 )?;
             }
 
-            connection.change_gc(
-                self.graphics_context,
-                &ChangeGCAux::new().foreground(scheme.foreground),
-            )?;
-
-            // TODO: Replace with actual font rendering later
-            connection.image_text8(
-                self.window,
-                self.graphics_context,
-                x_position + 5,
-                self.height as i16 - 5,
-                tag.as_bytes(),
-            )?;
+            let text_y = (self.height as i16 / 2) + (self.font.ascent() / 2);
+            self.font_draw
+                .draw_text(&self.font, scheme.foreground, x_position + 5, text_y, tag);
 
             x_position += tag_width as i16;
         }
 
         connection.flush()?;
+
+        unsafe {
+            x11::xlib::XFlush(self.display);
+        }
+
         self.needs_redraw = false;
 
         Ok(())
