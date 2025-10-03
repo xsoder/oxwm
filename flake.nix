@@ -14,9 +14,9 @@
       buildInputs = [
         pkgs.rustc
         pkgs.cargo
-        pkgs.xorg.xorgserver
         pkgs.xorg.xclock
         pkgs.xterm
+        pkgs.alacritty
         pkgs.just
       ];
       shellHook = ''

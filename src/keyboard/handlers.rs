@@ -9,6 +9,8 @@ pub enum KeyAction {
     KillClient,
     FocusStack,
     Quit,
+    ViewTag,
+    MoveToTag,
     None,
 }
 
@@ -47,27 +49,73 @@ const KEYBINDINGS: &[Key] = &[
         &[KeyButMask::MOD1],
         keycodes::RETURN,
         KeyAction::Spawn,
-        Arg::Str("xclock"),
+        Arg::Str("alacritty"),
     ),
     Key::new(
-        &[KeyButMask::MOD1, KeyButMask::SHIFT],
+        &[KeyButMask::MOD1],
         keycodes::Q,
         KeyAction::KillClient,
         Arg::None,
     ),
-    Key::new(&[KeyButMask::MOD1], keycodes::Q, KeyAction::Quit, Arg::None),
     Key::new(
-        &[KeyButMask::MOD1],
-        keycodes::J,
-        KeyAction::FocusStack,
-        Arg::Int(1),
+        &[KeyButMask::MOD1, KeyButMask::SHIFT],
+        keycodes::Q,
+        KeyAction::Quit,
+        Arg::None,
     ),
     Key::new(
         &[KeyButMask::MOD1],
         keycodes::K,
         KeyAction::FocusStack,
+        Arg::Int(1),
+    ),
+    Key::new(
+        &[KeyButMask::MOD1],
+        keycodes::J,
+        KeyAction::FocusStack,
         Arg::Int(-1),
     ),
+    // NEW: Tag bindings (Mod+1 through Mod+9)
+    Key::new(
+        &[KeyButMask::MOD1],
+        keycodes::KEY_1,
+        KeyAction::ViewTag,
+        Arg::Int(0),
+    ),
+    Key::new(
+        &[KeyButMask::MOD1],
+        keycodes::KEY_2,
+        KeyAction::ViewTag,
+        Arg::Int(1),
+    ),
+    Key::new(
+        &[KeyButMask::MOD1],
+        keycodes::KEY_3,
+        KeyAction::ViewTag,
+        Arg::Int(2),
+    ),
+    // ... add KEY_4 through KEY_9
+
+    // NEW: Move window to tag (Mod+Shift+1 through Mod+Shift+9)
+    Key::new(
+        &[KeyButMask::MOD1, KeyButMask::SHIFT],
+        keycodes::KEY_1,
+        KeyAction::MoveToTag,
+        Arg::Int(0),
+    ),
+    Key::new(
+        &[KeyButMask::MOD1, KeyButMask::SHIFT],
+        keycodes::KEY_2,
+        KeyAction::MoveToTag,
+        Arg::Int(1),
+    ),
+    Key::new(
+        &[KeyButMask::MOD1, KeyButMask::SHIFT],
+        keycodes::KEY_3,
+        KeyAction::MoveToTag,
+        Arg::Int(2),
+    ),
+    // ... etc
 ];
 
 fn modifiers_to_mask(modifiers: &[KeyButMask]) -> u16 {

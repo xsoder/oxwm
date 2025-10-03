@@ -9,6 +9,15 @@ use x11rb::protocol::Event;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
+// TODO: move this to its own file? (tag.rs?)
+pub type TagMask = u32;
+
+pub const TAG_COUNT: usize = 9;
+
+pub fn tag_mask(tag: usize) -> TagMask {
+    1 << tag
+}
+
 pub struct WindowManager {
     connection: RustConnection,
     screen_number: usize,
@@ -17,6 +26,8 @@ pub struct WindowManager {
     windows: Vec<Window>,
     focused_window: Option<Window>,
     layout: Box<dyn Layout>,
+    window_tags: std::collections::HashMap<Window, TagMask>,
+    selected_tags: TagMask,
 }
 
 impl WindowManager {
@@ -45,6 +56,8 @@ impl WindowManager {
             windows: Vec::new(),
             focused_window: None,
             layout: Box::new(TilingLayout),
+            window_tags: std::collections::HashMap::new(),
+            selected_tags: tag_mask(0),
         });
     }
 
@@ -95,6 +108,16 @@ impl WindowManager {
                 println!("Quitting window manager");
                 std::process::exit(0);
             }
+            KeyAction::ViewTag => {
+                if let Arg::Int(tag_index) = arg {
+                    self.view_tag(*tag_index as usize)?;
+                }
+            }
+            KeyAction::MoveToTag => {
+                if let Arg::Int(tag_index) = arg {
+                    self.move_to_tag(*tag_index as usize)?;
+                }
+            }
             KeyAction::None => {
                 //no-op
             }
@@ -102,28 +125,89 @@ impl WindowManager {
         Ok(())
     }
 
+    fn is_window_visible(&self, window: Window) -> bool {
+        if let Some(&tags) = self.window_tags.get(&window) {
+            (tags & self.selected_tags) != 0
+        } else {
+            false
+        }
+    }
+
+    fn visible_windows(&self) -> Vec<Window> {
+        self.windows
+            .iter()
+            .filter(|&&w| self.is_window_visible(w))
+            .copied()
+            .collect()
+    }
+
+    fn update_window_visibility(&self) -> Result<()> {
+        for &window in &self.windows {
+            if self.is_window_visible(window) {
+                self.connection.map_window(window)?;
+            } else {
+                self.connection.unmap_window(window)?;
+            }
+        }
+        self.connection.flush()?;
+        Ok(())
+    }
+
+    pub fn view_tag(&mut self, tag_index: usize) -> Result<()> {
+        if tag_index >= TAG_COUNT {
+            return Ok(());
+        }
+
+        self.selected_tags = tag_mask(tag_index);
+        println!("Viewing tag {}", tag_index + 1);
+
+        self.update_window_visibility()?;
+        self.apply_layout()?;
+
+        let visible = self.visible_windows();
+        self.set_focus(visible.first().copied())?;
+
+        Ok(())
+    }
+
+    pub fn move_to_tag(&mut self, tag_index: usize) -> Result<()> {
+        if tag_index >= TAG_COUNT {
+            return Ok(());
+        }
+
+        if let Some(focused) = self.focused_window {
+            let mask = tag_mask(tag_index);
+            self.window_tags.insert(focused, mask);
+
+            println!("Moved window {} to tag {}", focused, tag_index + 1);
+
+            self.update_window_visibility()?;
+            self.apply_layout()?;
+        }
+
+        Ok(())
+    }
+
     pub fn cycle_focus(&mut self, direction: i32) -> Result<()> {
-        if self.windows.is_empty() {
+        let visible = self.visible_windows();
+
+        if visible.is_empty() {
             return Ok(());
         }
 
         let next_window = if let Some(current) = self.focused_window {
-            if let Some(current_index) = self.windows.iter().position(|&w| w == current) {
+            if let Some(current_index) = visible.iter().position(|&w| w == current) {
                 let next_index = if direction > 0 {
-                    (current_index + 1) % self.windows.len()
+                    (current_index + 1) % visible.len()
                 } else {
-                    if current_index == 0 {
-                        self.windows.len() - 1
-                    } else {
-                        current_index - 1
-                    }
+                    (current_index + visible.len() - 1) % visible.len()
                 };
-                self.windows[next_index]
+                visible[next_index]
             } else {
-                self.windows[0]
+                visible[0]
             }
         } else {
-            self.windows[0]
+            visible[0]
         };
 
         self.set_focus(Some(next_window))?;
@@ -174,15 +258,29 @@ impl WindowManager {
             Event::MapRequest(event) => {
                 self.connection.map_window(event.window)?;
                 self.windows.push(event.window);
+                self.window_tags.insert(event.window, self.selected_tags);
                 self.apply_layout()?;
                 self.set_focus(Some(event.window))?;
             }
             Event::UnmapNotify(event) => {
                 if self.windows.contains(&event.window) {
-                    println!("Window {} unmapped, removing from layout", event.window);
-                    self.remove_window(event.window)?;
+                    if self.is_window_visible(event.window) {
+                        println!("Visible window {} unmapped, removing", event.window);
+                        self.remove_window(event.window)?;
+                    } else {
+                        println!(
+                            "Hidden window {} unmapped (expected), ignoring",
+                            event.window
+                        );
+                    }
                 }
             }
+            // Event::UnmapNotify(event) => {
+            //     if self.windows.contains(&event.window) {
+            //         println!("Window {} unmapped, removing from layout", event.window);
+            //         self.remove_window(event.window)?;
+            //     }
+            // }
             Event::DestroyNotify(event) => {
                 if self.windows.contains(&event.window) {
                     println!("Window {} destroyed, removing from layout", event.window);
@@ -203,12 +301,10 @@ impl WindowManager {
         let screen_height = self.screen.height_in_pixels as u32;
         let border_width = 2u32;
 
-        let geometries = self
-            .layout
-            .arrange(&self.windows, screen_width, screen_height);
+        let visible = self.visible_windows();
+        let geometries = self.layout.arrange(&visible, screen_width, screen_height);
 
-        for (window, geometry) in self.windows.iter().zip(geometries.iter()) {
-            // Adjust for full borders
+        for (window, geometry) in visible.iter().zip(geometries.iter()) {
             let adjusted_width = geometry.width.saturating_sub(2 * border_width);
             let adjusted_height = geometry.height.saturating_sub(2 * border_width);
 
@@ -222,12 +318,13 @@ impl WindowManager {
             )?;
         }
         self.connection.flush()?;
-        return Ok(());
+        Ok(())
     }
 
     fn remove_window(&mut self, window: Window) -> Result<()> {
         let initial_count = self.windows.len();
         self.windows.retain(|&w| w != window);
+        self.window_tags.remove(&window);
 
         if self.windows.len() < initial_count {
             println!("Removed window {} from management", window);
@@ -243,7 +340,6 @@ impl WindowManager {
 
             self.apply_layout()?;
         }
-
         Ok(())
     }
 }
