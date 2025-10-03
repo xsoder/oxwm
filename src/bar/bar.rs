@@ -147,6 +147,8 @@ impl Bar {
                 let bottom_margin = 4;
                 let underline_y = self.height as i16 - underline_height as i16 - bottom_margin;
 
+                let text_width = self.font.text_width(tag);
+
                 connection.change_gc(
                     self.graphics_context,
                     &ChangeGCAux::new().foreground(scheme.border),
@@ -155,9 +157,9 @@ impl Bar {
                     self.window,
                     self.graphics_context,
                     &[Rectangle {
-                        x: x_position,
+                        x: x_position + 5,
                         y: underline_y,
-                        width: tag_width,
+                        width: text_width,
                         height: underline_height,
                     }],
                 )?;
