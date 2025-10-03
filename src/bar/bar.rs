@@ -1,5 +1,5 @@
 use super::BAR_HEIGHT;
-use crate::config::TAGS;
+use crate::config::{SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
 use anyhow::Result;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;
@@ -35,7 +35,7 @@ impl Bar {
             WindowClass::INPUT_OUTPUT,
             screen.root_visual,
             &CreateWindowAux::new()
-                .background_pixel(screen.black_pixel)
+                .background_pixel(SCHEME_NORMAL.background)
                 .event_mask(EventMask::EXPOSURE | EventMask::BUTTON_PRESS)
                 .override_redirect(1),
         )?;
@@ -44,8 +44,8 @@ impl Bar {
             graphics_context,
             window,
             &CreateGCAux::new()
-                .foreground(screen.white_pixel)
-                .background(screen.black_pixel),
+                .foreground(SCHEME_NORMAL.foreground)
+                .background(SCHEME_NORMAL.background),
         )?;
 
         connection.map_window(window)?;
@@ -86,6 +86,10 @@ impl Bar {
             return Ok(());
         }
 
+        connection.change_gc(
+            self.graphics_context,
+            &ChangeGCAux::new().foreground(SCHEME_NORMAL.background),
+        )?;
         connection.poly_fill_rectangle(
             self.window,
             self.graphics_context,
@@ -106,10 +110,18 @@ impl Bar {
 
             let tag_width = self.tag_widths[tag_index];
 
+            let scheme = if is_selected {
+                &SCHEME_SELECTED
+            } else if is_occupied {
+                &SCHEME_OCCUPIED
+            } else {
+                &SCHEME_NORMAL
+            };
+
             if is_selected {
                 connection.change_gc(
                     self.graphics_context,
-                    &ChangeGCAux::new().foreground(0xFFFFFF),
+                    &ChangeGCAux::new().foreground(scheme.background),
                 )?;
                 connection.poly_fill_rectangle(
                     self.window,
@@ -121,15 +133,10 @@ impl Bar {
                         height: self.height,
                     }],
                 )?;
-
-                connection.change_gc(
-                    self.graphics_context,
-                    &ChangeGCAux::new().foreground(0x000000),
-                )?;
             } else if is_occupied {
                 connection.change_gc(
                     self.graphics_context,
-                    &ChangeGCAux::new().foreground(0x888888),
+                    &ChangeGCAux::new().foreground(scheme.border),
                 )?;
                 connection.poly_fill_rectangle(
                     self.window,
@@ -141,17 +148,12 @@ impl Bar {
                         height: 2,
                     }],
                 )?;
-
-                connection.change_gc(
-                    self.graphics_context,
-                    &ChangeGCAux::new().foreground(0xFFFFFF),
-                )?;
-            } else {
-                connection.change_gc(
-                    self.graphics_context,
-                    &ChangeGCAux::new().foreground(0x666666),
-                )?;
             }
+
+            connection.change_gc(
+                self.graphics_context,
+                &ChangeGCAux::new().foreground(scheme.foreground),
+            )?;
 
             // TODO: Replace with actual font rendering later
             connection.image_text8(

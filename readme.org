@@ -1,6 +1,32 @@
 #+AUTHOR: Tony
 #+STARTUP: overview
 
+* Table of Contents :toc:
+- [[#oxwm--dwm-but-better-and-oxidized][OXWM — DWM but Better (and oxidized)]]
+- [[#project-structure][Project Structure]]
+- [[#event-flow][Event Flow]]
+- [[#key-bindings][Key Bindings]]
+- [[#-installation--running-with-nix-flakes][⚙ Installation — Running with Nix Flakes]]
+- [[#testing-xephyr-with-justfile][Testing Xephyr with Justfile]]
+- [[#current-status][Current Status]]
+  - [[#working-features][Working Features]]
+  - [[#immediate-next-steps][Immediate Next Steps]]
+  - [[#long-term-roadmap][Long Term Roadmap]]
+- [[#oxwm-development-todo][OXWM Development Todo]]
+  - [[#core-window-management-22][Core Window Management]]
+  - [[#tag-system-33][Tag System]]
+  - [[#status-bar-22][Status Bar]]
+  - [[#in-progress-bar-enhancements-03][IN PROGRESS Bar Enhancements]]
+  - [[#key-system-improvements-02][Key System Improvements]]
+  - [[#layout-system-04][Layout System]]
+  - [[#advanced-features-03][Advanced Features]]
+  - [[#polish--features][Polish & Features]]
+- [[#architecture-notes][Architecture Notes]]
+  - [[#tag-system][Tag System]]
+  - [[#bar-design][Bar Design]]
+  - [[#configuration-philosophy][Configuration Philosophy]]
+- [[#license][License]]
+
 * OXWM — DWM but Better (and oxidized)
 A dynamic window manager written in Rust, inspired by dwm but designed to evolve
 on its own. Configuration is done in Rust source code, keeping with the suckless

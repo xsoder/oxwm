@@ -5,15 +5,50 @@ use x11rb::protocol::xproto::KeyButMask;
 // ========================================
 // APPEARANCE
 // ========================================
-pub const BORDER_WIDTH: u32 = 2;
-pub const BORDER_FOCUSED: u32 = 0xff0000;
-pub const BORDER_UNFOCUSED: u32 = 0x888888;
+pub const BORDER_WIDTH: u32 = 1;
+pub const BORDER_FOCUSED: u32 = 0x6dade3;
+pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
 
 // ========================================
 // DEFAULTS
 // ========================================
 pub const TERMINAL: &str = "alacritty";
 pub const MODKEY: KeyButMask = KeyButMask::MOD1;
+
+// ========================================
+// BAR COLORS
+// ========================================
+
+// Base colors
+const GRAY_DARK: u32 = 0x222222;
+const GRAY_MID: u32 = 0x444444;
+const GRAY_LIGHT: u32 = 0xbbbbbb;
+const GRAY_LIGHTEST: u32 = 0xeeeeee;
+const CYAN: u32 = 0x6dade3;
+
+pub struct ColorScheme {
+    pub foreground: u32,
+    pub background: u32,
+    pub border: u32,
+}
+
+pub const SCHEME_NORMAL: ColorScheme = ColorScheme {
+    foreground: GRAY_LIGHT,
+    background: GRAY_DARK,
+    border: GRAY_MID,
+};
+
+pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
+    foreground: GRAY_LIGHTEST,
+    background: CYAN,
+    border: CYAN,
+};
+
+pub const SCHEME_OCCUPIED: ColorScheme = ColorScheme {
+    foreground: GRAY_LIGHTEST,
+    background: GRAY_DARK,
+    border: GRAY_MID,
+};
 
 // ========================================
 // Commands
