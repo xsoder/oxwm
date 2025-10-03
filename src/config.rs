@@ -27,6 +27,7 @@ const GRAY_MID: u32 = 0x444444;
 const GRAY_LIGHT: u32 = 0xbbbbbb;
 // const GRAY_LIGHTEST: u32 = 0xeeeeee;
 const CYAN: u32 = 0x6dade3;
+const MAGENTA: u32 = 0xad8ee6;
 
 pub struct ColorScheme {
     pub foreground: u32,
@@ -49,7 +50,7 @@ pub const SCHEME_NORMAL: ColorScheme = ColorScheme {
 pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
     foreground: CYAN,
     background: GRAY_DARK,
-    border: CYAN,
+    border: MAGENTA,
 };
 
 // ========================================

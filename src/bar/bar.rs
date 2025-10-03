@@ -141,6 +141,7 @@ impl Bar {
 
             if is_selected {
                 let underline_height = 2;
+                let spacing_from_text = 3;
                 connection.change_gc(
                     self.graphics_context,
                     &ChangeGCAux::new().foreground(scheme.border),
@@ -150,7 +151,7 @@ impl Bar {
                     self.graphics_context,
                     &[Rectangle {
                         x: x_position,
-                        y: (self.height - underline_height) as i16,
+                        y: (self.height - underline_height - spacing_from_text) as i16,
                         width: tag_width,
                         height: underline_height,
                     }],
