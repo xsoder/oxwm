@@ -68,7 +68,7 @@ impl Bar {
 
         let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
 
-        let tag_widths = TAGS.iter().map(|tag| font.text_width(tag) + 10).collect();
+        let tag_widths = TAGS.iter().map(|tag| font.text_width(tag) + 20).collect();
 
         Ok(Bar {
             window,

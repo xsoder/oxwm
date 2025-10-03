@@ -9,7 +9,7 @@ pub const BORDER_WIDTH: u32 = 1;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
 pub const BAR_HEIGHT: u16 = 32;
-pub const FONT: &str = "JetBrainsMono Nerd Font:size=16";
+pub const FONT: &str = "JetBrainsMono Nerd Font:size=12";
 
 // ========================================
 // DEFAULTS
