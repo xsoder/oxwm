@@ -135,17 +135,17 @@ impl Bar {
                 &SCHEME_NORMAL
             };
 
-            let text_y = (self.height as i16 / 2) + (self.font.ascent() / 2);
+            let top_padding = 8;
+            let text_y = top_padding + self.font.ascent();
+
             self.font_draw
                 .draw_text(&self.font, scheme.foreground, x_position + 5, text_y, tag);
 
             if is_selected {
                 let underline_height = 3;
                 let gap_above_underline = 3;
-
                 let underline_y =
                     self.height as i16 - underline_height as i16 - gap_above_underline;
-
                 connection.change_gc(
                     self.graphics_context,
                     &ChangeGCAux::new().foreground(scheme.border),
