@@ -41,11 +41,11 @@ pub const SCHEME_NORMAL: ColorScheme = ColorScheme {
     border: GRAY_MID,
 };
 
-// pub const SCHEME_OCCUPIED: ColorScheme = ColorScheme {
-//     foreground: CYAN,
-//     background: GRAY_DARK,
-//     border: CYAN,
-// };
+pub const SCHEME_OCCUPIED: ColorScheme = ColorScheme {
+    foreground: CYAN,
+    background: GRAY_DARK,
+    border: CYAN,
+};
 
 pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
     foreground: CYAN,

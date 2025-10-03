@@ -1,5 +1,5 @@
 use super::font::{Font, FontDraw};
-use crate::config::{BAR_HEIGHT, FONT, SCHEME_NORMAL, SCHEME_SELECTED, TAGS};
+use crate::config::{BAR_HEIGHT, FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
 use anyhow::Result;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;
@@ -68,7 +68,15 @@ impl Bar {
 
         let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
 
-        let tag_widths = TAGS.iter().map(|tag| font.text_width(tag) + 20).collect();
+        let tag_widths = TAGS
+            .iter()
+            .map(|tag| {
+                let text_width = font.text_width(tag);
+                let left_padding = 10;
+                let right_padding = 10;
+                text_width + left_padding + right_padding
+            })
+            .collect();
 
         Ok(Bar {
             window,
@@ -129,25 +137,32 @@ impl Bar {
 
             let tag_width = self.tag_widths[tag_index];
 
-            let scheme = if is_selected || is_occupied {
+            let scheme = if is_selected {
                 &SCHEME_SELECTED
+            } else if is_occupied {
+                &SCHEME_OCCUPIED
             } else {
                 &SCHEME_NORMAL
             };
 
+            let text_width = self.font.text_width(tag);
+            let left_padding = (tag_width - text_width) / 2;
+            let text_x = x_position + left_padding as i16;
+
             let text_height = self.font.height();
-            let top_margin = (self.height as i16 - text_height as i16) / 4; // Smaller top margin
+            let top_margin = (self.height as i16 - text_height as i16) / 4;
             let text_y = top_margin + self.font.ascent();
 
             self.font_draw
-                .draw_text(&self.font, scheme.foreground, x_position + 5, text_y, tag);
+                .draw_text(&self.font, scheme.foreground, text_x, text_y, tag);
 
             if is_selected {
                 let underline_height = 3;
                 let bottom_margin = 4;
                 let underline_y = self.height as i16 - underline_height as i16 - bottom_margin;
 
-                let text_width = self.font.text_width(tag);
+                let underline_padding = 4;
+                let underline_width = tag_width - underline_padding;
 
                 connection.change_gc(
                     self.graphics_context,
@@ -157,16 +172,16 @@ impl Bar {
                     self.window,
                     self.graphics_context,
                     &[Rectangle {
-                        x: x_position + 5,
+                        x: x_position + (underline_padding / 2) as i16,
                         y: underline_y,
-                        width: text_width,
+                        width: underline_width,
                         height: underline_height,
                     }],
                 )?;
             }
+
             x_position += tag_width as i16;
         }
-
         connection.flush()?;
 
         unsafe {
