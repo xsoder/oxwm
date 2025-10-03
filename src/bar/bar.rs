@@ -147,17 +147,18 @@ impl Bar {
             let text_width = self.font.text_width(tag);
             let text_x = x_position + ((tag_width - text_width) / 2) as i16;
 
-            let text_height = self.font.height();
-            let top_margin = (self.height as i16 - text_height as i16) / 4;
-            let text_y = top_margin + self.font.ascent();
+            let font_height = self.font.height();
+            let top_padding = font_height / 3;
+            let text_y = top_padding as i16 + self.font.ascent();
 
             self.font_draw
                 .draw_text(&self.font, scheme.foreground, text_x, text_y, tag);
 
             if is_selected {
-                let underline_height = (self.font.height() / 8).max(2);
-                let bottom_margin = 4;
-                let underline_y = self.height as i16 - underline_height as i16 - bottom_margin;
+                let underline_height = font_height / 6;
+                let gap_between_text_and_underline = font_height / 4;
+
+                let underline_y = text_y + gap_between_text_and_underline as i16;
 
                 let underline_padding = 4;
                 let underline_width = tag_width - underline_padding;
@@ -178,6 +179,7 @@ impl Bar {
                     }],
                 )?;
             }
+
             x_position += tag_width as i16;
         }
         connection.flush()?;
