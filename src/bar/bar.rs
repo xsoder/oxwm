@@ -63,13 +63,6 @@ impl Bar {
         connection.map_window(window)?;
         connection.flush()?;
 
-        let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
-        if display.is_null() {
-            anyhow::bail!("Failed to open X11 display for XFT");
-        }
-
-        let font = Font::new(display, screen_num as i32, FONT)?;
-
         let visual = unsafe { x11::xlib::XDefaultVisual(display, screen_num as i32) };
         let colormap = unsafe { x11::xlib::XDefaultColormap(display, screen_num as i32) };
 
