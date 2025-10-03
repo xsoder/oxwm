@@ -33,7 +33,7 @@ impl Bar {
         }
         let font = Font::new(display, screen_num as i32, FONT)?;
 
-        let height = (font.height() as f32 * 1.8) as u16;
+        let height = (font.height() as f32 * 1.25) as u16;
 
         connection.create_window(
             COPY_DEPTH_FROM_PARENT,
