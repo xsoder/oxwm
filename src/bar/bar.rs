@@ -1,6 +1,5 @@
-use super::BAR_HEIGHT;
 use super::font::{Font, FontDraw};
-use crate::config::{FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
+use crate::config::{BAR_HEIGHT, FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
 use anyhow::Result;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;

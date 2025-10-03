@@ -8,7 +8,8 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 1;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "JetBrainsMono Nerd Font:size=12";
+pub const BAR_HEIGHT: u16 = 30;
+pub const FONT: &str = "JetBrainsMono Nerd Font:size=16";
 
 // ========================================
 // DEFAULTS
