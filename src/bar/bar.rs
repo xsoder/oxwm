@@ -159,8 +159,9 @@ impl Bar {
                 let bottom_margin = 4;
                 let underline_y = self.height as i16 - underline_height as i16 - bottom_margin;
 
-                let underline_width = text_width + 6;
-                let underline_x = text_x - 3;
+                let underline_padding = 4;
+                let underline_width = tag_width - underline_padding;
+                let underline_x = x_position + (underline_padding / 2) as i16;
 
                 connection.change_gc(
                     self.graphics_context,
