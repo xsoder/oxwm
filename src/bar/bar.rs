@@ -67,7 +67,7 @@ impl Bar {
 
         let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
 
-        let horizontal_padding = (font.height() as f32 * 0.6) as u16;
+        let horizontal_padding = (font.height() as f32 * 0.4) as u16;
 
         let tag_widths = TAGS
             .iter()
@@ -144,7 +144,6 @@ impl Bar {
                 &SCHEME_NORMAL
             };
 
-            // Center text horizontally in tag box
             let text_width = self.font.text_width(tag);
             let text_x = x_position + ((tag_width - text_width) / 2) as i16;
 
@@ -156,13 +155,12 @@ impl Bar {
                 .draw_text(&self.font, scheme.foreground, text_x, text_y, tag);
 
             if is_selected {
-                // Scale underline thickness with font size (roughly 1/8 of font height)
-                let underline_height = (self.font.height() / 8).max(2) as u16;
+                let underline_height = (self.font.height() / 8).max(2);
                 let bottom_margin = 4;
                 let underline_y = self.height as i16 - underline_height as i16 - bottom_margin;
 
-                // Make underline same width and position as text
-                let underline_x = text_x;
+                let underline_width = text_width + 6;
+                let underline_x = text_x - 3;
 
                 connection.change_gc(
                     self.graphics_context,
@@ -174,7 +172,7 @@ impl Bar {
                     &[Rectangle {
                         x: underline_x,
                         y: underline_y,
-                        width: text_width,
+                        width: underline_width,
                         height: underline_height,
                     }],
                 )?;
