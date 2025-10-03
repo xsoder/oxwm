@@ -32,7 +32,8 @@ impl Bar {
             anyhow::bail!("Failed to open X11 display for XFT");
         }
         let font = Font::new(display, screen_num as i32, FONT)?;
-        let height = font.height() + 4;
+
+        let height = (font.height() as f32 * 1.8) as u16;
 
         connection.create_window(
             COPY_DEPTH_FROM_PARENT,
@@ -147,18 +148,17 @@ impl Bar {
             let text_width = self.font.text_width(tag);
             let text_x = x_position + ((tag_width - text_width) / 2) as i16;
 
-            let font_height = self.font.height();
-            let top_padding = font_height / 3;
-            let text_y = top_padding as i16 + self.font.ascent();
+            let top_padding = 4;
+            let text_y = top_padding + self.font.ascent();
 
             self.font_draw
                 .draw_text(&self.font, scheme.foreground, text_x, text_y, tag);
 
             if is_selected {
-                let underline_height = font_height / 6;
-                let gap_between_text_and_underline = font_height / 4;
-
-                let underline_y = text_y + gap_between_text_and_underline as i16;
+                let font_height = self.font.height();
+                let underline_height = font_height / 8;
+                let bottom_gap = 3;
+                let underline_y = self.height as i16 - underline_height as i16 - bottom_gap;
 
                 let underline_padding = 4;
                 let underline_width = tag_width - underline_padding;
