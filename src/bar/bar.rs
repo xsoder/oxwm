@@ -1,9 +1,6 @@
-use super::blocks::{Block, Clock, Sep, Uname};
+use super::blocks::Block;
 use super::font::{Font, FontDraw};
-use crate::config::{
-    CLOCK_COLOR, CLOCK_FORMAT, FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, SEP_COLOR,
-    SEPARATOR, TAGS, UNAME_COLOR, UNAME_PREFIX,
-};
+use crate::config::{FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, STATUS_BLOCKS, TAGS};
 use anyhow::Result;
 use std::time::Instant;
 use x11rb::COPY_DEPTH_FROM_PARENT;
@@ -42,7 +39,7 @@ impl Bar {
         }
         let font = Font::new(display, screen_num as i32, FONT)?;
 
-        let height = (font.height() as f32 * 1.25) as u16;
+        let height = (font.height() as f32 * 1.5) as u16;
 
         connection.create_window(
             COPY_DEPTH_FROM_PARENT,
@@ -87,13 +84,17 @@ impl Bar {
             })
             .collect();
 
-        let blocks: Vec<Box<dyn Block>> = vec![
-            Box::new(Uname::new(UNAME_PREFIX, UNAME_COLOR)),
-            Box::new(Sep::new(SEPARATOR, SEP_COLOR)),
-            Box::new(Clock::new(CLOCK_FORMAT, CLOCK_COLOR)),
-        ];
+        let blocks: Vec<Box<dyn Block>> = STATUS_BLOCKS
+            .iter()
+            .map(|config| config.to_block())
+            .collect();
 
         let block_last_updates = vec![Instant::now(); blocks.len()];
+        // let blocks: Vec<Box<dyn Block>> = vec![
+        //     Box::new(Uname::new(UNAME_PREFIX, UNAME_COLOR)),
+        //     Box::new(Sep::new(SEPARATOR, SEP_COLOR)),
+        //     Box::new(Clock::new(CLOCK_FORMAT, CLOCK_COLOR)),
+        // ];
 
         Ok(Bar {
             window,

@@ -1,9 +1,9 @@
 mod bar;
 mod blocks;
 mod font;
-// mod widgets;  // TODO: implement later
 
 pub use bar::Bar;
+pub use blocks::{BlockCommand, BlockConfig};
 
 // Bar position (for future use)
 #[derive(Debug, Clone, Copy)]

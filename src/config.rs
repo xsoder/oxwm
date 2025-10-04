@@ -1,3 +1,4 @@
+use crate::bar::{BlockCommand, BlockConfig};
 use crate::keyboard::handlers::Key;
 use crate::keyboard::{Arg, KeyAction, keycodes};
 use x11rb::protocol::xproto::KeyButMask;
@@ -8,7 +9,7 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 1;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=12";
+pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=14";
 
 // ========================================
 // DEFAULTS
@@ -110,11 +111,41 @@ pub const KEYBINDINGS: &[Key] = &[
 // ========================================
 // STATUS BAR BLOCKS
 // ========================================
-pub const CLOCK_FORMAT: &str = " 󰸘 %a, %b %d - %-I:%M %P"; // "Fri, Oct 03 - 7:58 pm"
-pub const SEPARATOR: &str = " | ";
-pub const UNAME_COLOR: u32 = RED;
-pub const UNAME_PREFIX: &str = "  ";
-pub const SEP_COLOR: u32 = GRAY_LIGHT;
-pub const CLOCK_COLOR: u32 = CYAN;
+pub const STATUS_BLOCKS: &[BlockConfig] = &[
+    BlockConfig {
+        format: "",
+        command: BlockCommand::Battery {
+            format_charging: " 󰂄 Bat: {}%",
+            format_discharging: " 󰁹 Bat:{}%",
+            format_full: " 󰁹 Bat: {}%",
+        },
+        interval_secs: 30,
+        color: BLUE,
+    },
+    BlockConfig {
+        format: " | ",
+        command: BlockCommand::Static(""),
+        interval_secs: u64::MAX,
+        color: GRAY_LIGHT,
+    },
+    BlockConfig {
+        format: "  {}",
+        command: BlockCommand::Shell("uname -r"),
+        interval_secs: u64::MAX,
+        color: RED,
+    },
+    BlockConfig {
+        format: " | ",
+        command: BlockCommand::Static(""),
+        interval_secs: u64::MAX,
+        color: GRAY_LIGHT,
+    },
+    BlockConfig {
+        format: " 󰸘 {}",
+        command: BlockCommand::DateTime("%a, %b %d - %-I:%M %P"),
+        interval_secs: 1,
+        color: CYAN,
+    },
+];
 
 const SHIFT: KeyButMask = KeyButMask::SHIFT;
