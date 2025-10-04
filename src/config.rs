@@ -24,8 +24,12 @@ pub const MODKEY: KeyButMask = KeyButMask::MOD1;
 const GRAY_DARK: u32 = 0x222222;
 const GRAY_MID: u32 = 0x444444;
 const GRAY_LIGHT: u32 = 0xbbbbbb;
-const CYAN: u32 = 0x6dade3;
+const CYAN: u32 = 0x0db9d7;
 const MAGENTA: u32 = 0xad8ee6;
+const RED: u32 = 0xf7768e;
+const GREEN: u32 = 0x9ece6a;
+const BLUE: u32 = 0x7aa2f7;
+const YELLOW: u32 = 0xe0af68;
 
 pub struct ColorScheme {
     pub foreground: u32,
@@ -102,5 +106,15 @@ pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY, SHIFT], keycodes::KEY_8, KeyAction::MoveToTag, Arg::Int(7)),
     Key::new(&[MODKEY, SHIFT], keycodes::KEY_9, KeyAction::MoveToTag, Arg::Int(8)),
 ];
+
+// ========================================
+// STATUS BAR BLOCKS
+// ========================================
+pub const CLOCK_FORMAT: &str = " 󰸘 %a, %b %d - %-I:%M %P"; // "Fri, Oct 03 - 7:58 pm"
+pub const SEPARATOR: &str = " | ";
+pub const UNAME_COLOR: u32 = RED;
+pub const UNAME_PREFIX: &str = "  ";
+pub const SEP_COLOR: u32 = GRAY_LIGHT;
+pub const CLOCK_COLOR: u32 = CYAN;
 
 const SHIFT: KeyButMask = KeyButMask::SHIFT;

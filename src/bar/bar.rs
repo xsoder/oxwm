@@ -1,6 +1,11 @@
+use super::blocks::{Block, Clock, Sep, Uname};
 use super::font::{Font, FontDraw};
-use crate::config::{FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, TAGS};
+use crate::config::{
+    CLOCK_COLOR, CLOCK_FORMAT, FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, SEP_COLOR,
+    SEPARATOR, TAGS, UNAME_COLOR, UNAME_PREFIX,
+};
 use anyhow::Result;
+use std::time::Instant;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -18,6 +23,10 @@ pub struct Bar {
 
     tag_widths: Vec<u16>,
     needs_redraw: bool,
+
+    blocks: Vec<Box<dyn Block>>,
+    block_last_updates: Vec<Instant>,
+    status_text: String,
 }
 
 impl Bar {
@@ -78,6 +87,14 @@ impl Bar {
             })
             .collect();
 
+        let blocks: Vec<Box<dyn Block>> = vec![
+            Box::new(Uname::new(UNAME_PREFIX, UNAME_COLOR)),
+            Box::new(Sep::new(SEPARATOR, SEP_COLOR)),
+            Box::new(Clock::new(CLOCK_FORMAT, CLOCK_COLOR)),
+        ];
+
+        let block_last_updates = vec![Instant::now(); blocks.len()];
+
         Ok(Bar {
             window,
             width,
@@ -88,6 +105,9 @@ impl Bar {
             display,
             tag_widths,
             needs_redraw: true,
+            blocks,
+            block_last_updates,
+            status_text: String::new(),
         })
     }
 
@@ -101,6 +121,35 @@ impl Bar {
 
     pub fn invalidate(&mut self) {
         self.needs_redraw = true;
+    }
+
+    pub fn update_blocks(&mut self) -> Result<()> {
+        let now = Instant::now();
+        let mut changed = false;
+
+        for (i, block) in self.blocks.iter_mut().enumerate() {
+            let elapsed = now.duration_since(self.block_last_updates[i]);
+
+            if elapsed >= block.interval() {
+                if let Ok(_) = block.content() {
+                    self.block_last_updates[i] = now;
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            let mut parts = Vec::new();
+            for block in &mut self.blocks {
+                if let Ok(text) = block.content() {
+                    parts.push(text);
+                }
+            }
+            self.status_text = parts.join("");
+            self.needs_redraw = true;
+        }
+
+        Ok(())
     }
 
     pub fn draw(
@@ -182,6 +231,25 @@ impl Bar {
 
             x_position += tag_width as i16;
         }
+
+        if !self.status_text.is_empty() {
+            let padding = 10;
+            let mut x_position = self.width as i16 - padding;
+
+            for block in self.blocks.iter_mut().rev() {
+                if let Ok(text) = block.content() {
+                    let text_width = self.font.text_width(&text);
+                    x_position -= text_width as i16;
+
+                    let top_padding = 4;
+                    let text_y = top_padding + self.font.ascent();
+
+                    self.font_draw
+                        .draw_text(&self.font, block.color(), x_position, text_y, &text);
+                }
+            }
+        }
+
         connection.flush()?;
 
         unsafe {
@@ -203,5 +271,8 @@ impl Bar {
             current_x_position += tag_width as i16;
         }
         None
+    }
+    pub fn needs_redraw(&self) -> bool {
+        self.needs_redraw
     }
 }

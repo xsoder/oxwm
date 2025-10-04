@@ -1,4 +1,5 @@
 mod bar;
+mod blocks;
 mod font;
 // mod widgets;  // TODO: implement later
 

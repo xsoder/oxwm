@@ -1,13 +1,13 @@
 use crate::bar::Bar;
 use crate::config::{BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, TAG_COUNT};
 use crate::keyboard::{self, Arg, KeyAction};
-use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
+use crate::layout::Layout;
 use anyhow::Result;
 
 use x11rb::connection::Connection;
-use x11rb::protocol::Event;
 use x11rb::protocol::xproto::*;
+use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 
 pub type TagMask = u32;
@@ -70,10 +70,32 @@ impl WindowManager {
         self.update_bar()?;
 
         loop {
-            let event = self.connection.wait_for_event()?;
-            self.handle_event(event)?;
+            self.bar.update_blocks()?;
+
+            if let Ok(Some(event)) = self.connection.poll_for_event() {
+                self.handle_event(event)?;
+            }
+
+            if self.bar.needs_redraw() {
+                self.update_bar()?;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
+
+    // pub fn run(&mut self) -> Result<()> {
+    //     println!("oxwm started on display {}", self.screen_number);
+    //
+    //     keyboard::setup_keybinds(&self.connection, self.root)?;
+    //
+    //     self.update_bar()?;
+    //
+    //     loop {
+    //         let event = self.connection.wait_for_event()?;
+    //         self.handle_event(event)?;
+    //     }
+    // }
 
     fn update_bar(&mut self) -> Result<()> {
         let mut occupied_tags: TagMask = 0;
