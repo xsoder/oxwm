@@ -21,6 +21,7 @@ pub const F: u8 = 41;
 pub const J: u8 = 44;
 pub const K: u8 = 45;
 pub const L: u8 = 46;
+pub const R: u8 = 27;
 
 pub const KEY_1: u8 = 10;
 pub const KEY_2: u8 = 11;

@@ -1,13 +1,13 @@
 use crate::bar::Bar;
 use crate::config::{BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, TAG_COUNT};
 use crate::keyboard::{self, Arg, KeyAction};
-use crate::layout::tiling::TilingLayout;
 use crate::layout::Layout;
+use crate::layout::tiling::TilingLayout;
 use anyhow::Result;
 
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 use x11rb::protocol::Event;
+use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
 pub type TagMask = u32;
@@ -48,7 +48,7 @@ impl WindowManager {
 
         let bar = Bar::new(&connection, &screen, screen_number)?;
 
-        return Ok(Self {
+        let mut window_manger = Self {
             connection,
             screen_number,
             root,
@@ -59,21 +59,46 @@ impl WindowManager {
             window_tags: std::collections::HashMap::new(),
             selected_tags: tag_mask(0),
             bar,
-        });
+        };
+
+        window_manger.scan_existing_windows()?;
+
+        Ok(window_manger)
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    fn scan_existing_windows(&mut self) -> Result<()> {
+        let tree = self.connection.query_tree(self.root)?.reply()?;
+
+        for &window in &tree.children {
+            if let Ok(attrs) = self.connection.get_window_attributes(window)?.reply() {
+                if window != self.bar.window()
+                    && attrs.map_state == MapState::VIEWABLE
+                    && !attrs.override_redirect
+                {
+                    self.windows.push(window);
+                    self.window_tags.insert(window, self.selected_tags);
+                }
+            }
+        }
+        if let Some(&first) = self.windows.first() {
+            self.set_focus(Some(first))?;
+        }
+        Ok(())
+    }
+
+    pub fn run(&mut self) -> Result<bool> {
         println!("oxwm started on display {}", self.screen_number);
 
         keyboard::setup_keybinds(&self.connection, self.root)?;
-
         self.update_bar()?;
 
         loop {
             self.bar.update_blocks()?;
 
             if let Ok(Some(event)) = self.connection.poll_for_event() {
-                self.handle_event(event)?;
+                if let Some(should_restart) = self.handle_event(event)? {
+                    return Ok(should_restart);
+                }
             }
 
             if self.bar.needs_redraw() {
@@ -83,19 +108,6 @@ impl WindowManager {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
-
-    // pub fn run(&mut self) -> Result<()> {
-    //     println!("oxwm started on display {}", self.screen_number);
-    //
-    //     keyboard::setup_keybinds(&self.connection, self.root)?;
-    //
-    //     self.update_bar()?;
-    //
-    //     loop {
-    //         let event = self.connection.wait_for_event()?;
-    //         self.handle_event(event)?;
-    //     }
-    // }
 
     fn update_bar(&mut self) -> Result<()> {
         let mut occupied_tags: TagMask = 0;
@@ -139,8 +151,8 @@ impl WindowManager {
                     self.cycle_focus(*direction)?;
                 }
             }
-            KeyAction::Quit => {
-                std::process::exit(0);
+            KeyAction::Quit | KeyAction::Restart => {
+                //no-op
             }
             KeyAction::ViewTag => {
                 if let Arg::Int(tag_index) = arg {
@@ -280,7 +292,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn handle_event(&mut self, event: Event) -> Result<()> {
+    fn handle_event(&mut self, event: Event) -> Result<Option<bool>> {
         match event {
             Event::MapRequest(event) => {
                 self.connection.map_window(event.window)?;
@@ -302,7 +314,12 @@ impl WindowManager {
             }
             Event::KeyPress(event) => {
                 let (action, arg) = keyboard::handle_key_press(event)?;
-                self.handle_key_action(action, arg)?;
+
+                match action {
+                    KeyAction::Quit => return Ok(Some(false)),
+                    KeyAction::Restart => return Ok(Some(true)),
+                    _ => self.handle_key_action(action, arg)?,
+                }
             }
             Event::ButtonPress(event) => {
                 if event.event == self.bar.window() {
@@ -319,9 +336,8 @@ impl WindowManager {
             }
             _ => {}
         }
-        Ok(())
+        Ok(None)
     }
-
     fn apply_layout(&self) -> Result<()> {
         let screen_width = self.screen.width_in_pixels as u32;
         let screen_height = self.screen.height_in_pixels as u32;

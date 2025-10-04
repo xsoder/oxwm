@@ -84,6 +84,7 @@ pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
+    Key::new(&[MODKEY, SHIFT], keycodes::R,      KeyAction::Restart,    Arg::None),
     Key::new(&[MODKEY],        keycodes::J,      KeyAction::FocusStack, Arg::Int(-1)),
     Key::new(&[MODKEY],        keycodes::K,      KeyAction::FocusStack, Arg::Int(1)),
     
@@ -149,3 +150,4 @@ pub const STATUS_BLOCKS: &[BlockConfig] = &[
 ];
 
 const SHIFT: KeyButMask = KeyButMask::SHIFT;
+pub const WM_BINARY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/release/oxwm");

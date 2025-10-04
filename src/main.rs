@@ -6,6 +6,19 @@ mod layout;
 mod window_manager;
 
 fn main() -> Result<()> {
-    let mut window_manager = window_manager::WindowManager::new()?;
-    return window_manager.run();
+    loop {
+        let mut window_manager = window_manager::WindowManager::new()?;
+        let should_restart = window_manager.run()?;
+
+        if !should_restart {
+            break;
+        }
+
+        use std::os::unix::process::CommandExt;
+        let err = std::process::Command::new(config::WM_BINARY).exec();
+        eprintln!("Failed to restart: {}", err);
+        break;
+    }
+
+    Ok(())
 }

@@ -9,6 +9,7 @@ pub enum KeyAction {
     KillClient,
     FocusStack,
     Quit,
+    Restart,
     ViewTag,
     MoveToTag,
     None,
