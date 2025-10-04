@@ -1,6 +1,5 @@
 use anyhow::Result;
 use std::ffi::CString;
-use std::ptr;
 use x11::xft::{XftColor, XftDraw, XftDrawStringUtf8, XftFont, XftFontOpenName};
 use x11::xlib::{Colormap, Display, Drawable, Visual};
 use x11::xrender::XRenderColor;
@@ -47,7 +46,7 @@ impl Font {
                 text.len() as i32,
                 &mut extents,
             );
-            extents.width as u16
+            extents.width
         }
     }
 }

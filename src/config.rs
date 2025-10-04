@@ -24,7 +24,6 @@ pub const MODKEY: KeyButMask = KeyButMask::MOD1;
 const GRAY_DARK: u32 = 0x222222;
 const GRAY_MID: u32 = 0x444444;
 const GRAY_LIGHT: u32 = 0xbbbbbb;
-// const GRAY_LIGHTEST: u32 = 0xeeeeee;
 const CYAN: u32 = 0x6dade3;
 const MAGENTA: u32 = 0xad8ee6;
 
