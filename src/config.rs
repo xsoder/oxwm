@@ -116,36 +116,41 @@ pub const STATUS_BLOCKS: &[BlockConfig] = &[
     BlockConfig {
         format: "",
         command: BlockCommand::Battery {
-            format_charging: " 󰂄 Bat: {}%",
-            format_discharging: " 󰁹 Bat:{}%",
-            format_full: " 󰁹 Bat: {}%",
+            format_charging: "󰂄 Bat: {}%",
+            format_discharging: "󰁹 Bat:{}%",
+            format_full: "󰁹 Bat: {}%",
         },
         interval_secs: 30,
         color: BLUE,
+        underline: true,
     },
     BlockConfig {
-        format: " | ",
+        format: " |  ",
         command: BlockCommand::Static(""),
         interval_secs: u64::MAX,
         color: GRAY_LIGHT,
+        underline: false,
     },
     BlockConfig {
-        format: "  {}",
+        format: " {}",
         command: BlockCommand::Shell("uname -r"),
         interval_secs: u64::MAX,
         color: RED,
+        underline: true,
     },
     BlockConfig {
-        format: " | ",
+        format: " |  ",
         command: BlockCommand::Static(""),
         interval_secs: u64::MAX,
         color: GRAY_LIGHT,
+        underline: false,
     },
     BlockConfig {
-        format: " 󰸘 {}",
+        format: "󰸘 {}",
         command: BlockCommand::DateTime("%a, %b %d - %-I:%M %P"),
         interval_secs: 1,
         color: CYAN,
+        underline: true,
     },
 ];
 

@@ -69,20 +69,53 @@ impl WindowManager {
     fn scan_existing_windows(&mut self) -> Result<()> {
         let tree = self.connection.query_tree(self.root)?.reply()?;
 
+        println!("=== Scanning existing windows ===");
+        println!("Total children: {}", tree.children.len());
+        println!("Current selected_tags: {:b}", self.selected_tags);
+
         for &window in &tree.children {
-            if let Ok(attrs) = self.connection.get_window_attributes(window)?.reply() {
-                if window != self.bar.window()
-                    && attrs.map_state == MapState::VIEWABLE
-                    && !attrs.override_redirect
-                {
-                    self.windows.push(window);
-                    self.window_tags.insert(window, self.selected_tags);
+            if window == self.bar.window() {
+                println!("Skipping bar window: {}", window);
+                continue;
+            }
+
+            let attrs = match self.connection.get_window_attributes(window)?.reply() {
+                Ok(attrs) => attrs,
+                Err(_) => {
+                    println!("Failed to get attributes for window: {}", window);
+                    continue;
                 }
+            };
+
+            println!(
+                "Window {}: override_redirect={}, map_state={:?}",
+                window, attrs.override_redirect, attrs.map_state
+            );
+
+            if attrs.override_redirect {
+                println!("  -> Skipped (override_redirect)");
+                continue;
+            }
+
+            if attrs.map_state == MapState::VIEWABLE || attrs.map_state == MapState::UNMAPPED {
+                println!(
+                    "  -> Managing window, tagging with {:b}",
+                    self.selected_tags
+                );
+                self.windows.push(window);
+                self.window_tags.insert(window, self.selected_tags);
+            } else {
+                println!("  -> Skipped (map_state={:?})", attrs.map_state);
             }
         }
+
+        println!("Total managed windows: {}", self.windows.len());
+
         if let Some(&first) = self.windows.first() {
             self.set_focus(Some(first))?;
         }
+
+        self.apply_layout()?;
         Ok(())
     }
 

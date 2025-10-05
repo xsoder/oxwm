@@ -23,6 +23,7 @@ pub struct Bar {
 
     blocks: Vec<Box<dyn Block>>,
     block_last_updates: Vec<Instant>,
+    block_underlines: Vec<bool>,
     status_text: String,
 }
 
@@ -89,12 +90,12 @@ impl Bar {
             .map(|config| config.to_block())
             .collect();
 
+        let block_underlines: Vec<bool> = STATUS_BLOCKS
+            .iter()
+            .map(|config| config.underline)
+            .collect();
+
         let block_last_updates = vec![Instant::now(); blocks.len()];
-        // let blocks: Vec<Box<dyn Block>> = vec![
-        //     Box::new(Uname::new(UNAME_PREFIX, UNAME_COLOR)),
-        //     Box::new(Sep::new(SEPARATOR, SEP_COLOR)),
-        //     Box::new(Clock::new(CLOCK_FORMAT, CLOCK_COLOR)),
-        // ];
 
         Ok(Bar {
             window,
@@ -108,6 +109,7 @@ impl Bar {
             needs_redraw: true,
             blocks,
             block_last_updates,
+            block_underlines,
             status_text: String::new(),
         })
     }
@@ -237,7 +239,7 @@ impl Bar {
             let padding = 10;
             let mut x_position = self.width as i16 - padding;
 
-            for block in self.blocks.iter_mut().rev() {
+            for (i, block) in self.blocks.iter_mut().enumerate().rev() {
                 if let Ok(text) = block.content() {
                     let text_width = self.font.text_width(&text);
                     x_position -= text_width as i16;
@@ -247,6 +249,33 @@ impl Bar {
 
                     self.font_draw
                         .draw_text(&self.font, block.color(), x_position, text_y, &text);
+
+                    if self.block_underlines[i] {
+                        let font_height = self.font.height();
+                        let underline_height = font_height / 8;
+                        let bottom_gap = 3;
+                        let underline_y = self.height as i16 - underline_height as i16 - bottom_gap;
+
+                        let underline_padding = 8;
+                        let underline_width = text_width + underline_padding;
+                        let underline_x = x_position - (underline_padding / 2) as i16;
+
+                        connection.change_gc(
+                            self.graphics_context,
+                            &ChangeGCAux::new().foreground(block.color()),
+                        )?;
+
+                        connection.poly_fill_rectangle(
+                            self.window,
+                            self.graphics_context,
+                            &[Rectangle {
+                                x: underline_x,
+                                y: underline_y,
+                                width: underline_width,
+                                height: underline_height,
+                            }],
+                        )?;
+                    }
                 }
             }
         }
@@ -273,6 +302,7 @@ impl Bar {
         }
         None
     }
+
     pub fn needs_redraw(&self) -> bool {
         self.needs_redraw
     }

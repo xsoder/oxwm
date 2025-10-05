@@ -20,6 +20,7 @@ pub struct BlockConfig {
     pub command: BlockCommand,
     pub interval_secs: u64,
     pub color: u32,
+    pub underline: bool,
 }
 
 pub enum BlockCommand {
