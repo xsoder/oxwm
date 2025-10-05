@@ -218,7 +218,7 @@ impl Bar {
 
                 connection.change_gc(
                     self.graphics_context,
-                    &ChangeGCAux::new().foreground(scheme.border),
+                    &ChangeGCAux::new().foreground(scheme.underline),
                 )?;
                 connection.poly_fill_rectangle(
                     self.window,

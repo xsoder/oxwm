@@ -36,25 +36,25 @@ const YELLOW: u32 = 0xe0af68;
 pub struct ColorScheme {
     pub foreground: u32,
     pub background: u32,
-    pub border: u32,
+    pub underline: u32,
 }
 
 pub const SCHEME_NORMAL: ColorScheme = ColorScheme {
     foreground: GRAY_LIGHT,
     background: GRAY_DARK,
-    border: GRAY_MID,
+    underline: GRAY_MID,
 };
 
 pub const SCHEME_OCCUPIED: ColorScheme = ColorScheme {
     foreground: CYAN,
     background: GRAY_DARK,
-    border: CYAN,
+    underline: CYAN,
 };
 
 pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
     foreground: CYAN,
     background: GRAY_DARK,
-    border: MAGENTA,
+    underline: MAGENTA,
 };
 
 // ========================================
