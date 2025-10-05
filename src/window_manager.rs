@@ -48,6 +48,8 @@ impl WindowManager {
 
         let bar = Bar::new(&connection, &screen, screen_number)?;
 
+        let selected_tags = Self::get_saved_selected_tags(&connection, root)?;
+
         let mut window_manger = Self {
             connection,
             screen_number,
@@ -57,13 +59,44 @@ impl WindowManager {
             focused_window: None,
             layout: Box::new(TilingLayout),
             window_tags: std::collections::HashMap::new(),
-            selected_tags: tag_mask(0),
+            selected_tags,
             bar,
         };
 
         window_manger.scan_existing_windows()?;
+        window_manger.update_bar()?;
 
         Ok(window_manger)
+    }
+
+    fn get_saved_selected_tags(connection: &RustConnection, root: Window) -> Result<TagMask> {
+        let net_current_desktop = connection
+            .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
+            .reply()?
+            .atom;
+
+        match connection
+            .get_property(false, root, net_current_desktop, AtomEnum::CARDINAL, 0, 1)?
+            .reply()
+        {
+            Ok(prop) if prop.value.len() >= 4 => {
+                // I don't undestand this but I got it from dwm->persist_tags patch and it worked.
+                let desktop = u32::from_ne_bytes([
+                    prop.value[0],
+                    prop.value[1],
+                    prop.value[2],
+                    prop.value[3],
+                ]);
+                if desktop < TAG_COUNT as u32 {
+                    println!("Restored selected tag: {}", desktop);
+                    return Ok(tag_mask(desktop as usize));
+                }
+            }
+            _ => {}
+        }
+
+        println!("No saved tag, defaulting to tag 0");
+        Ok(tag_mask(0))
     }
 
     fn scan_existing_windows(&mut self) -> Result<()> {
@@ -295,6 +328,9 @@ impl WindowManager {
         }
 
         self.selected_tags = tag_mask(tag_index);
+
+        self.save_selected_tags()?;
+
         self.update_window_visibility()?;
         self.apply_layout()?;
         self.update_bar()?;
@@ -302,6 +338,30 @@ impl WindowManager {
         let visible = self.visible_windows();
         self.set_focus(visible.first().copied())?;
 
+        Ok(())
+    }
+
+    fn save_selected_tags(&self) -> Result<()> {
+        let net_current_desktop = self
+            .connection
+            .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
+            .reply()?
+            .atom;
+
+        let desktop = self.selected_tags.trailing_zeros();
+
+        let bytes = (desktop as u32).to_ne_bytes();
+        self.connection.change_property(
+            PropMode::REPLACE,
+            self.root,
+            net_current_desktop,
+            AtomEnum::CARDINAL,
+            32,
+            1,
+            &bytes,
+        )?;
+
+        self.connection.flush()?;
         Ok(())
     }
 
