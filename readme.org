@@ -16,10 +16,10 @@
   - [[#core-window-management-22][Core Window Management]]
   - [[#tag-system-33][Tag System]]
   - [[#status-bar-22][Status Bar]]
-  - [[#in-progress-bar-enhancements-03][IN PROGRESS Bar Enhancements]]
-  - [[#key-system-improvements-02][Key System Improvements]]
-  - [[#layout-system-04][Layout System]]
-  - [[#advanced-features-03][Advanced Features]]
+  - [[#bar-enhancements-33][Bar Enhancements]]
+  - [[#key-system-improvements-22][Key System Improvements]]
+  - [[#layout-system-05][Layout System]]
+  - [[#advanced-features-04][Advanced Features]]
   - [[#polish--features][Polish & Features]]
 - [[#architecture-notes][Architecture Notes]]
   - [[#tag-system][Tag System]]
@@ -50,46 +50,67 @@ src/
 │   │   ├── selected_tags: TagMask
 │   │   └── bar: Bar                     [Status bar]
 │   │
-│   ├── new()                            [Initialize WM, grab root, create bar]
-│   ├── run()                            [Main event loop]
+│   ├── new()                            [Initialize WM, grab root, restore tags, scan windows]
+│   ├── run()                            [Main event loop with block updates]
 │   ├── handle_event()                   [Route X11 events]
-│   │   ├── MapRequest    → add window, apply layout, update bar
+│   │   ├── MapRequest    → add window, apply layout, update bar, save tag
 │   │   ├── UnmapNotify   → remove window, update bar
 │   │   ├── DestroyNotify → remove window, update bar
-│   │   ├── KeyPress      → get action, handle it
+│   │   ├── KeyPress      → get action, handle it (includes Restart)
 │   │   ├── ButtonPress   → handle bar clicks
 │   │   └── Expose        → redraw bar
 │   ├── handle_key_action()              [Execute keyboard actions]
+│   ├── get_saved_selected_tags()        [Restore selected tags from _NET_CURRENT_DESKTOP]
+│   ├── save_selected_tags()             [Persist selected tags to root window]
+│   ├── get_saved_tag()                  [Restore window tag from _NET_CLIENT_INFO]
+│   ├── save_client_tag()                [Persist window tag to window property]
+│   ├── scan_existing_windows()          [Manage windows on startup]
 │   ├── remove_window()                  [Remove from Vec, reapply layout]
 │   ├── set_focus()                      [Focus window, update visuals]
 │   ├── cycle_focus()                    [Move focus to next/prev window]
-│   ├── view_tag()                       [Switch to tag/workspace]
+│   ├── view_tag()                       [Switch to tag/workspace, update visibility]
 │   ├── move_to_tag()                    [Move window to tag]
 │   ├── update_bar()                     [Calculate occupied tags, redraw bar]
 │   ├── update_focus_visuals()           [Set border colors]
+│   ├── update_window_visibility()       [Map/unmap windows based on tags]
 │   └── apply_layout()                   [Position all windows below bar]
 │
 ├── config.rs                            [CONFIGURATION - all settings here]
 │   ├── BORDER_WIDTH, BORDER_FOCUSED, BORDER_UNFOCUSED
+│   ├── FONT                             [XFT font string]
 │   ├── TAG_COUNT, TAGS                  [Workspace configuration]
 │   ├── TERMINAL, MODKEY
-│   └── KEYBINDINGS                      [All keybinds as const array]
+│   ├── ColorScheme                      [Foreground, background, border colors]
+│   ├── SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED
+│   ├── KEYBINDINGS                      [All keybinds as const array]
+│   └── STATUS_BLOCKS                    [Block configurations with format, command, interval]
 │
 ├── bar/
-│   ├── mod.rs                           [Re-exports, constants]
-│   └── bar.rs
-│       ├── struct Bar                   [Status bar window]
-│       ├── new()                        [Create bar X11 window]
-│       ├── draw()                       [Render tags with state indicators]
-│       ├── handle_click()               [Detect which tag was clicked]
-│       └── invalidate()                 [Mark bar as needing redraw]
+│   ├── mod.rs                           [Re-exports: Bar, BlockCommand, BlockConfig]
+│   ├── bar.rs
+│   │   ├── struct Bar                   [Status bar window with XFT support]
+│   │   ├── new()                        [Create bar X11 window, load font, init blocks]
+│   │   ├── draw()                       [Render tags + blocks with underlines]
+│   │   ├── update_blocks()              [Update block content based on intervals]
+│   │   ├── handle_click()               [Detect which tag was clicked]
+│   │   └── invalidate()                 [Mark bar as needing redraw]
+│   ├── font.rs
+│   │   ├── struct Font                  [XFT font wrapper]
+│   │   ├── struct FontDraw              [XFT drawing context]
+│   │   └── draw_text()                  [Render text with color]
+│   └── blocks/
+│       ├── mod.rs                       [Block trait, BlockConfig, BlockCommand enum]
+│       ├── battery.rs                   [Battery status block]
+│       ├── datetime.rs                  [Date/time formatting block]
+│       └── shell.rs                     [Shell command execution block]
 │
 ├── keyboard/
 │   ├── mod.rs                           [Re-exports]
 │   ├── keycodes.rs                      [Key constants: Q, J, RETURN, etc]
 │   └── handlers.rs
-│       ├── enum KeyAction               [Spawn, KillClient, FocusStack, ViewTag, etc]
+│       ├── enum KeyAction               [Spawn, KillClient, FocusStack, ViewTag, Restart, etc]
 │       ├── enum Arg                     [None, Int, Str, Array]
+│       ├── struct Key                   [Keybinding definition]
 │       ├── setup_keybinds()             [Register keys with X11]
 │       └── handle_key_press()           [Parse KeyPressEvent → KeyAction]
 │
@@ -124,9 +145,11 @@ src/
 | Alt+J/K         | Cycle focus down/up     |
 | Alt+Q           | Kill focused window     |
 | Alt+Shift+Q     | Quit WM                 |
+| Alt+Shift+R     | Hot reload WM           |
 | Alt+1-9         | View tag 1-9            |
 | Alt+Shift+1-9   | Move window to tag 1-9  |
 | Alt+S           | Screenshot (maim)       |
+| Alt+D           | Application launcher    |
 
 * ⚙ Installation — Running with Nix Flakes
 You can set up a reproducible development environment with Rust, Cargo, Xephyr, xterm, and
@@ -167,11 +190,20 @@ events in your host terminal. Clients like xterm/xclock will appear inside Xephy
   - Performance-optimized redrawing
 - ✓ Basic keybindings (spawn, kill, focus, tags)
 - ✓ Configuration via Rust constants in config.rs
+- ✓ Hot reload functionality (Alt+Shift+R)
+- ✓ Persistent window tags across restarts
+- ✓ Status bar blocks system
+  - DateTime, Battery, Shell command blocks
+  - Configurable colors and update intervals
+  - Underline indicators for blocks
+  - Proper spacing between blocks
+  - Hackable block system for custom widgets
+- ✓ dmenu integration (Alt+D)
 
 ** Immediate Next Steps
-- [ ] Status text in bar (date, time, system info)
-- [ ] dmenu integration for application launcher
-- [ ] Additional widgets (clock, battery, etc.)
+- [ ] Mouse hover to focus windows
+- [ ] Configurable gaps between windows (vanitygaps-style)
+- [ ] Decide on reload behavior (should it auto-rebuild?)
 
 ** Long Term Roadmap
 - [ ] Multi-monitor support
@@ -180,7 +212,6 @@ events in your host terminal. Clients like xterm/xclock will appear inside Xephy
 - [ ] Per-program rules (auto-tag assignment, floating rules)
 - [ ] Master area resizing
 - [ ] Window swapping in layout
-- [ ] Configurable gaps between windows
 - [ ] External bar support (polybar, lemonbar, etc.)
 
 * OXWM Development Todo
@@ -203,22 +234,24 @@ events in your host terminal. Clients like xterm/xclock will appear inside Xephy
 - [X] Create basic bar window at screen top
 - [X] Display tag indicators with state (selected/occupied/empty)
 
-** IN PROGRESS Bar Enhancements [0/3]
-- [ ] Add status text area (right side of bar)
-- [ ] Implement clock widget
-- [ ] Add system information widgets
+** DONE Bar Enhancements [3/3]
+- [X] Add status text area (right side of bar)
+- [X] Implement clock widget
+- [X] Add system information widgets
 
-** TODO Key System Improvements [0/2]
-- [ ] dmenu integration for application launching
-- [ ] More spawn commands in config (screenshot, volume, etc.)
+** DONE Key System Improvements [2/2]
+- [X] dmenu integration for application launching
+- [X] More spawn commands in config (screenshot, volume, etc.)
 
-** TODO Layout System [0/4]
+** TODO Layout System [0/5]
+- [ ] Mouse hover to focus windows
+- [ ] Configurable gaps between windows (vanitygaps-style)
 - [ ] Add monocle layout
 - [ ] Add floating layout mode
 - [ ] Handle window resize requests properly
-- [ ] Add configurable gaps between windows
 
-** TODO Advanced Features [0/3]
+** TODO Advanced Features [0/4]
+- [ ] Decide on reload behavior (auto-rebuild vs manual)
 - [ ] Multi-monitor support
 - [ ] Per-window rules (floating, tag assignment)
 - [ ] Master area resizing keybinds
@@ -233,14 +266,24 @@ events in your host terminal. Clients like xterm/xclock will appear inside Xephy
 ** Tag System
 Tags are implemented as bitmasks (TagMask = u32), allowing windows to belong to
 multiple tags simultaneously (though current UI only supports single tags).
-Each window has an associated TagMask in window_tags HashMap.
+Each window has an associated TagMask in window_tags HashMap. Tags persist across
+WM restarts using X11 properties (_NET_CURRENT_DESKTOP for selected tags,
+_NET_CLIENT_INFO for per-window tags).
 
 ** Bar Design
-The bar uses a performance-optimized approach:
+The bar uses a performance-optimized approach with a modular block system:
 - Only redraws when invalidate() is called
 - Pre-calculates tag widths on creation
 - Uses X11 graphics context for efficient drawing
 - Click handling uses O(n) tag width lookup
+- Blocks are updated independently based on their interval
+- Each block can have custom colors and optional underline indicators
+- Blocks are defined in config.rs and can be:
+  - DateTime: Display formatted date/time
+  - Battery: Show battery status with custom formats
+  - Shell: Execute shell commands and display output
+  - Static: Display fixed text
+- Blocks are easily hackable - add new block types in src/bar/blocks/
 
 ** Configuration Philosophy
 Following dwm's approach: all configuration is in Rust source code. No runtime
