@@ -97,13 +97,36 @@ impl WindowManager {
                 continue;
             }
 
-            if attrs.map_state == MapState::VIEWABLE || attrs.map_state == MapState::UNMAPPED {
+            if attrs.map_state == MapState::VIEWABLE {
                 println!(
-                    "  -> Managing window, tagging with {:b}",
+                    "  -> Managing VIEWABLE window, tagging with {:b}",
                     self.selected_tags
                 );
                 self.windows.push(window);
                 self.window_tags.insert(window, self.selected_tags);
+                continue;
+            }
+
+            if attrs.map_state == MapState::UNMAPPED {
+                let has_wm_class = match self
+                    .connection
+                    .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024)?
+                    .reply()
+                {
+                    Ok(prop) => !prop.value.is_empty(),
+                    Err(_) => false,
+                };
+
+                if has_wm_class {
+                    println!(
+                        "  -> Managing UNMAPPED window (has WM_CLASS), tagging with {:b}",
+                        self.selected_tags
+                    );
+                    self.windows.push(window);
+                    self.window_tags.insert(window, self.selected_tags);
+                } else {
+                    println!("  -> Skipped UNMAPPED (no WM_CLASS)");
+                }
             } else {
                 println!("  -> Skipped (map_state={:?})", attrs.map_state);
             }
@@ -371,6 +394,7 @@ impl WindowManager {
         }
         Ok(None)
     }
+
     fn apply_layout(&self) -> Result<()> {
         let screen_width = self.screen.width_in_pixels as u32;
         let screen_height = self.screen.height_in_pixels as u32;

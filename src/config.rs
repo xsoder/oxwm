@@ -15,6 +15,7 @@ pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=14";
 // DEFAULTS
 // ========================================
 pub const TERMINAL: &str = "alacritty";
+pub const XCLOCK: &str = "xclock";
 pub const MODKEY: KeyButMask = KeyButMask::MOD1;
 
 // ========================================
@@ -79,6 +80,7 @@ pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"
 #[rustfmt::skip]
 pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::RETURN, KeyAction::Spawn,      Arg::Str(TERMINAL)),
+    Key::new(&[MODKEY],        keycodes::F,      KeyAction::Spawn,      Arg::Str(XCLOCK)),
 
     Key::new(&[MODKEY],        keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
     Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
