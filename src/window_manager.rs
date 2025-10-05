@@ -71,39 +71,32 @@ impl WindowManager {
 
         println!("=== Scanning existing windows ===");
         println!("Total children: {}", tree.children.len());
-        println!("Current selected_tags: {:b}", self.selected_tags);
+
+        let net_client_info = self
+            .connection
+            .intern_atom(false, b"_NET_CLIENT_INFO")?
+            .reply()?
+            .atom;
 
         for &window in &tree.children {
             if window == self.bar.window() {
-                println!("Skipping bar window: {}", window);
                 continue;
             }
 
             let attrs = match self.connection.get_window_attributes(window)?.reply() {
                 Ok(attrs) => attrs,
-                Err(_) => {
-                    println!("Failed to get attributes for window: {}", window);
-                    continue;
-                }
+                Err(_) => continue,
             };
 
-            println!(
-                "Window {}: override_redirect={}, map_state={:?}",
-                window, attrs.override_redirect, attrs.map_state
-            );
-
             if attrs.override_redirect {
-                println!("  -> Skipped (override_redirect)");
                 continue;
             }
 
             if attrs.map_state == MapState::VIEWABLE {
-                println!(
-                    "  -> Managing VIEWABLE window, tagging with {:b}",
-                    self.selected_tags
-                );
+                let tag = self.get_saved_tag(window, net_client_info)?;
+                println!("Managing VIEWABLE window: {} with tag {:b}", window, tag);
                 self.windows.push(window);
-                self.window_tags.insert(window, self.selected_tags);
+                self.window_tags.insert(window, tag);
                 continue;
             }
 
@@ -118,17 +111,11 @@ impl WindowManager {
                 };
 
                 if has_wm_class {
-                    println!(
-                        "  -> Managing UNMAPPED window (has WM_CLASS), tagging with {:b}",
-                        self.selected_tags
-                    );
+                    let tag = self.get_saved_tag(window, net_client_info)?;
+                    println!("Managing UNMAPPED window: {} with tag {:b}", window, tag);
                     self.windows.push(window);
-                    self.window_tags.insert(window, self.selected_tags);
-                } else {
-                    println!("  -> Skipped UNMAPPED (no WM_CLASS)");
+                    self.window_tags.insert(window, tag);
                 }
-            } else {
-                println!("  -> Skipped (map_state={:?})", attrs.map_state);
             }
         }
 
@@ -139,6 +126,53 @@ impl WindowManager {
         }
 
         self.apply_layout()?;
+        Ok(())
+    }
+
+    fn get_saved_tag(&self, window: Window, net_client_info: Atom) -> Result<TagMask> {
+        match self
+            .connection
+            .get_property(false, window, net_client_info, AtomEnum::CARDINAL, 0, 2)?
+            .reply()
+        {
+            Ok(prop) if prop.value.len() >= 4 => {
+                let tags = u32::from_ne_bytes([
+                    prop.value[0],
+                    prop.value[1],
+                    prop.value[2],
+                    prop.value[3],
+                ]);
+                println!("  Restored tag from _NET_CLIENT_INFO: {:b}", tags);
+                return Ok(tags);
+            }
+            _ => {}
+        }
+
+        println!("  No saved tag, using current: {:b}", self.selected_tags);
+        Ok(self.selected_tags)
+    }
+
+    fn save_client_tag(&self, window: Window, tag: TagMask) -> Result<()> {
+        let net_client_info = self
+            .connection
+            .intern_atom(false, b"_NET_CLIENT_INFO")?
+            .reply()?
+            .atom;
+
+        let data = [tag, 0u32];
+        let bytes: Vec<u8> = data.iter().flat_map(|&v| v.to_ne_bytes()).collect();
+
+        self.connection.change_property(
+            PropMode::REPLACE,
+            window,
+            net_client_info,
+            AtomEnum::CARDINAL,
+            32,
+            2,
+            &bytes,
+        )?;
+
+        self.connection.flush()?;
         Ok(())
     }
 
@@ -279,6 +313,9 @@ impl WindowManager {
         if let Some(focused) = self.focused_window {
             let mask = tag_mask(tag_index);
             self.window_tags.insert(focused, mask);
+
+            let _ = self.save_client_tag(focused, mask);
+
             self.update_window_visibility()?;
             self.apply_layout()?;
             self.update_bar()?;
@@ -354,6 +391,9 @@ impl WindowManager {
                 self.connection.map_window(event.window)?;
                 self.windows.push(event.window);
                 self.window_tags.insert(event.window, self.selected_tags);
+
+                let _ = self.save_client_tag(event.window, self.selected_tags);
+
                 self.apply_layout()?;
                 self.update_bar()?;
                 self.set_focus(Some(event.window))?;
