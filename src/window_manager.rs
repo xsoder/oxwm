@@ -449,6 +449,11 @@ impl WindowManager {
         match event {
             Event::MapRequest(event) => {
                 self.connection.map_window(event.window)?;
+                self.connection.change_window_attributes(
+                    event.window,
+                    &ChangeWindowAttributesAux::new().event_mask(EventMask::ENTER_WINDOW),
+                )?;
+
                 self.windows.push(event.window);
                 self.window_tags.insert(event.window, self.selected_tags);
 
@@ -466,6 +471,14 @@ impl WindowManager {
             Event::DestroyNotify(event) => {
                 if self.windows.contains(&event.window) {
                     self.remove_window(event.window)?;
+                }
+            }
+            Event::EnterNotify(event) => {
+                if event.mode != x11rb::protocol::xproto::NotifyMode::NORMAL {
+                    return Ok(None);
+                }
+                if self.windows.contains(&event.event) {
+                    self.set_focus(Some(event.event))?;
                 }
             }
             Event::KeyPress(event) => {
