@@ -498,6 +498,19 @@ impl WindowManager {
     fn handle_event(&mut self, event: Event) -> Result<Option<bool>> {
         match event {
             Event::MapRequest(event) => {
+                let attrs = match self.connection.get_window_attributes(event.window)?.reply() {
+                    Ok(attrs) => attrs,
+                    Err(_) => return Ok(None),
+                };
+
+                if attrs.override_redirect {
+                    return Ok(None);
+                }
+
+                if self.windows.contains(&event.window) {
+                    return Ok(None);
+                }
+
                 self.connection.map_window(event.window)?;
                 self.connection.change_window_attributes(
                     event.window,
@@ -506,9 +519,7 @@ impl WindowManager {
 
                 self.windows.push(event.window);
                 self.window_tags.insert(event.window, self.selected_tags);
-
                 self.set_wm_state(event.window, 1)?;
-
                 let _ = self.save_client_tag(event.window, self.selected_tags);
 
                 self.apply_layout()?;
