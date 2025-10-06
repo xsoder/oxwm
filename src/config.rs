@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 0;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=14";
+pub const FONT: &str = "IosevkaNerdFont:style=Bold:size=14";
 
 // ========================================
 // GAPS (Vanity Gaps)
@@ -23,7 +23,7 @@ pub const GAP_OUTER_VERTICAL: u32 = 3;
 // ========================================
 // DEFAULTS
 // ========================================
-pub const TERMINAL: &str = "alacritty";
+pub const TERMINAL: &str = "st";
 pub const XCLOCK: &str = "xclock";
 pub const MODKEY: KeyButMask = KeyButMask::MOD4;
 
@@ -75,7 +75,7 @@ const SCREENSHOT_CMD: &[&str] = &[
     "maim -s | xclip -selection clipboard -t image/png",
 ];
 
-const DMENU_CMD: &[&str] = &["sh", "-c", "dmenu_run -l 10"];
+const DMENU_CMD: &[&str] = &["sh", "-c", "dmenu_run"];
 
 // ========================================
 // TAGS
