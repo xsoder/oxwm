@@ -86,8 +86,8 @@ impl WindowManager {
             .get_property(false, root, net_current_desktop, AtomEnum::CARDINAL, 0, 1)?
             .reply()
         {
+            // I don't undestand this but I got it from dwm->persist_tags patch and it worked.
             Ok(prop) if prop.value.len() >= 4 => {
-                // I don't undestand this but I got it from dwm->persist_tags patch and it worked.
                 let desktop = u32::from_ne_bytes([
                     prop.value[0],
                     prop.value[1],
@@ -95,26 +95,29 @@ impl WindowManager {
                     prop.value[3],
                 ]);
                 if desktop < TAG_COUNT as u32 {
-                    println!("Restored selected tag: {}", desktop);
-                    return Ok(tag_mask(desktop as usize));
+                    let mask = tag_mask(desktop as usize);
+                    return Ok(mask);
                 }
             }
-            _ => {}
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("No _NET_CURRENT_DESKTOP property ({})", e);
+            }
         }
-
-        println!("No saved tag, defaulting to tag 0");
         Ok(tag_mask(0))
     }
 
     fn scan_existing_windows(&mut self) -> Result<()> {
         let tree = self.connection.query_tree(self.root)?.reply()?;
-
-        println!("=== Scanning existing windows ===");
-        println!("Total children: {}", tree.children.len());
-
         let net_client_info = self
             .connection
             .intern_atom(false, b"_NET_CLIENT_INFO")?
+            .reply()?
+            .atom;
+
+        let wm_state_atom = self
+            .connection
+            .intern_atom(false, b"WM_STATE")?
             .reply()?
             .atom;
 
@@ -134,13 +137,25 @@ impl WindowManager {
 
             if attrs.map_state == MapState::VIEWABLE {
                 let tag = self.get_saved_tag(window, net_client_info)?;
-                println!("Managing VIEWABLE window: {} with tag {:b}", window, tag);
                 self.windows.push(window);
                 self.window_tags.insert(window, tag);
                 continue;
             }
 
             if attrs.map_state == MapState::UNMAPPED {
+                let has_wm_state = match self
+                    .connection
+                    .get_property(false, window, wm_state_atom, AtomEnum::ANY, 0, 2)?
+                    .reply()
+                {
+                    Ok(prop) => !prop.value.is_empty(),
+                    Err(_) => false,
+                };
+
+                if !has_wm_state {
+                    continue;
+                }
+
                 let has_wm_class = match self
                     .connection
                     .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024)?
@@ -152,14 +167,11 @@ impl WindowManager {
 
                 if has_wm_class {
                     let tag = self.get_saved_tag(window, net_client_info)?;
-                    println!("Managing UNMAPPED window: {} with tag {:b}", window, tag);
                     self.windows.push(window);
                     self.window_tags.insert(window, tag);
                 }
             }
         }
-
-        println!("Total managed windows: {}", self.windows.len());
 
         if let Some(&first) = self.windows.first() {
             self.set_focus(Some(first))?;
@@ -182,13 +194,17 @@ impl WindowManager {
                     prop.value[2],
                     prop.value[3],
                 ]);
-                println!("  Restored tag from _NET_CLIENT_INFO: {:b}", tags);
-                return Ok(tags);
+
+                if tags != 0 && tags < (1 << crate::config::TAG_COUNT) {
+                    return Ok(tags);
+                }
             }
-            _ => {}
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("No _NET_CLIENT_INFO property ({})", e);
+            }
         }
 
-        println!("  No saved tag, using current: {:b}", self.selected_tags);
         Ok(self.selected_tags)
     }
 
@@ -199,14 +215,37 @@ impl WindowManager {
             .reply()?
             .atom;
 
-        let data = [tag, 0u32];
-        let bytes: Vec<u8> = data.iter().flat_map(|&v| v.to_ne_bytes()).collect();
+        let bytes = tag.to_ne_bytes().to_vec();
 
         self.connection.change_property(
             PropMode::REPLACE,
             window,
             net_client_info,
             AtomEnum::CARDINAL,
+            32,
+            1,
+            &bytes,
+        )?;
+
+        self.connection.flush()?;
+        Ok(())
+    }
+
+    fn set_wm_state(&self, window: Window, state: u32) -> Result<()> {
+        let wm_state_atom = self
+            .connection
+            .intern_atom(false, b"WM_STATE")?
+            .reply()?
+            .atom;
+
+        let data = [state, 0u32]; // No icon window
+        let bytes: Vec<u8> = data.iter().flat_map(|&v| v.to_ne_bytes()).collect();
+
+        self.connection.change_property(
+            PropMode::REPLACE,
+            window,
+            wm_state_atom,
+            wm_state_atom,
             32,
             2,
             &bytes,
@@ -468,6 +507,8 @@ impl WindowManager {
                 self.windows.push(event.window);
                 self.window_tags.insert(event.window, self.selected_tags);
 
+                self.set_wm_state(event.window, 1)?;
+
                 let _ = self.save_client_tag(event.window, self.selected_tags);
 
                 self.apply_layout()?;
@@ -493,12 +534,7 @@ impl WindowManager {
                 }
             }
             Event::KeyPress(event) => {
-                println!("━━━ KeyPress Event ━━━");
-                println!("Key code:     {}", event.detail);
-
                 let (action, arg) = keyboard::handle_key_press(event)?;
-                println!("  -> Matched action: {:?}", action);
-
                 match action {
                     KeyAction::Quit => return Ok(Some(false)),
                     KeyAction::Restart => return Ok(Some(true)),

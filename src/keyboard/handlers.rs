@@ -57,8 +57,6 @@ pub fn setup_keybinds(connection: &impl Connection, root: Window) -> Result<()> 
     for keybinding in KEYBINDINGS {
         let modifier_mask = modifiers_to_mask(keybinding.modifiers);
 
-        println!("Grabbing key {} with mod {}", keybinding.key, modifier_mask);
-
         connection.grab_key(
             false,
             root,
