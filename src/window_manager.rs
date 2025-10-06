@@ -482,7 +482,11 @@ impl WindowManager {
                 }
             }
             Event::KeyPress(event) => {
+                println!("━━━ KeyPress Event ━━━");
+                println!("Key code:     {}", event.detail);
+
                 let (action, arg) = keyboard::handle_key_press(event)?;
+                println!("  -> Matched action: {:?}", action);
 
                 match action {
                     KeyAction::Quit => return Ok(Some(false)),
