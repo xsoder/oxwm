@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 1;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=14,monospace:size=14";
+pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=14";
 
 // ========================================
 // DEFAULTS
@@ -74,6 +74,9 @@ const DMENU_CMD: &[&str] = &["sh", "-c", "dmenu_run -l 10"];
 pub const TAG_COUNT: usize = 9;
 pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 // pub const TAGS: [&str; TAG_COUNT] = ["", "󰊯", "", "", "󰙯", "󱇤", "", "󱘶", "󰧮"];
+// pub const TAGS: [&str; TAG_COUNT] = [
+//     "DEV", "WWW", "SYS", "DOC", "VBOX", "CHAT", "MUS", "VID", "MISC",
+// ];
 
 // ========================================
 // KEYBINDINGS
