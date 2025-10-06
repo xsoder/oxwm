@@ -1,6 +1,10 @@
 use crate::bar::Bar;
-use crate::config::{BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, TAG_COUNT};
+use crate::config::{
+    BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, GAP_INNER_HORIZONTAL, GAP_INNER_VERTICAL,
+    GAP_OUTER_HORIZONTAL, GAP_OUTER_VERTICAL, GAPS_ENABLED, TAG_COUNT,
+};
 use crate::keyboard::{self, Arg, KeyAction};
+use crate::layout::GapConfig;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
 use anyhow::Result;
@@ -25,6 +29,7 @@ pub struct WindowManager {
     layout: Box<dyn Layout>,
     window_tags: std::collections::HashMap<Window, TagMask>,
     selected_tags: TagMask,
+    gaps_enabled: bool,
     bar: Bar,
 }
 
@@ -49,6 +54,7 @@ impl WindowManager {
         let bar = Bar::new(&connection, &screen, screen_number)?;
 
         let selected_tags = Self::get_saved_selected_tags(&connection, root)?;
+        let gaps_enabled = GAPS_ENABLED;
 
         let mut window_manger = Self {
             connection,
@@ -60,6 +66,7 @@ impl WindowManager {
             layout: Box::new(TilingLayout),
             window_tags: std::collections::HashMap::new(),
             selected_tags,
+            gaps_enabled,
             bar,
         };
 
@@ -286,6 +293,10 @@ impl WindowManager {
                 if let Arg::Int(tag_index) = arg {
                     self.move_to_tag(*tag_index as usize)?;
                 }
+            }
+            KeyAction::ToggleGaps => {
+                self.gaps_enabled = !self.gaps_enabled;
+                self.apply_layout()?;
             }
             KeyAction::None => {
                 //no-op
@@ -520,8 +531,26 @@ impl WindowManager {
         let bar_height = self.bar.height() as u32;
         let usable_height = screen_height.saturating_sub(bar_height);
 
+        let gaps = if self.gaps_enabled {
+            GapConfig {
+                inner_horizontal: GAP_INNER_HORIZONTAL,
+                inner_vertical: GAP_INNER_VERTICAL,
+                outer_horizontal: GAP_OUTER_HORIZONTAL,
+                outer_vertical: GAP_OUTER_VERTICAL,
+            }
+        } else {
+            GapConfig {
+                inner_horizontal: 0,
+                inner_vertical: 0,
+                outer_horizontal: 0,
+                outer_vertical: 0,
+            }
+        };
+
         let visible = self.visible_windows();
-        let geometries = self.layout.arrange(&visible, screen_width, usable_height);
+        let geometries = self
+            .layout
+            .arrange(&visible, screen_width, usable_height, &gaps);
 
         for (window, geometry) in visible.iter().zip(geometries.iter()) {
             let adjusted_width = geometry.width.saturating_sub(2 * border_width);

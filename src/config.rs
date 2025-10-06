@@ -6,11 +6,20 @@ use x11rb::protocol::xproto::KeyButMask;
 // ========================================
 // APPEARANCE
 // ========================================
-pub const BORDER_WIDTH: u32 = 1;
+pub const BORDER_WIDTH: u32 = 0;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
 pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=14";
 
+// ========================================
+// GAPS (Vanity Gaps)
+// ========================================
+pub const GAPS_ENABLED: bool = true;
+pub const GAP_INNER_HORIZONTAL: u32 = 3;
+pub const GAP_INNER_VERTICAL: u32 = 3;
+pub const GAP_OUTER_HORIZONTAL: u32 = 3;
+pub const GAP_OUTER_VERTICAL: u32 = 3;
+//
 // ========================================
 // DEFAULTS
 // ========================================
@@ -89,6 +98,7 @@ pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
     Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
+    Key::new(&[MODKEY],        keycodes::A,      KeyAction::ToggleGaps, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::R,      KeyAction::Restart,    Arg::None),
     Key::new(&[MODKEY],        keycodes::J,      KeyAction::FocusStack, Arg::Int(-1)),
