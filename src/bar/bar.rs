@@ -279,13 +279,10 @@ impl Bar {
                 }
             }
         }
-
         connection.flush()?;
-
         unsafe {
             x11::xlib::XFlush(self.display);
         }
-
         self.needs_redraw = false;
 
         Ok(())
