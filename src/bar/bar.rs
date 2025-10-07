@@ -40,7 +40,7 @@ impl Bar {
         }
         let font = Font::new(display, screen_num as i32, FONT)?;
 
-        let height = (font.height() as f32 * 1.5) as u16;
+        let height = (font.height() as f32 * 1.4) as u16;
 
         connection.create_window(
             COPY_DEPTH_FROM_PARENT,
@@ -297,7 +297,7 @@ impl Bar {
             }
             current_x_position += tag_width as i16;
         }
-        None
+        return None;
     }
 
     pub fn needs_redraw(&self) -> bool {

@@ -3,10 +3,12 @@ use std::time::Duration;
 
 mod battery;
 mod datetime;
+mod ram;
 mod shell;
 
 use battery::Battery;
 use datetime::DateTime;
+use ram::Ram;
 use shell::ShellBlock;
 
 pub trait Block {
@@ -31,6 +33,7 @@ pub enum BlockCommand {
         format_discharging: &'static str,
         format_full: &'static str,
     },
+    Ram,
     Static(&'static str),
 }
 
@@ -60,6 +63,7 @@ impl BlockConfig {
                 self.interval_secs,
                 self.color,
             )),
+            BlockCommand::Ram => Box::new(Ram::new(self.format, self.interval_secs, self.color)),
             BlockCommand::Static(text) => Box::new(StaticBlock::new(
                 &format!("{}{}", self.format, text),
                 self.color,

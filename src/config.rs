@@ -6,24 +6,24 @@ use x11rb::protocol::xproto::KeyButMask;
 // ========================================
 // APPEARANCE
 // ========================================
-pub const BORDER_WIDTH: u32 = 0;
+pub const BORDER_WIDTH: u32 = 2;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=14";
+pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=10";
 
 // ========================================
 // GAPS (Vanity Gaps)
 // ========================================
 pub const GAPS_ENABLED: bool = true;
-pub const GAP_INNER_HORIZONTAL: u32 = 3;
-pub const GAP_INNER_VERTICAL: u32 = 3;
-pub const GAP_OUTER_HORIZONTAL: u32 = 3;
-pub const GAP_OUTER_VERTICAL: u32 = 3;
-//
+pub const GAP_INNER_HORIZONTAL: u32 = 6;
+pub const GAP_INNER_VERTICAL: u32 = 6;
+pub const GAP_OUTER_HORIZONTAL: u32 = 6;
+pub const GAP_OUTER_VERTICAL: u32 = 6;
+
 // ========================================
 // DEFAULTS
 // ========================================
-pub const TERMINAL: &str = "alacritty";
+pub const TERMINAL: &str = "st";
 pub const XCLOCK: &str = "xclock";
 pub const MODKEY: KeyButMask = KeyButMask::MOD4;
 
@@ -129,14 +129,28 @@ pub const KEYBINDINGS: &[Key] = &[
 // STATUS BAR BLOCKS
 // ========================================
 pub const STATUS_BLOCKS: &[BlockConfig] = &[
+    // BlockConfig {
+    //     format: "",
+    //     command: BlockCommand::Battery {
+    //         format_charging: "󰂄 Bat: {}%",
+    //         format_discharging: "󰁹 Bat:{}%",
+    //         format_full: "󰁹 Bat: {}%",
+    //     },
+    //     interval_secs: 30,
+    //     color: BLUE,
+    //     underline: true,
+    // },
+    // BlockConfig {
+    //     format: " |  ",
+    //     command: BlockCommand::Static(""),
+    //     interval_secs: u64::MAX,
+    //     color: GRAY_LIGHT,
+    //     underline: false,
+    // },
     BlockConfig {
-        format: "",
-        command: BlockCommand::Battery {
-            format_charging: "󰂄 Bat: {}%",
-            format_discharging: "󰁹 Bat:{}%",
-            format_full: "󰁹 Bat: {}%",
-        },
-        interval_secs: 30,
+        format: "󰍛 {used}/{total} GB",
+        command: BlockCommand::Ram,
+        interval_secs: 5,
         color: BLUE,
         underline: true,
     },
