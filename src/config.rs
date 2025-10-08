@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 2;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=10";
+pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=12";
 
 // ========================================
 // GAPS (Vanity Gaps)
@@ -32,7 +32,8 @@ pub const MODKEY: KeyButMask = KeyButMask::MOD4;
 // ========================================
 
 // Base colors
-const GRAY_DARK: u32 = 0x222222;
+const GRAY_DARK: u32 = 0x1a1b26;
+const GRAY_SEP: u32 = 0xa9b1d6;
 const GRAY_MID: u32 = 0x444444;
 const GRAY_LIGHT: u32 = 0xbbbbbb;
 const CYAN: u32 = 0x0db9d7;
@@ -129,24 +130,24 @@ pub const KEYBINDINGS: &[Key] = &[
 // STATUS BAR BLOCKS
 // ========================================
 pub const STATUS_BLOCKS: &[BlockConfig] = &[
-    // BlockConfig {
-    //     format: "",
-    //     command: BlockCommand::Battery {
-    //         format_charging: "󰂄 Bat: {}%",
-    //         format_discharging: "󰁹 Bat:{}%",
-    //         format_full: "󰁹 Bat: {}%",
-    //     },
-    //     interval_secs: 30,
-    //     color: BLUE,
-    //     underline: true,
-    // },
-    // BlockConfig {
-    //     format: " |  ",
-    //     command: BlockCommand::Static(""),
-    //     interval_secs: u64::MAX,
-    //     color: GRAY_LIGHT,
-    //     underline: false,
-    // },
+    BlockConfig {
+        format: "",
+        command: BlockCommand::Battery {
+            format_charging: "󰂄 Bat: {}%",
+            format_discharging: "󰁹 Bat:{}%",
+            format_full: "󰁹 Bat: {}%",
+        },
+        interval_secs: 30,
+        color: GREEN,
+        underline: true,
+    },
+    BlockConfig {
+        format: " │  ",
+        command: BlockCommand::Static(""),
+        interval_secs: u64::MAX,
+        color: GRAY_SEP,
+        underline: false,
+    },
     BlockConfig {
         format: "󰍛 {used}/{total} GB",
         command: BlockCommand::Ram,
@@ -155,10 +156,10 @@ pub const STATUS_BLOCKS: &[BlockConfig] = &[
         underline: true,
     },
     BlockConfig {
-        format: " |  ",
+        format: " │  ",
         command: BlockCommand::Static(""),
         interval_secs: u64::MAX,
-        color: GRAY_LIGHT,
+        color: GRAY_SEP,
         underline: false,
     },
     BlockConfig {
@@ -169,10 +170,10 @@ pub const STATUS_BLOCKS: &[BlockConfig] = &[
         underline: true,
     },
     BlockConfig {
-        format: " |  ",
+        format: " │  ",
         command: BlockCommand::Static(""),
         interval_secs: u64::MAX,
-        color: GRAY_LIGHT,
+        color: GRAY_SEP,
         underline: false,
     },
     BlockConfig {
