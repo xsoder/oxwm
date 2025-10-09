@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 2;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "IosevkaNerdFont:style=Bold:size=10";
+pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=12";
 
 // ========================================
 // GAPS (Vanity Gaps)
@@ -71,12 +71,12 @@ pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
 // Commands
 // ========================================
 const SCREENSHOT_CMD: &[&str] = &[
-    "sh", "-c","/home/xsoder/scripts/screeshot",
+    "sh",
+    "-c",
+    "maim -s | xclip -selection clipboard -t image/png",
 ];
 
-const DMENU_CMD: &[&str] = &["sh", "-c", "dmenu_run"];
-const ZOOM_CMD: &[&str] = &["sh", "-c", "boomer"];
-const SCRIPT_CMD: &[&str] = &["sh", "-c", "/home/xsoder/scripts/master"];
+const DMENU_CMD: &[&str] = &["sh", "-c", "dmenu_run -l 10"];
 
 // ========================================
 // TAGS
@@ -94,12 +94,10 @@ pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"
 #[rustfmt::skip]
 pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::RETURN, KeyAction::Spawn,      Arg::Str(TERMINAL)),
-    Key::new(&[MODKEY],        keycodes::F, KeyAction::Spawn,           Arg::Str(XCLOCK)),
+    Key::new(&[MODKEY],        keycodes::F,      KeyAction::Spawn,      Arg::Str(XCLOCK)),
 
+    Key::new(&[MODKEY],        keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
     Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
-    Key::new(&[MODKEY],        keycodes::Z,      KeyAction::Spawn,      Arg::Array(ZOOM_CMD)),
-    Key::new(&[MODKEY, SHIFT], keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
-    Key::new(&[MODKEY],        keycodes::O,      KeyAction::Spawn,      Arg::Array(SCRIPT_CMD)),
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::F,      KeyAction::ToggleFullScreen, Arg::None),
     Key::new(&[MODKEY],        keycodes::A,      KeyAction::ToggleGaps, Arg::None),
