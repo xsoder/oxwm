@@ -17,8 +17,11 @@
 - [[#development-roadmap][Development Roadmap]]
 - [[#license][License]]
 
-* OXWM
-A dynamic tiling window manager written in Rust, inspired by dwm. Configuration is done in Rust source code, keeping with the suckless philosophy of "edit and recompile."
+* OXWM — DWM but Better (and oxidized)
+A dynamic window manager written in Rust, inspired by dwm but designed to evolve
+on its own. Configuration is done in Rust source code, keeping with the suckless
+philosophy of *"edit + recompile."*, but with sane defaults and no arbitrary elitism
+enforcing bad variable names and bad file structure topology.
 
 * Installation
 ** Arch Linux
@@ -133,20 +136,89 @@ DISPLAY=:1 cargo run
 * Project Structure
 #+begin_src sh
 src/
-├── main.rs                  Entry point
-├── window_manager.rs        Core X11 event handling and window management
-├── default_config.rs        Default configuration (reference)
-├── config.rs               User configuration (gitignored, auto-generated)
+├── main.rs
+│   └── main()
+│       └── Creates WindowManager and calls .run()
+│
+├── window_manager.rs                    [CORE - X11 event handling]
+│   ├── struct WindowManager
+│   │   ├── connection: RustConnection   [X11 connection]
+│   │   ├── windows: Vec<Window>         [All managed windows]
+│   │   ├── focused_window: Option<Window>
+│   │   ├── layout: Box<dyn Layout>
+│   │   ├── window_tags: HashMap<Window, TagMask>
+│   │   ├── selected_tags: TagMask
+│   │   └── bar: Bar                     [Status bar]
+│   │
+│   ├── new()                            [Initialize WM, grab root, restore tags, scan windows]
+│   ├── run()                            [Main event loop with block updates]
+│   ├── handle_event()                   [Route X11 events]
+│   │   ├── MapRequest    → add window, apply layout, update bar, save tag
+│   │   ├── UnmapNotify   → remove window, update bar
+│   │   ├── DestroyNotify → remove window, update bar
+│   │   ├── KeyPress      → get action, handle it (includes Restart)
+│   │   ├── ButtonPress   → handle bar clicks
+│   │   └── Expose        → redraw bar
+│   ├── handle_key_action()              [Execute keyboard actions]
+│   ├── get_saved_selected_tags()        [Restore selected tags from _NET_CURRENT_DESKTOP]
+│   ├── save_selected_tags()             [Persist selected tags to root window]
+│   ├── get_saved_tag()                  [Restore window tag from _NET_CLIENT_INFO]
+│   ├── save_client_tag()                [Persist window tag to window property]
+│   ├── scan_existing_windows()          [Manage windows on startup]
+│   ├── remove_window()                  [Remove from Vec, reapply layout]
+│   ├── set_focus()                      [Focus window, update visuals]
+│   ├── cycle_focus()                    [Move focus to next/prev window]
+│   ├── view_tag()                       [Switch to tag/workspace, update visibility]
+│   ├── move_to_tag()                    [Move window to tag]
+│   ├── update_bar()                     [Calculate occupied tags, redraw bar]
+│   ├── update_focus_visuals()           [Set border colors]
+│   ├── update_window_visibility()       [Map/unmap windows based on tags]
+│   └── apply_layout()                   [Position all windows below bar]
+│
+├── config.rs                            [CONFIGURATION - all settings here]
+│   ├── BORDER_WIDTH, BORDER_FOCUSED, BORDER_UNFOCUSED
+│   ├── FONT                             [XFT font string]
+│   ├── TAG_COUNT, TAGS                  [Workspace configuration]
+│   ├── TERMINAL, MODKEY
+│   ├── ColorScheme                      [Foreground, background, border colors]
+│   ├── SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED
+│   ├── KEYBINDINGS                      [All keybinds as const array]
+│   └── STATUS_BLOCKS                    [Block configurations with format, command, interval]
+│
 ├── bar/
-│   ├── bar.rs              Status bar rendering with XFT
-│   ├── font.rs             Font handling
-│   └── blocks/             Modular status bar widgets
+│   ├── mod.rs                           [Re-exports: Bar, BlockCommand, BlockConfig]
+│   ├── bar.rs
+│   │   ├── struct Bar                   [Status bar window with XFT support]
+│   │   ├── new()                        [Create bar X11 window, load font, init blocks]
+│   │   ├── draw()                       [Render tags + blocks with underlines]
+│   │   ├── update_blocks()              [Update block content based on intervals]
+│   │   ├── handle_click()               [Detect which tag was clicked]
+│   │   └── invalidate()                 [Mark bar as needing redraw]
+│   ├── font.rs
+│   │   ├── struct Font                  [XFT font wrapper]
+│   │   ├── struct FontDraw              [XFT drawing context]
+│   │   └── draw_text()                  [Render text with color]
+│   └── blocks/
+│       ├── mod.rs                       [Block trait, BlockConfig, BlockCommand enum]
+│       ├── battery.rs                   [Battery status block]
+│       ├── datetime.rs                  [Date/time formatting block]
+│       └── shell.rs                     [Shell command execution block]
+│
 ├── keyboard/
-│   ├── handlers.rs         Keybinding actions
-│   └── keycodes.rs         X11 keycode constants
+│   ├── mod.rs                           [Re-exports]
+│   ├── keycodes.rs                      [Key constants: Q, J, RETURN, etc]
+│   └── handlers.rs
+│       ├── enum KeyAction               [Spawn, KillClient, FocusStack, ViewTag, Restart, etc]
+│       ├── enum Arg                     [None, Int, Str, Array]
+│       ├── struct Key                   [Keybinding definition]
+│       ├── setup_keybinds()             [Register keys with X11]
+│       └── handle_key_press()           [Parse KeyPressEvent → KeyAction]
+│
 └── layout/
-    └── tiling.rs           Tiling layout algorithm
-#+end_src
+    ├── mod.rs                           [Layout trait definition]
+    └── tiling.rs
+        └── TilingLayout::arrange()      [Calculate window positions]c
+#+end_srsrc/
 
 * Architecture Notes
 ** Tag System
