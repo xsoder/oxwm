@@ -5,3 +5,6 @@ target/
 # Nix
 result
 
+# User config
+src/config.rs
+
