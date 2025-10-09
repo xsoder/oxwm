@@ -1,13 +1,14 @@
 use crate::bar::Bar;
 use crate::config::{
     BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, GAP_INNER_HORIZONTAL, GAP_INNER_VERTICAL,
-    GAP_OUTER_HORIZONTAL, GAP_OUTER_VERTICAL, GAPS_ENABLED, TAG_COUNT,
+    GAP_OUTER_HORIZONTAL, GAP_OUTER_VERTICAL, GAPS_ENABLED, MODKEY, TAG_COUNT,
 };
 use crate::keyboard::{self, Arg, KeyAction};
 use crate::layout::GapConfig;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
 use anyhow::Result;
+use std::collections::HashSet;
 
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
@@ -31,6 +32,7 @@ pub struct WindowManager {
     selected_tags: TagMask,
     gaps_enabled: bool,
     fullscreen_window: Option<Window>,
+    floating_windows: HashSet<Window>,
     bar: Bar,
 }
 
@@ -47,10 +49,35 @@ impl WindowManager {
                     EventMask::SUBSTRUCTURE_REDIRECT
                         | EventMask::SUBSTRUCTURE_NOTIFY
                         | EventMask::PROPERTY_CHANGE
-                        | EventMask::KEY_PRESS,
+                        | EventMask::KEY_PRESS
+                        | EventMask::BUTTON_PRESS,
                 ),
             )?
             .check()?;
+
+        connection.grab_button(
+            false,
+            root,
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
+            GrabMode::SYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            ButtonIndex::M1,
+            u16::from(MODKEY).into(),
+        )?;
+
+        connection.grab_button(
+            false,
+            root,
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
+            GrabMode::SYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            ButtonIndex::M3,
+            u16::from(MODKEY).into(),
+        )?;
 
         let bar = Bar::new(&connection, &screen, screen_number)?;
 
@@ -69,6 +96,7 @@ impl WindowManager {
             selected_tags,
             gaps_enabled,
             fullscreen_window: None,
+            floating_windows: HashSet::new(),
             bar,
         };
 
@@ -88,7 +116,6 @@ impl WindowManager {
             .get_property(false, root, net_current_desktop, AtomEnum::CARDINAL, 0, 1)?
             .reply()
         {
-            // I don't undestand this but I got it from dwm->persist_tags patch and it worked.
             Ok(prop) if prop.value.len() >= 4 => {
                 let desktop = u32::from_ne_bytes([
                     prop.value[0],
@@ -240,7 +267,7 @@ impl WindowManager {
             .reply()?
             .atom;
 
-        let data = [state, 0u32]; // No icon window
+        let data = [state, 0u32];
         let bytes: Vec<u8> = data.iter().flat_map(|&v| v.to_ne_bytes()).collect();
 
         self.connection.change_property(
@@ -284,19 +311,19 @@ impl WindowManager {
         if let Some(focused) = self.focused_window {
             if self.fullscreen_window == Some(focused) {
                 self.fullscreen_window = None;
-                
+
                 self.connection.map_window(self.bar.window())?;
-                
+
                 self.apply_layout()?;
                 self.update_focus_visuals()?;
             } else {
                 self.fullscreen_window = Some(focused);
-                
+
                 self.connection.unmap_window(self.bar.window())?;
-                
+
                 let screen_width = self.screen.width_in_pixels as u32;
                 let screen_height = self.screen.height_in_pixels as u32;
-                
+
                 self.connection.configure_window(
                     focused,
                     &ConfigureWindowAux::new()
@@ -307,13 +334,13 @@ impl WindowManager {
                         .border_width(0)
                         .stack_mode(StackMode::ABOVE),
                 )?;
-                
+
                 self.connection.flush()?;
             }
         }
         Ok(())
     }
-    
+
     fn update_bar(&mut self) -> Result<()> {
         let mut occupied_tags: TagMask = 0;
         for &tags in self.window_tags.values() {
@@ -539,6 +566,125 @@ impl WindowManager {
         Ok(())
     }
 
+    fn move_mouse(&mut self, window: Window) -> Result<()> {
+        self.floating_windows.insert(window);
+
+        let geometry = self.connection.get_geometry(window)?.reply()?;
+
+        self.connection
+            .grab_pointer(
+                false,
+                self.root,
+                (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE).into(),
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                x11rb::NONE,
+                x11rb::CURRENT_TIME,
+            )?
+            .reply()?;
+
+        let pointer = self.connection.query_pointer(self.root)?.reply()?;
+        let (original_x_value, original_y_value) = (pointer.root_x, pointer.root_y);
+
+        self.connection.configure_window(
+            window,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        )?;
+
+        loop {
+            let event = self.connection.wait_for_event()?;
+            match event {
+                Event::MotionNotify(e) => {
+                    let new_x_value = geometry.x + (e.root_x - original_x_value);
+                    let new_y_value = geometry.y + (e.root_y - original_y_value);
+                    self.connection.configure_window(
+                        window,
+                        &ConfigureWindowAux::new()
+                            .x(new_x_value as i32)
+                            .y(new_y_value as i32),
+                    )?;
+                    self.connection.flush()?;
+                }
+                Event::ButtonRelease(_) => break,
+                _ => {}
+            }
+        }
+
+        self.connection
+            .ungrab_pointer(x11rb::CURRENT_TIME)?
+            .check()?;
+        self.connection
+            .allow_events(Allow::REPLAY_POINTER, x11rb::CURRENT_TIME)?
+            .check()?;
+
+        Ok(())
+    }
+
+    fn resize_mouse(&mut self, window: Window) -> Result<()> {
+        self.floating_windows.insert(window);
+
+        let geometry = self.connection.get_geometry(window)?.reply()?;
+
+        self.connection.warp_pointer(
+            x11rb::NONE,
+            window,
+            0,
+            0,
+            0,
+            0,
+            geometry.width as i16,
+            geometry.height as i16,
+        )?;
+
+        self.connection
+            .grab_pointer(
+                false,
+                self.root,
+                (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE).into(),
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                x11rb::NONE,
+                x11rb::CURRENT_TIME,
+            )?
+            .reply()?;
+
+        self.connection.configure_window(
+            window,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        )?;
+
+        loop {
+            let event = self.connection.wait_for_event()?;
+            match event {
+                Event::MotionNotify(e) => {
+                    let new_width = (e.root_x - geometry.x).max(1) as u32;
+                    let new_height = (e.root_y - geometry.y).max(1) as u32;
+
+                    self.connection.configure_window(
+                        window,
+                        &ConfigureWindowAux::new()
+                            .width(new_width)
+                            .height(new_height),
+                    )?;
+                    self.connection.flush()?;
+                }
+                Event::ButtonRelease(_) => break,
+                _ => {}
+            }
+        }
+
+        self.connection
+            .ungrab_pointer(x11rb::CURRENT_TIME)?
+            .check()?;
+        self.connection
+            .allow_events(Allow::REPLAY_POINTER, x11rb::CURRENT_TIME)?
+            .check()?;
+
+        Ok(())
+    }
+
     fn handle_event(&mut self, event: Event) -> Result<Option<bool>> {
         match event {
             Event::MapRequest(event) => {
@@ -601,6 +747,14 @@ impl WindowManager {
                     if let Some(tag_index) = self.bar.handle_click(event.event_x) {
                         self.view_tag(tag_index)?;
                     }
+                } else if event.child != x11rb::NONE {
+                    self.set_focus(Some(event.child))?;
+
+                    if event.detail == ButtonIndex::M1.into() {
+                        self.move_mouse(event.child)?;
+                    } else if event.detail == ButtonIndex::M3.into() {
+                        self.resize_mouse(event.child)?;
+                    }
                 }
             }
             Event::Expose(event) => {
@@ -641,7 +795,12 @@ impl WindowManager {
             }
         };
 
-        let visible = self.visible_windows();
+        let visible: Vec<Window> = self
+            .visible_windows()
+            .into_iter()
+            .filter(|w| !self.floating_windows.contains(w))
+            .collect();
+
         let geometries = self
             .layout
             .arrange(&visible, screen_width, usable_height, &gaps);
@@ -669,6 +828,7 @@ impl WindowManager {
         let initial_count = self.windows.len();
         self.windows.retain(|&w| w != window);
         self.window_tags.remove(&window);
+        self.floating_windows.remove(&window);
 
         if self.fullscreen_window == Some(window) {
             self.fullscreen_window = None;
