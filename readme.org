@@ -218,7 +218,7 @@ src/
     ├── mod.rs                           [Layout trait definition]
     └── tiling.rs
         └── TilingLayout::arrange()      [Calculate window positions]c
-#+end_srsrc/
+#+end_src
 
 * Architecture Notes
 ** Tag System
