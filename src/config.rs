@@ -9,30 +9,17 @@ use x11rb::protocol::xproto::KeyButMask;
 pub const BORDER_WIDTH: u32 = 2;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-<<<<<<< HEAD
 pub const FONT: &str = "IosevkaNerdFont:style=Bold:size=10";
-=======
-pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=12";
->>>>>>> 303f7c23b69b0d88c8acc14ec438aca4053017bf
 
 // ========================================
 // GAPS (Vanity Gaps)
 // ========================================
-<<<<<<< HEAD
 pub const GAPS_ENABLED: bool = false;
 pub const GAP_INNER_HORIZONTAL: u32 = 3;
 pub const GAP_INNER_VERTICAL: u32 = 3;
 pub const GAP_OUTER_HORIZONTAL: u32 = 3;
 pub const GAP_OUTER_VERTICAL: u32 = 3;
 //
-=======
-pub const GAPS_ENABLED: bool = true;
-pub const GAP_INNER_HORIZONTAL: u32 = 6;
-pub const GAP_INNER_VERTICAL: u32 = 6;
-pub const GAP_OUTER_HORIZONTAL: u32 = 6;
-pub const GAP_OUTER_VERTICAL: u32 = 6;
-
->>>>>>> 303f7c23b69b0d88c8acc14ec438aca4053017bf
 // ========================================
 // DEFAULTS
 // ========================================
@@ -107,13 +94,14 @@ pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"
 #[rustfmt::skip]
 pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::RETURN, KeyAction::Spawn,      Arg::Str(TERMINAL)),
+    Key::new(&[MODKEY],        keycodes::F, KeyAction::Spawn,           Arg::Str(XCLOCK)),
 
     Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
     Key::new(&[MODKEY],        keycodes::Z,      KeyAction::Spawn,      Arg::Array(ZOOM_CMD)),
     Key::new(&[MODKEY, SHIFT], keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
     Key::new(&[MODKEY],        keycodes::O,      KeyAction::Spawn,      Arg::Array(SCRIPT_CMD)),
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
-    Key::new(&[MODKEY],        keycodes::F,      KeyAction::ToggleFullScreen, Arg::None),
+    Key::new(&[MODKEY, SHIFT], keycodes::F,      KeyAction::ToggleFullScreen, Arg::None),
     Key::new(&[MODKEY],        keycodes::A,      KeyAction::ToggleGaps, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::R,      KeyAction::Restart,    Arg::None),
