@@ -30,6 +30,7 @@ pub struct WindowManager {
     window_tags: std::collections::HashMap<Window, TagMask>,
     selected_tags: TagMask,
     gaps_enabled: bool,
+    fullscreen_window: Option<Window>,
     bar: Bar,
 }
 
@@ -67,6 +68,7 @@ impl WindowManager {
             window_tags: std::collections::HashMap::new(),
             selected_tags,
             gaps_enabled,
+            fullscreen_window: None,
             bar,
         };
 
@@ -278,6 +280,46 @@ impl WindowManager {
         }
     }
 
+    fn toggle_fullscreen(&mut self) -> Result<()> {
+        if let Some(focused) = self.focused_window {
+            if self.fullscreen_window == Some(focused) {
+                // Exit fullscreen
+                self.fullscreen_window = None;
+                
+                // Show bar
+                self.connection.map_window(self.bar.window())?;
+                
+                // Restore normal layout
+                self.apply_layout()?;
+                self.update_focus_visuals()?;
+            } else {
+                // Enter fullscreen
+                self.fullscreen_window = Some(focused);
+                
+                // Hide bar
+                self.connection.unmap_window(self.bar.window())?;
+                
+                // Make window fill entire screen
+                let screen_width = self.screen.width_in_pixels as u32;
+                let screen_height = self.screen.height_in_pixels as u32;
+                
+                self.connection.configure_window(
+                    focused,
+                    &ConfigureWindowAux::new()
+                        .x(0)
+                        .y(0)
+                        .width(screen_width)
+                        .height(screen_height)
+                        .border_width(0)
+                        .stack_mode(StackMode::ABOVE),  // This raises the window
+                )?;
+                
+                self.connection.flush()?;
+            }
+        }
+        Ok(())
+    }
+    
     fn update_bar(&mut self) -> Result<()> {
         let mut occupied_tags: TagMask = 0;
         for &tags in self.window_tags.values() {
@@ -314,6 +356,9 @@ impl WindowManager {
                         }
                     }
                 }
+            }
+            KeyAction::ToggleFullScreen => {
+                self.toggle_fullscreen()?;
             }
             KeyAction::FocusStack => {
                 if let Arg::Int(direction) = arg {
@@ -375,6 +420,11 @@ impl WindowManager {
     pub fn view_tag(&mut self, tag_index: usize) -> Result<()> {
         if tag_index >= TAG_COUNT {
             return Ok(());
+        }
+
+        if self.fullscreen_window.is_some() {
+            self.fullscreen_window = None;
+            self.connection.map_window(self.bar.window())?;
         }
 
         self.selected_tags = tag_mask(tag_index);
@@ -571,6 +621,9 @@ impl WindowManager {
     }
 
     fn apply_layout(&self) -> Result<()> {
+        if self.fullscreen_window.is_some() {
+            return Ok(());
+        }
         let screen_width = self.screen.width_in_pixels as u32;
         let screen_height = self.screen.height_in_pixels as u32;
         let border_width = BORDER_WIDTH;
@@ -622,6 +675,11 @@ impl WindowManager {
         let initial_count = self.windows.len();
         self.windows.retain(|&w| w != window);
         self.window_tags.remove(&window);
+
+        if self.fullscreen_window == Some(window) {
+            self.fullscreen_window = None;
+            self.connection.map_window(self.bar.window())?;
+        }
 
         if self.windows.len() < initial_count {
             if self.focused_window == Some(window) {

@@ -6,15 +6,15 @@ use x11rb::protocol::xproto::KeyButMask;
 // ========================================
 // APPEARANCE
 // ========================================
-pub const BORDER_WIDTH: u32 = 0;
+pub const BORDER_WIDTH: u32 = 2;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "IosevkaNerdFont:style=Bold:size=14";
+pub const FONT: &str = "IosevkaNerdFont:style=Bold:size=10";
 
 // ========================================
 // GAPS (Vanity Gaps)
 // ========================================
-pub const GAPS_ENABLED: bool = true;
+pub const GAPS_ENABLED: bool = false;
 pub const GAP_INNER_HORIZONTAL: u32 = 3;
 pub const GAP_INNER_VERTICAL: u32 = 3;
 pub const GAP_OUTER_HORIZONTAL: u32 = 3;
@@ -70,19 +70,19 @@ pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
 // Commands
 // ========================================
 const SCREENSHOT_CMD: &[&str] = &[
-    "sh",
-    "-c",
-    "maim -s | xclip -selection clipboard -t image/png",
+    "sh", "-c","/home/xsoder/scripts/screeshot",
 ];
 
 const DMENU_CMD: &[&str] = &["sh", "-c", "dmenu_run"];
+const ZOOM_CMD: &[&str] = &["sh", "-c", "boomer"];
+const SCRIPT_CMD: &[&str] = &["sh", "-c", "/home/xsoder/scripts/master"];
 
 // ========================================
 // TAGS
 // ========================================
 pub const TAG_COUNT: usize = 9;
 pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-// pub const TAGS: [&str; TAG_COUNT] = ["", "󰊯", "", "", "󰙯", "󱇤", "", "󱘶", "󰧮"];
+//pub const TAGS: [&str; TAG_COUNT] = ["", "󰊯", "", "", "󰙯", "󱇤", "", "󱘶", "󰧮"];
 // pub const TAGS: [&str; TAG_COUNT] = [
 //     "DEV", "WWW", "SYS", "DOC", "VBOX", "CHAT", "MUS", "VID", "MISC",
 // ];
@@ -93,11 +93,13 @@ pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"
 #[rustfmt::skip]
 pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::RETURN, KeyAction::Spawn,      Arg::Str(TERMINAL)),
-    Key::new(&[MODKEY],        keycodes::F,      KeyAction::Spawn,      Arg::Str(XCLOCK)),
 
-    Key::new(&[MODKEY],        keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
     Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
+    Key::new(&[MODKEY],        keycodes::Z,      KeyAction::Spawn,      Arg::Array(ZOOM_CMD)),
+    Key::new(&[MODKEY, SHIFT], keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
+    Key::new(&[MODKEY],        keycodes::O,      KeyAction::Spawn,      Arg::Array(SCRIPT_CMD)),
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
+    Key::new(&[MODKEY],        keycodes::F,      KeyAction::ToggleFullScreen, Arg::None),
     Key::new(&[MODKEY],        keycodes::A,      KeyAction::ToggleGaps, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::R,      KeyAction::Restart,    Arg::None),
