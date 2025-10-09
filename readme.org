@@ -2,142 +2,89 @@
 #+STARTUP: overview
 
 * Table of Contents :toc:
-- [[#oxwm--dwm-but-better-and-oxidized][OXWM — DWM but Better (and oxidized)]]
-- [[#project-structure][Project Structure]]
-- [[#event-flow][Event Flow]]
+- [[#oxwm][OXWM]]
+- [[#installation][Installation]]
+  - [[#arch-linux][Arch Linux]]
+  - [[#building-from-source][Building from Source]]
+  - [[#setting-up-oxwm][Setting up OXWM]]
+- [[#configuration][Configuration]]
+- [[#contributing][Contributing]]
 - [[#key-bindings][Key Bindings]]
-- [[#-installation--running-with-nix-flakes][⚙ Installation — Running with Nix Flakes]]
-- [[#testing-xephyr-with-justfile][Testing Xephyr with Justfile]]
-- [[#current-status][Current Status]]
-  - [[#working-features][Working Features]]
-  - [[#immediate-next-steps][Immediate Next Steps]]
-  - [[#long-term-roadmap][Long Term Roadmap]]
-- [[#oxwm-development-todo][OXWM Development Todo]]
-  - [[#core-window-management-22][Core Window Management]]
-  - [[#tag-system-33][Tag System]]
-  - [[#status-bar-22][Status Bar]]
-  - [[#bar-enhancements-33][Bar Enhancements]]
-  - [[#key-system-improvements-22][Key System Improvements]]
-  - [[#layout-system-05][Layout System]]
-  - [[#advanced-features-04][Advanced Features]]
-  - [[#polish--features][Polish & Features]]
+- [[#features][Features]]
+- [[#testing-with-xephyr][Testing with Xephyr]]
+- [[#project-structure][Project Structure]]
 - [[#architecture-notes][Architecture Notes]]
-  - [[#tag-system][Tag System]]
-  - [[#bar-design][Bar Design]]
-  - [[#configuration-philosophy][Configuration Philosophy]]
+- [[#development-roadmap][Development Roadmap]]
 - [[#license][License]]
 
-* OXWM — DWM but Better (and oxidized)
-A dynamic window manager written in Rust, inspired by dwm but designed to evolve
-on its own. Configuration is done in Rust source code, keeping with the suckless
-philosophy of *"edit + recompile."*
+* OXWM
+A dynamic tiling window manager written in Rust, inspired by dwm. Configuration is done in Rust source code, keeping with the suckless philosophy of "edit and recompile."
 
-* Project Structure
-
+* Installation
+** Arch Linux
+Install dependencies:
 #+begin_src sh
-src/
-├── main.rs
-│   └── main()
-│       └── Creates WindowManager and calls .run()
-│
-├── window_manager.rs                    [CORE - X11 event handling]
-│   ├── struct WindowManager
-│   │   ├── connection: RustConnection   [X11 connection]
-│   │   ├── windows: Vec<Window>         [All managed windows]
-│   │   ├── focused_window: Option<Window>
-│   │   ├── layout: Box<dyn Layout>
-│   │   ├── window_tags: HashMap<Window, TagMask>
-│   │   ├── selected_tags: TagMask
-│   │   └── bar: Bar                     [Status bar]
-│   │
-│   ├── new()                            [Initialize WM, grab root, restore tags, scan windows]
-│   ├── run()                            [Main event loop with block updates]
-│   ├── handle_event()                   [Route X11 events]
-│   │   ├── MapRequest    → add window, apply layout, update bar, save tag
-│   │   ├── UnmapNotify   → remove window, update bar
-│   │   ├── DestroyNotify → remove window, update bar
-│   │   ├── KeyPress      → get action, handle it (includes Restart)
-│   │   ├── ButtonPress   → handle bar clicks
-│   │   └── Expose        → redraw bar
-│   ├── handle_key_action()              [Execute keyboard actions]
-│   ├── get_saved_selected_tags()        [Restore selected tags from _NET_CURRENT_DESKTOP]
-│   ├── save_selected_tags()             [Persist selected tags to root window]
-│   ├── get_saved_tag()                  [Restore window tag from _NET_CLIENT_INFO]
-│   ├── save_client_tag()                [Persist window tag to window property]
-│   ├── scan_existing_windows()          [Manage windows on startup]
-│   ├── remove_window()                  [Remove from Vec, reapply layout]
-│   ├── set_focus()                      [Focus window, update visuals]
-│   ├── cycle_focus()                    [Move focus to next/prev window]
-│   ├── view_tag()                       [Switch to tag/workspace, update visibility]
-│   ├── move_to_tag()                    [Move window to tag]
-│   ├── update_bar()                     [Calculate occupied tags, redraw bar]
-│   ├── update_focus_visuals()           [Set border colors]
-│   ├── update_window_visibility()       [Map/unmap windows based on tags]
-│   └── apply_layout()                   [Position all windows below bar]
-│
-├── config.rs                            [CONFIGURATION - all settings here]
-│   ├── BORDER_WIDTH, BORDER_FOCUSED, BORDER_UNFOCUSED
-│   ├── FONT                             [XFT font string]
-│   ├── TAG_COUNT, TAGS                  [Workspace configuration]
-│   ├── TERMINAL, MODKEY
-│   ├── ColorScheme                      [Foreground, background, border colors]
-│   ├── SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED
-│   ├── KEYBINDINGS                      [All keybinds as const array]
-│   └── STATUS_BLOCKS                    [Block configurations with format, command, interval]
-│
-├── bar/
-│   ├── mod.rs                           [Re-exports: Bar, BlockCommand, BlockConfig]
-│   ├── bar.rs
-│   │   ├── struct Bar                   [Status bar window with XFT support]
-│   │   ├── new()                        [Create bar X11 window, load font, init blocks]
-│   │   ├── draw()                       [Render tags + blocks with underlines]
-│   │   ├── update_blocks()              [Update block content based on intervals]
-│   │   ├── handle_click()               [Detect which tag was clicked]
-│   │   └── invalidate()                 [Mark bar as needing redraw]
-│   ├── font.rs
-│   │   ├── struct Font                  [XFT font wrapper]
-│   │   ├── struct FontDraw              [XFT drawing context]
-│   │   └── draw_text()                  [Render text with color]
-│   └── blocks/
-│       ├── mod.rs                       [Block trait, BlockConfig, BlockCommand enum]
-│       ├── battery.rs                   [Battery status block]
-│       ├── datetime.rs                  [Date/time formatting block]
-│       └── shell.rs                     [Shell command execution block]
-│
-├── keyboard/
-│   ├── mod.rs                           [Re-exports]
-│   ├── keycodes.rs                      [Key constants: Q, J, RETURN, etc]
-│   └── handlers.rs
-│       ├── enum KeyAction               [Spawn, KillClient, FocusStack, ViewTag, Restart, etc]
-│       ├── enum Arg                     [None, Int, Str, Array]
-│       ├── struct Key                   [Keybinding definition]
-│       ├── setup_keybinds()             [Register keys with X11]
-│       └── handle_key_press()           [Parse KeyPressEvent → KeyAction]
-│
-└── layout/
-    ├── mod.rs                           [Layout trait definition]
-    └── tiling.rs
-        └── TilingLayout::arrange()      [Calculate window positions]
+sudo pacman -S rust cargo libx11 libxft freetype2 fontconfig pkg-config
 #+end_src
 
-* Event Flow
+** Building from Source
+#+begin_src sh
+git clone https://github.com/tonybanters/oxwm
+cd oxwm
+cargo build --release
+sudo cp target/release/oxwm /usr/local/bin/
+#+end_src
 
-1. X11 event arrives → run() receives it
-2. handle_event() matches event type
-3. For KeyPress:
-   - keyboard::handle_key_press() → KeyAction
-   - handle_key_action() executes action
-   - update_bar() if tags/windows changed
-4. For Map/Unmap:
-   - Modify windows Vec and window_tags HashMap
-   - apply_layout() repositions everything (accounting for bar)
-   - update_bar() shows occupied tags
-   - update_focus_visuals() redraws borders
-5. For ButtonPress on bar:
-   - bar.handle_click() determines clicked tag
-   - view_tag() switches workspace
+Or use the justfile:
+#+begin_src sh
+just install
+#+end_src
+
+** Setting up OXWM
+Add the following to your =~/.xinitrc=:
+#+begin_src sh
+exec oxwm
+#+end_src
+
+Then start X with:
+#+begin_src sh
+startx
+#+end_src
+
+* Configuration
+OXWM follows the suckless philosophy: configuration is done by editing =src/config.rs= and recompiling.
+
+On first build, =config.rs= is automatically created from =src/default_config.rs=. Your =config.rs= is gitignored, so you can customize it without worrying about merge conflicts.
+
+To reset your config to defaults:
+#+begin_src sh
+just reset-config
+#+end_src
+
+Edit =src/config.rs= to customize:
+- Keybindings
+- Colors and appearance
+- Status bar blocks
+- Gaps and borders
+- Terminal and applications
+
+After making changes:
+#+begin_src sh
+just install
+#+end_src
+
+Then reload OXWM with Alt+Shift+R.
+
+* Contributing
+When contributing to OXWM:
+
+1. Never commit your personal =src/config.rs= (it's gitignored)
+2. Only modify =src/default_config.rs= if adding new configuration options
+3. Test your changes with =just test= using Xephyr
+4. Document any new features or keybindings
 
 * Key Bindings
+Default keybindings (customizable in config.rs):
 
 | Binding         | Action                  |
 |-----------------+-------------------------|
@@ -149,146 +96,86 @@ src/
 | Alt+1-9         | View tag 1-9            |
 | Alt+Shift+1-9   | Move window to tag 1-9  |
 | Alt+S           | Screenshot (maim)       |
-| Alt+D           | Application launcher    |
+| Alt+D           | dmenu launcher          |
+| Alt+A           | Toggle gaps             |
+| Alt+Shift+F     | Toggle fullscreen       |
 
-* ⚙ Installation — Running with Nix Flakes
-You can set up a reproducible development environment with Rust, Cargo, Xephyr, xterm, and
-just by using the flake.
+* Features
+- Dynamic tiling layout with master/stack
+- Tag-based workspaces (9 tags by default)
+- Configurable gaps between windows
+- Status bar with modular block system
+  - Battery, RAM, datetime, shell commands
+  - Custom colors and update intervals
+  - Click-to-switch tags
+- Window focus cycling
+- Hot reload without restarting X
+- Persistent window tags across restarts
+- Mouse hover to focus
+- Border indicators for focused windows
+- Fullscreen mode
+
+* Testing with Xephyr
+Test OXWM in a nested X server without affecting your current session:
 
 #+begin_src sh
-git clone https://github.com/tonybanters/oxwm
-cd oxwm
-
-# enter the dev shell
-nix develop
-
-# build normally
-cargo build
-#+end_src
-
-* Testing Xephyr with Justfile
-The =justfile= includes a =test= recipe that starts Xephyr on =:1=, launches
-test clients (xterm, xclock), and runs oxwm in the foreground.
-
-#+begin_src sh
-# inside nix develop
 just test
 #+end_src
 
-This should open a new Xephyr window. oxwm will attach to it and log X11
-events in your host terminal. Clients like xterm/xclock will appear inside Xephyr.
+This starts Xephyr on display :1 and launches OXWM inside it.
 
-* Current Status
-** Working Features
-- ✓ X11 event handling and window management
-- ✓ Tag system (9 workspaces) with keyboard switching
-- ✓ Window focus cycling (Alt+J/K)
-- ✓ Tiling layout with border indicators
-- ✓ Status bar showing tags
-  - Visual indicators: selected (white), occupied (gray line), empty (dim)
-  - Click-to-switch tags
-  - Performance-optimized redrawing
-- ✓ Basic keybindings (spawn, kill, focus, tags)
-- ✓ Configuration via Rust constants in config.rs
-- ✓ Hot reload functionality (Alt+Shift+R)
-- ✓ Persistent window tags across restarts
-- ✓ Status bar blocks system
-  - DateTime, Battery, Shell command blocks
-  - Configurable colors and update intervals
-  - Underline indicators for blocks
-  - Proper spacing between blocks
-  - Hackable block system for custom widgets
-- ✓ dmenu integration (Alt+D)
+Or manually:
+#+begin_src sh
+Xephyr -screen 1280x800 :1 &
+DISPLAY=:1 cargo run
+#+end_src
 
-** Immediate Next Steps
-- [ ] Mouse hover to focus windows
-- [ ] Configurable gaps between windows (vanitygaps-style)
-- [ ] Decide on reload behavior (should it auto-rebuild?)
-
-** Long Term Roadmap
-- [ ] Multi-monitor support
-- [ ] Additional layouts (monocle, floating, etc.)
-- [ ] Per-window floating behavior
-- [ ] Per-program rules (auto-tag assignment, floating rules)
-- [ ] Master area resizing
-- [ ] Window swapping in layout
-- [ ] External bar support (polybar, lemonbar, etc.)
-
-* OXWM Development Todo
-** DONE Core Window Management [2/2]
-- [X] Fix layout after program is closed (handle UnmapNotify events)
-  - [X] Add UnmapNotify to event handling
-  - [X] Remove closed windows from windows vector
-  - [X] Re-apply layout after window removal
-- [X] Add keybind to swap focus between windows
-  - [X] Track focused window in WindowManager struct
-  - [X] Implement focus cycling logic
-  - [X] Add visual focus indication (borders/colors)
-
-** DONE Tag System [3/3]
-- [X] Implement tag/workspace system (9 tags)
-- [X] Keybinds to switch tags (Alt+1-9)
-- [X] Keybinds to move windows to tags (Alt+Shift+1-9)
-
-** DONE Status Bar [2/2]
-- [X] Create basic bar window at screen top
-- [X] Display tag indicators with state (selected/occupied/empty)
-
-** DONE Bar Enhancements [3/3]
-- [X] Add status text area (right side of bar)
-- [X] Implement clock widget
-- [X] Add system information widgets
-
-** DONE Key System Improvements [2/2]
-- [X] dmenu integration for application launching
-- [X] More spawn commands in config (screenshot, volume, etc.)
-
-** TODO Layout System [0/5]
-- [ ] Mouse hover to focus windows
-- [ ] Configurable gaps between windows (vanitygaps-style)
-- [ ] Add monocle layout
-- [ ] Add floating layout mode
-- [ ] Handle window resize requests properly
-
-** TODO Advanced Features [0/4]
-- [ ] Decide on reload behavior (auto-rebuild vs manual)
-- [ ] Multi-monitor support
-- [ ] Per-window rules (floating, tag assignment)
-- [ ] Master area resizing keybinds
-
-** Polish & Features
-- [ ] Clean window destruction/cleanup
-- [ ] Handle edge cases (empty window list, invalid windows)
-- [ ] Better error messages and logging
-- [ ] Proper font rendering in bar (currently using basic X11 text)
+* Project Structure
+#+begin_src sh
+src/
+├── main.rs                  Entry point
+├── window_manager.rs        Core X11 event handling and window management
+├── default_config.rs        Default configuration (reference)
+├── config.rs               User configuration (gitignored, auto-generated)
+├── bar/
+│   ├── bar.rs              Status bar rendering with XFT
+│   ├── font.rs             Font handling
+│   └── blocks/             Modular status bar widgets
+├── keyboard/
+│   ├── handlers.rs         Keybinding actions
+│   └── keycodes.rs         X11 keycode constants
+└── layout/
+    └── tiling.rs           Tiling layout algorithm
+#+end_src
 
 * Architecture Notes
 ** Tag System
-Tags are implemented as bitmasks (TagMask = u32), allowing windows to belong to
-multiple tags simultaneously (though current UI only supports single tags).
-Each window has an associated TagMask in window_tags HashMap. Tags persist across
-WM restarts using X11 properties (_NET_CURRENT_DESKTOP for selected tags,
-_NET_CLIENT_INFO for per-window tags).
+Tags are implemented as bitmasks (TagMask = u32), allowing windows to belong to multiple tags simultaneously. Each window has an associated TagMask stored in a HashMap. Tags persist across WM restarts using X11 properties (_NET_CURRENT_DESKTOP for selected tags, _NET_CLIENT_INFO for per-window tags).
 
-** Bar Design
+** Status Bar
 The bar uses a performance-optimized approach with a modular block system:
-- Only redraws when invalidate() is called
+- Only redraws when invalidated
 - Pre-calculates tag widths on creation
-- Uses X11 graphics context for efficient drawing
-- Click handling uses O(n) tag width lookup
-- Blocks are updated independently based on their interval
-- Each block can have custom colors and optional underline indicators
-- Blocks are defined in config.rs and can be:
-  - DateTime: Display formatted date/time
-  - Battery: Show battery status with custom formats
-  - Shell: Execute shell commands and display output
-  - Static: Display fixed text
-- Blocks are easily hackable - add new block types in src/bar/blocks/
+- Blocks update independently based on their configured intervals
+- Supports custom colors and underline indicators
+- Easily extensible - add new block types in src/bar/blocks/
 
-** Configuration Philosophy
-Following dwm's approach: all configuration is in Rust source code. No runtime
-config files. Edit config.rs and recompile. This ensures type safety and
-compile-time validation of all settings.
+** Layout System
+The tiling layout divides the screen into a master area (left half) and stack area (right half). The master window occupies the full height of the master area, while stack windows split the stack area vertically. Gaps are configurable and can be toggled at runtime.
+
+* Development Roadmap
+** Current Focus
+- Multi-monitor support
+- Additional layouts (monocle, floating)
+- Master area resizing
+- Window swapping in layout
+
+** Future Enhancements
+- Per-window floating behavior
+- Per-program rules (auto-tag assignment, floating rules)
+- External bar support (polybar, lemonbar)
+- Scratchpad functionality
+- Window minimize/restore
 
 * License
-[[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL]]
+[[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL v3]]
