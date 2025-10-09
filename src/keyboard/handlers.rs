@@ -12,6 +12,7 @@ pub enum KeyAction {
     Restart,
     ViewTag,
     ToggleGaps,
+    ToggleFullScreen,
     MoveToTag,
     None,
 }
