@@ -283,23 +283,17 @@ impl WindowManager {
     fn toggle_fullscreen(&mut self) -> Result<()> {
         if let Some(focused) = self.focused_window {
             if self.fullscreen_window == Some(focused) {
-                // Exit fullscreen
                 self.fullscreen_window = None;
                 
-                // Show bar
                 self.connection.map_window(self.bar.window())?;
                 
-                // Restore normal layout
                 self.apply_layout()?;
                 self.update_focus_visuals()?;
             } else {
-                // Enter fullscreen
                 self.fullscreen_window = Some(focused);
                 
-                // Hide bar
                 self.connection.unmap_window(self.bar.window())?;
                 
-                // Make window fill entire screen
                 let screen_width = self.screen.width_in_pixels as u32;
                 let screen_height = self.screen.height_in_pixels as u32;
                 
@@ -311,7 +305,7 @@ impl WindowManager {
                         .width(screen_width)
                         .height(screen_height)
                         .border_width(0)
-                        .stack_mode(StackMode::ABOVE),  // This raises the window
+                        .stack_mode(StackMode::ABOVE),
                 )?;
                 
                 self.connection.flush()?;
