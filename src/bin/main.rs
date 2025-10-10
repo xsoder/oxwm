@@ -55,23 +55,20 @@ fn init_config() -> Result<()> {
     let main_template = include_str!("../../templates/main.rs");
     std::fs::write(config_dir.join("main.rs"), main_template)?;
 
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let cargo_toml = format!(
-        r#"[package]
+    let cargo_toml = r#"[package]
 name = "oxwm-user"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-oxwm = {{ path = "{}" }}
+oxwm = { git = "https://github.com/tonybanters/oxwm" }
 anyhow = "1"
 
 [[bin]]
 name = "oxwm-user"
 path = "main.rs"
-"#,
-        manifest_dir
-    );
+"#;
+
     std::fs::write(config_dir.join("Cargo.toml"), cargo_toml)?;
 
     std::fs::write(config_dir.join(".gitignore"), "target/\nCargo.lock\n")?;

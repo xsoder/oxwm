@@ -83,7 +83,18 @@
             }
           ];
           services.displayManager.sessionPackages = [oxwmDesktopItem];
-          environment.systemPackages = [cfg.package];
+          
+          environment.systemPackages = [
+            cfg.package
+            pkgs.rustc
+            pkgs.cargo
+            pkgs.pkg-config
+            pkgs.xorg.libX11
+            pkgs.xorg.libXft
+            pkgs.xorg.libXrender
+            pkgs.freetype
+            pkgs.fontconfig
+          ];
         };
       };
   };
