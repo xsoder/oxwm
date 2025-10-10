@@ -8,18 +8,15 @@
     nixpkgs,
   }: let
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
-    forAllSystems = nixpkgs.lib.genAttrs systems;
+
+    forAllSystems = fn: nixpkgs.lib.genAttrs systems (system: fn nixpkgs.legacyPackages.${system});
   in {
-    packages = forAllSystems (system: let
-      pkgs = import nixpkgs {inherit system;};
-    in {
+    packages = forAllSystems (pkgs: rec {
       default = pkgs.callPackage ./default.nix {};
-      oxwm = self.packages.${system}.default;
+      oxwm = default;
     });
 
-    devShells = forAllSystems (system: let
-      pkgs = import nixpkgs {inherit system;};
-    in {
+    devShells = forAllSystems (pkgs: {
       default = pkgs.mkShell {
         buildInputs = [
           pkgs.rustc
@@ -40,7 +37,7 @@
       };
     });
 
-    formatter = forAllSystems (system: (import nixpkgs {inherit system;}).alejandra);
+    formatter = forAllSystems (pkgs: pkgs.alejandra);
 
     nixosModules.default = {
       config,
@@ -83,7 +80,7 @@
             }
           ];
           services.displayManager.sessionPackages = [oxwmDesktopItem];
-          
+
           environment.systemPackages = [
             cfg.package
             pkgs.rustc
