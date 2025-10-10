@@ -3,8 +3,17 @@ name = "oxwm"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "oxwm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oxwm"
+path = "src/bin/main.rs"
+
 [dependencies]
 x11 = { version = "2.21", features = ["xlib", "xft"] }
 x11rb = "0.13"
 anyhow = "1"
 chrono = "0.4"
+dirs = "5.0"

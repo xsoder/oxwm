@@ -1,14 +1,13 @@
+use crate::Config;
 use crate::bar::Bar;
-use crate::config::{
-    BORDER_FOCUSED, BORDER_UNFOCUSED, BORDER_WIDTH, GAP_INNER_HORIZONTAL, GAP_INNER_VERTICAL,
-    GAP_OUTER_HORIZONTAL, GAP_OUTER_VERTICAL, GAPS_ENABLED, MODKEY, TAG_COUNT,
-};
 use crate::keyboard::{self, Arg, KeyAction};
 use crate::layout::GapConfig;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
+
 use anyhow::Result;
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
@@ -21,6 +20,7 @@ pub fn tag_mask(tag: usize) -> TagMask {
 }
 
 pub struct WindowManager {
+    config: Config,
     connection: RustConnection,
     screen_number: usize,
     root: Window,
@@ -37,7 +37,7 @@ pub struct WindowManager {
 }
 
 impl WindowManager {
-    pub fn new() -> Result<Self> {
+    pub fn new(config: Config) -> Result<Self> {
         let (connection, screen_number) = x11rb::connect(None)?;
         let root = connection.setup().roots[screen_number].root;
         let screen = connection.setup().roots[screen_number].clone();
@@ -64,7 +64,7 @@ impl WindowManager {
             x11rb::NONE,
             x11rb::NONE,
             ButtonIndex::M1,
-            u16::from(MODKEY).into(),
+            u16::from(config.modkey).into(),
         )?;
 
         connection.grab_button(
@@ -76,15 +76,16 @@ impl WindowManager {
             x11rb::NONE,
             x11rb::NONE,
             ButtonIndex::M3,
-            u16::from(MODKEY).into(),
+            u16::from(config.modkey).into(),
         )?;
 
-        let bar = Bar::new(&connection, &screen, screen_number)?;
+        let bar = Bar::new(&connection, &screen, screen_number, &config)?;
 
-        let selected_tags = Self::get_saved_selected_tags(&connection, root)?;
-        let gaps_enabled = GAPS_ENABLED;
+        let selected_tags = Self::get_saved_selected_tags(&connection, root, config.tags.len())?;
+        let gaps_enabled = config.gaps_enabled;
 
-        let mut window_manger = Self {
+        let mut window_manager = Self {
+            config,
             connection,
             screen_number,
             root,
@@ -100,13 +101,17 @@ impl WindowManager {
             bar,
         };
 
-        window_manger.scan_existing_windows()?;
-        window_manger.update_bar()?;
+        window_manager.scan_existing_windows()?;
+        window_manager.update_bar()?;
 
-        Ok(window_manger)
+        Ok(window_manager)
     }
 
-    fn get_saved_selected_tags(connection: &RustConnection, root: Window) -> Result<TagMask> {
+    fn get_saved_selected_tags(
+        connection: &RustConnection,
+        root: Window,
+        tag_count: usize,
+    ) -> Result<TagMask> {
         let net_current_desktop = connection
             .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
             .reply()?
@@ -123,7 +128,7 @@ impl WindowManager {
                     prop.value[2],
                     prop.value[3],
                 ]);
-                if desktop < TAG_COUNT as u32 {
+                if desktop < tag_count as u32 {
                     let mask = tag_mask(desktop as usize);
                     return Ok(mask);
                 }
@@ -224,7 +229,7 @@ impl WindowManager {
                     prop.value[3],
                 ]);
 
-                if tags != 0 && tags < (1 << crate::config::TAG_COUNT) {
+                if tags != 0 && tags < (1 << self.config.tags.len()) {
                     return Ok(tags);
                 }
             }
@@ -284,10 +289,81 @@ impl WindowManager {
         Ok(())
     }
 
+    fn handle_restart(&self) -> Result<bool> {
+        if !can_recompile() {
+            eprintln!("Error: cargo not found. Install rust toolchain.");
+            notify_error("OXWM", "Cannot recompile: cargo not installed");
+            return Ok(false);
+        }
+
+        if self.needs_recompile()? {
+            println!("Config changed, recompiling...");
+            self.recompile()?;
+        }
+
+        Ok(true)
+    }
+
+    fn needs_recompile(&self) -> Result<bool> {
+        let config_dir = get_config_path();
+        let binary_path = get_cache_binary_path();
+
+        if !binary_path.exists() {
+            return Ok(true);
+        }
+
+        let binary_time = std::fs::metadata(&binary_path)?.modified()?;
+
+        let watch_files = ["config.rs", "main.rs", "Cargo.toml"];
+
+        for filename in &watch_files {
+            let path = config_dir.join(filename);
+            if !path.exists() {
+                continue;
+            }
+
+            let file_time = std::fs::metadata(&path)?.modified()?;
+            if file_time > binary_time {
+                println!("✓ Change detected: {}", filename);
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    fn recompile(&self) -> Result<()> {
+        let config_dir = get_config_path();
+
+        notify("OXWM", "Recompiling configuration...");
+
+        let output = std::process::Command::new("cargo")
+            .args(&["build", "--release"])
+            .current_dir(&config_dir)
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            notify_error("OXWM Compile Error", &stderr);
+            eprintln!("Compilation failed:\n{}", stderr);
+            anyhow::bail!("Failed to compile configuration");
+        }
+
+        let source = config_dir.join("target/release/oxwm-user");
+        let dest = get_cache_binary_path();
+
+        std::fs::create_dir_all(dest.parent().unwrap())?;
+        std::fs::copy(&source, &dest)?;
+
+        notify("OXWM", "Recompiled successfully! Restarting...");
+
+        Ok(())
+    }
+
     pub fn run(&mut self) -> Result<bool> {
         println!("oxwm started on display {}", self.screen_number);
 
-        keyboard::setup_keybinds(&self.connection, self.root)?;
+        keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
         self.update_bar()?;
 
         loop {
@@ -387,7 +463,12 @@ impl WindowManager {
                 }
             }
             KeyAction::Quit | KeyAction::Restart => {
-                //no-op
+                // Handled in handle_event
+            }
+            KeyAction::Recompile => {
+                if let Err(e) = self.recompile() {
+                    eprintln!("Recompile failed: {}", e);
+                }
             }
             KeyAction::ViewTag => {
                 if let Arg::Int(tag_index) = arg {
@@ -403,9 +484,7 @@ impl WindowManager {
                 self.gaps_enabled = !self.gaps_enabled;
                 self.apply_layout()?;
             }
-            KeyAction::None => {
-                //no-op
-            }
+            KeyAction::None => {}
         }
         Ok(())
     }
@@ -439,7 +518,7 @@ impl WindowManager {
     }
 
     pub fn view_tag(&mut self, tag_index: usize) -> Result<()> {
-        if tag_index >= TAG_COUNT {
+        if tag_index >= self.config.tags.len() {
             return Ok(());
         }
 
@@ -487,7 +566,7 @@ impl WindowManager {
     }
 
     pub fn move_to_tag(&mut self, tag_index: usize) -> Result<()> {
-        if tag_index >= TAG_COUNT {
+        if tag_index >= self.config.tags.len() {
             return Ok(());
         }
 
@@ -547,9 +626,9 @@ impl WindowManager {
     fn update_focus_visuals(&self) -> Result<()> {
         for &window in &self.windows {
             let (border_color, border_width) = if self.focused_window == Some(window) {
-                (BORDER_FOCUSED, BORDER_WIDTH)
+                (self.config.border_focused, self.config.border_width)
             } else {
-                (BORDER_UNFOCUSED, BORDER_WIDTH)
+                (self.config.border_unfocused, self.config.border_width)
             };
 
             self.connection.configure_window(
@@ -585,7 +664,7 @@ impl WindowManager {
             .reply()?;
 
         let pointer = self.connection.query_pointer(self.root)?.reply()?;
-        let (original_x_value, original_y_value) = (pointer.root_x, pointer.root_y);
+        let (start_x, start_y) = (pointer.root_x, pointer.root_y);
 
         self.connection.configure_window(
             window,
@@ -596,13 +675,11 @@ impl WindowManager {
             let event = self.connection.wait_for_event()?;
             match event {
                 Event::MotionNotify(e) => {
-                    let new_x_value = geometry.x + (e.root_x - original_x_value);
-                    let new_y_value = geometry.y + (e.root_y - original_y_value);
+                    let new_x = geometry.x + (e.root_x - start_x);
+                    let new_y = geometry.y + (e.root_y - start_y);
                     self.connection.configure_window(
                         window,
-                        &ConfigureWindowAux::new()
-                            .x(new_x_value as i32)
-                            .y(new_y_value as i32),
+                        &ConfigureWindowAux::new().x(new_x as i32).y(new_y as i32),
                     )?;
                     self.connection.flush()?;
                 }
@@ -735,11 +812,11 @@ impl WindowManager {
                 }
             }
             Event::KeyPress(event) => {
-                let (action, arg) = keyboard::handle_key_press(event)?;
+                let (action, arg) = keyboard::handle_key_press(event, &self.config.keybindings)?;
                 match action {
                     KeyAction::Quit => return Ok(Some(false)),
-                    KeyAction::Restart => return Ok(Some(true)),
-                    _ => self.handle_key_action(action, arg)?,
+                    KeyAction::Restart => return Ok(Some(self.handle_restart()?)),
+                    _ => self.handle_key_action(action, &arg)?,
                 }
             }
             Event::ButtonPress(event) => {
@@ -774,17 +851,17 @@ impl WindowManager {
         }
         let screen_width = self.screen.width_in_pixels as u32;
         let screen_height = self.screen.height_in_pixels as u32;
-        let border_width = BORDER_WIDTH;
+        let border_width = self.config.border_width;
 
         let bar_height = self.bar.height() as u32;
         let usable_height = screen_height.saturating_sub(bar_height);
 
         let gaps = if self.gaps_enabled {
             GapConfig {
-                inner_horizontal: GAP_INNER_HORIZONTAL,
-                inner_vertical: GAP_INNER_VERTICAL,
-                outer_horizontal: GAP_OUTER_HORIZONTAL,
-                outer_vertical: GAP_OUTER_VERTICAL,
+                inner_horizontal: self.config.gap_inner_horizontal,
+                inner_vertical: self.config.gap_inner_vertical,
+                outer_horizontal: self.config.gap_outer_horizontal,
+                outer_vertical: self.config.gap_outer_vertical,
             }
         } else {
             GapConfig {
@@ -850,4 +927,36 @@ impl WindowManager {
         }
         Ok(())
     }
+}
+
+fn get_config_path() -> PathBuf {
+    dirs::config_dir()
+        .expect("Could not find config directory")
+        .join("oxwm")
+}
+
+fn get_cache_binary_path() -> PathBuf {
+    dirs::cache_dir()
+        .expect("Could not find cache directory")
+        .join("oxwm/oxwm-binary")
+}
+
+fn can_recompile() -> bool {
+    std::process::Command::new("cargo")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn notify(title: &str, body: &str) {
+    let _ = std::process::Command::new("notify-send")
+        .args(&[title, body])
+        .spawn();
+}
+
+fn notify_error(title: &str, body: &str) {
+    let _ = std::process::Command::new("notify-send")
+        .args(&["-u", "critical", title, body])
+        .spawn();
 }

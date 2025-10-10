@@ -40,8 +40,6 @@ impl Ram {
         }
 
         let used = total.saturating_sub(available);
-        let used_gb = used as f32 / 1024.0 / 1024.0;
-        let total_gb = total as f32 / 1024.0 / 1024.0;
         let percentage = if total > 0 {
             (used as f32 / total as f32) * 100.0
         } else {

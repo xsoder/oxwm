@@ -17,6 +17,7 @@ pub trait Block {
     fn color(&self) -> u32;
 }
 
+#[derive(Clone)]
 pub struct BlockConfig {
     pub format: &'static str,
     pub command: BlockCommand,
@@ -25,6 +26,7 @@ pub struct BlockConfig {
     pub underline: bool,
 }
 
+#[derive(Clone)]
 pub enum BlockCommand {
     Shell(&'static str),
     DateTime(&'static str),

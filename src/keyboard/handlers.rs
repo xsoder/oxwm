@@ -1,4 +1,3 @@
-use crate::config::KEYBINDINGS;
 use anyhow::Result;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -10,6 +9,7 @@ pub enum KeyAction {
     FocusStack,
     Quit,
     Restart,
+    Recompile,
     ViewTag,
     ToggleGaps,
     ToggleFullScreen,
@@ -17,7 +17,7 @@ pub enum KeyAction {
     None,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Arg {
     None,
     Int(i32),
@@ -25,6 +25,13 @@ pub enum Arg {
     Array(&'static [&'static str]),
 }
 
+impl Arg {
+    pub const fn none() -> Self {
+        Arg::None
+    }
+}
+
+#[derive(Clone)]
 pub struct Key {
     pub(crate) modifiers: &'static [KeyButMask],
     pub(crate) key: Keycode,
@@ -54,8 +61,12 @@ fn modifiers_to_mask(modifiers: &[KeyButMask]) -> u16 {
         .fold(0u16, |acc, &modifier| acc | u16::from(modifier))
 }
 
-pub fn setup_keybinds(connection: &impl Connection, root: Window) -> Result<()> {
-    for keybinding in KEYBINDINGS {
+pub fn setup_keybinds(
+    connection: &impl Connection,
+    root: Window,
+    keybindings: &[Key],
+) -> Result<()> {
+    for keybinding in keybindings {
         let modifier_mask = modifiers_to_mask(keybinding.modifiers);
 
         connection.grab_key(
@@ -70,14 +81,14 @@ pub fn setup_keybinds(connection: &impl Connection, root: Window) -> Result<()> 
     Ok(())
 }
 
-pub fn handle_key_press(event: KeyPressEvent) -> Result<(KeyAction, &'static Arg)> {
-    for keybinding in KEYBINDINGS {
+pub fn handle_key_press(event: KeyPressEvent, keybindings: &[Key]) -> Result<(KeyAction, Arg)> {
+    for keybinding in keybindings {
         let modifier_mask = modifiers_to_mask(keybinding.modifiers);
 
         if event.detail == keybinding.key && event.state == modifier_mask.into() {
-            return Ok((keybinding.func, &keybinding.arg));
+            return Ok((keybinding.func, keybinding.arg.clone()));
         }
     }
 
-    Ok((KeyAction::None, &Arg::None))
+    Ok((KeyAction::None, Arg::None))
 }

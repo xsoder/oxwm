@@ -1,6 +1,6 @@
 use super::blocks::Block;
 use super::font::{Font, FontDraw};
-use crate::config::{FONT, SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED, STATUS_BLOCKS, TAGS};
+use crate::Config;
 use anyhow::Result;
 use std::time::Instant;
 use x11rb::COPY_DEPTH_FROM_PARENT;
@@ -25,10 +25,20 @@ pub struct Bar {
     block_last_updates: Vec<Instant>,
     block_underlines: Vec<bool>,
     status_text: String,
+
+    tags: Vec<String>,
+    scheme_normal: crate::ColorScheme,
+    scheme_occupied: crate::ColorScheme,
+    scheme_selected: crate::ColorScheme,
 }
 
 impl Bar {
-    pub fn new(connection: &RustConnection, screen: &Screen, screen_num: usize) -> Result<Self> {
+    pub fn new(
+        connection: &RustConnection,
+        screen: &Screen,
+        screen_num: usize,
+        config: &Config,
+    ) -> Result<Self> {
         let window = connection.generate_id()?;
         let graphics_context = connection.generate_id()?;
 
@@ -38,7 +48,7 @@ impl Bar {
         if display.is_null() {
             anyhow::bail!("Failed to open X11 display for XFT");
         }
-        let font = Font::new(display, screen_num as i32, FONT)?;
+        let font = Font::new(display, screen_num as i32, &config.font)?;
 
         let height = (font.height() as f32 * 1.4) as u16;
 
@@ -54,7 +64,7 @@ impl Bar {
             WindowClass::INPUT_OUTPUT,
             screen.root_visual,
             &CreateWindowAux::new()
-                .background_pixel(SCHEME_NORMAL.background)
+                .background_pixel(config.scheme_normal.background)
                 .event_mask(EventMask::EXPOSURE | EventMask::BUTTON_PRESS)
                 .override_redirect(1),
         )?;
@@ -63,8 +73,8 @@ impl Bar {
             graphics_context,
             window,
             &CreateGCAux::new()
-                .foreground(SCHEME_NORMAL.foreground)
-                .background(SCHEME_NORMAL.background),
+                .foreground(config.scheme_normal.foreground)
+                .background(config.scheme_normal.background),
         )?;
 
         connection.map_window(window)?;
@@ -77,7 +87,8 @@ impl Bar {
 
         let horizontal_padding = (font.height() as f32 * 0.4) as u16;
 
-        let tag_widths = TAGS
+        let tag_widths = config
+            .tags
             .iter()
             .map(|tag| {
                 let text_width = font.text_width(tag);
@@ -85,14 +96,16 @@ impl Bar {
             })
             .collect();
 
-        let blocks: Vec<Box<dyn Block>> = STATUS_BLOCKS
+        let blocks: Vec<Box<dyn Block>> = config
+            .status_blocks
             .iter()
-            .map(|config| config.to_block())
+            .map(|block_config| block_config.to_block())
             .collect();
 
-        let block_underlines: Vec<bool> = STATUS_BLOCKS
+        let block_underlines: Vec<bool> = config
+            .status_blocks
             .iter()
-            .map(|config| config.underline)
+            .map(|block_config| block_config.underline)
             .collect();
 
         let block_last_updates = vec![Instant::now(); blocks.len()];
@@ -111,6 +124,10 @@ impl Bar {
             block_last_updates,
             block_underlines,
             status_text: String::new(),
+            tags: config.tags.clone(),
+            scheme_normal: config.scheme_normal,
+            scheme_occupied: config.scheme_occupied,
+            scheme_selected: config.scheme_selected,
         })
     }
 
@@ -134,7 +151,7 @@ impl Bar {
             let elapsed = now.duration_since(self.block_last_updates[i]);
 
             if elapsed >= block.interval() {
-                if let Ok(_) = block.content() {
+                if block.content().is_ok() {
                     self.block_last_updates[i] = now;
                     changed = true;
                 }
@@ -167,7 +184,7 @@ impl Bar {
 
         connection.change_gc(
             self.graphics_context,
-            &ChangeGCAux::new().foreground(SCHEME_NORMAL.background),
+            &ChangeGCAux::new().foreground(self.scheme_normal.background),
         )?;
         connection.poly_fill_rectangle(
             self.window,
@@ -182,7 +199,7 @@ impl Bar {
 
         let mut x_position: i16 = 0;
 
-        for (tag_index, tag) in TAGS.iter().enumerate() {
+        for (tag_index, tag) in self.tags.iter().enumerate() {
             let tag_mask = 1 << tag_index;
             let is_selected = (current_tags & tag_mask) != 0;
             let is_occupied = (occupied_tags & tag_mask) != 0;
@@ -190,11 +207,11 @@ impl Bar {
             let tag_width = self.tag_widths[tag_index];
 
             let scheme = if is_selected {
-                &SCHEME_SELECTED
+                &self.scheme_selected
             } else if is_occupied {
-                &SCHEME_OCCUPIED
+                &self.scheme_occupied
             } else {
-                &SCHEME_NORMAL
+                &self.scheme_normal
             };
 
             let text_width = self.font.text_width(tag);
@@ -297,7 +314,7 @@ impl Bar {
             }
             current_x_position += tag_width as i16;
         }
-        return None;
+        None
     }
 
     pub fn needs_redraw(&self) -> bool {
