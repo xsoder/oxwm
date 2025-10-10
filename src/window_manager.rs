@@ -351,9 +351,17 @@ impl WindowManager {
 
         let source = config_dir.join("target/release/oxwm-user");
         let dest = get_cache_binary_path();
+        let backup = dest.with_extension("old");
 
         std::fs::create_dir_all(dest.parent().unwrap())?;
+
+        if dest.exists() {
+            std::fs::rename(&dest, &backup)?;
+        }
+
         std::fs::copy(&source, &dest)?;
+
+        let _ = std::fs::remove_file(&backup);
 
         notify("OXWM", "Recompiled successfully! Restarting...");
 

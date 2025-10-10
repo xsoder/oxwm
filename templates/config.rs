@@ -164,7 +164,7 @@ pub const STATUS_BLOCKS: &[BlockConfig] = &[
         underline: false,
     },
     BlockConfig {
-        format: " {}",
+        format: " {}",
         command: BlockCommand::Shell("uname -r"),
         interval_secs: u64::MAX,
         color: RED,
