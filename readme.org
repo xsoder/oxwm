@@ -4,6 +4,7 @@
 * Table of Contents :toc:
 - [[#oxwm][OXWM]]
 - [[#installation][Installation]]
+  - [[#nixos-with-flakes][NixOS (with Flakes)]]
   - [[#arch-linux][Arch Linux]]
   - [[#building-from-source][Building from Source]]
   - [[#setting-up-oxwm][Setting up OXWM]]
@@ -24,6 +25,88 @@ philosophy of *"edit + recompile."*, but with sane defaults and no arbitrary eli
 enforcing bad variable names and bad file structure topology.
 
 * Installation
+** NixOS (with Flakes)
+
+*** Adding OXWM to your flake inputs
+Add oxwm to your =flake.nix= inputs:
+
+#+begin_src nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    oxwm.url = "github:tonybanters/oxwm";
+    oxwm.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { self, nixpkgs, oxwm, ... }: {
+    nixosConfigurations.yourhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ./configuration.nix
+        oxwm.nixosModules.default
+      ];
+    };
+  };
+}
+#+end_src
+
+*** Enabling OXWM in configuration.nix
+Add this to your =configuration.nix=:
+
+#+begin_src nix
+{ config, pkgs, ... }:
+
+{
+  services.xserver = {
+    enable = true;
+    
+    windowManager.oxwm.enable = true;
+  };
+
+  # Recommended: Install a display manager
+  services.xserver.displayManager.lightdm.enable = true;
+  # Or use another display manager like sddm, gdm, etc.
+}
+#+end_src
+
+*** Initialize your config
+After rebuilding your system with =sudo nixos-rebuild switch=, log in via your display manager, then run:
+
+#+begin_src sh
+oxwm --init
+#+end_src
+
+This creates your personal config at =~/.config/oxwm/config.rs=. Edit it and reload with =Mod+Shift+R=.
+
+*** Advanced: Using a specific oxwm version
+If you want to pin or customize the oxwm package:
+
+#+begin_src nix
+{
+  services.xserver.windowManager.oxwm = {
+    enable = true;
+    # Use a specific version or build with custom options
+    package = oxwm.packages.${pkgs.system}.default;
+  };
+}
+#+end_src
+
+*** Development setup with Nix
+For development, use the provided dev shell:
+
+#+begin_src sh
+# Clone the repository
+git clone https://github.com/tonybanters/oxwm
+cd oxwm
+
+# Enter the development environment
+nix develop
+
+# Build and test
+cargo build
+just test
+#+end_src
+
 ** Arch Linux
 Install dependencies:
 #+begin_src sh
@@ -44,6 +127,7 @@ just install
 #+end_src
 
 ** Setting up OXWM
+*** Without a display manager (startx)
 Add the following to your =~/.xinitrc=:
 #+begin_src sh
 exec oxwm
@@ -54,35 +138,28 @@ Then start X with:
 startx
 #+end_src
 
+*** With a display manager
+If using a display manager (LightDM, GDM, SDDM), OXWM should appear in the session list after installation.
+
 * Configuration
-OXWM follows the suckless philosophy: configuration is done by editing =src/config.rs= and recompiling.
+OXWM follows the suckless philosophy: configuration is done by editing =~/.config/oxwm/config.rs= and recompiling.
 
-On first build, =config.rs= is automatically created from =src/default_config.rs=. Your =config.rs= is gitignored, so you can customize it without worrying about merge conflicts.
+On first run with =oxwm --init=, your config is automatically created from the template. Your =config.rs= is gitignored, so you can customize it without worrying about merge conflicts.
 
-To reset your config to defaults:
-#+begin_src sh
-just reset-config
-#+end_src
-
-Edit =src/config.rs= to customize:
+Edit =~/.config/oxwm/config.rs= to customize:
 - Keybindings
 - Colors and appearance
 - Status bar blocks
 - Gaps and borders
 - Terminal and applications
 
-After making changes:
-#+begin_src sh
-just install
-#+end_src
-
-Then reload OXWM with Alt+Shift+R.
+After making changes, reload OXWM with =Mod+Shift+R= (auto-recompiles if needed).
 
 * Contributing
 When contributing to OXWM:
 
-1. Never commit your personal =src/config.rs= (it's gitignored)
-2. Only modify =src/default_config.rs= if adding new configuration options
+1. Never commit your personal =~/.config/oxwm/config.rs=
+2. Only modify =templates/config.rs= if adding new configuration options
 3. Test your changes with =just test= using Xephyr
 4. Document any new features or keybindings
 
@@ -91,17 +168,17 @@ Default keybindings (customizable in config.rs):
 
 | Binding         | Action                  |
 |-----------------+-------------------------|
-| Alt+Return      | Spawn terminal          |
-| Alt+J/K         | Cycle focus down/up     |
-| Alt+Q           | Kill focused window     |
-| Alt+Shift+Q     | Quit WM                 |
-| Alt+Shift+R     | Hot reload WM           |
-| Alt+1-9         | View tag 1-9            |
-| Alt+Shift+1-9   | Move window to tag 1-9  |
-| Alt+S           | Screenshot (maim)       |
-| Alt+D           | dmenu launcher          |
-| Alt+A           | Toggle gaps             |
-| Alt+Shift+F     | Toggle fullscreen       |
+| Super+Return    | Spawn terminal          |
+| Super+J/K       | Cycle focus down/up     |
+| Super+Q         | Kill focused window     |
+| Super+Shift+Q   | Quit WM                 |
+| Super+Shift+R   | Hot reload WM           |
+| Super+1-9       | View tag 1-9            |
+| Super+Shift+1-9 | Move window to tag 1-9  |
+| Super+S         | Screenshot (maim)       |
+| Super+D         | dmenu launcher          |
+| Super+A         | Toggle gaps             |
+| Super+Shift+F   | Toggle fullscreen       |
 
 * Features
 - Dynamic tiling layout with master/stack
@@ -217,7 +294,7 @@ src/
 └── layout/
     ├── mod.rs                           [Layout trait definition]
     └── tiling.rs
-        └── TilingLayout::arrange()      [Calculate window positions]c
+        └── TilingLayout::arrange()      [Calculate window positions]
 #+end_src
 
 * Architecture Notes
@@ -251,3 +328,4 @@ The tiling layout divides the screen into a master area (left half) and stack ar
 
 * License
 [[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL v3]]
+

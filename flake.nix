@@ -1,19 +1,22 @@
 {
-  description = "oxwm - A dynamic window manager written in Rust";
+  description = "oxwm - A dynamic window manager.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-      in
-      {
+  outputs = {
+    self,
+    nixpkgs,
+    flake-utils,
+  }:
+    flake-utils.lib.eachDefaultSystem (
+      system: let
+        pkgs = import nixpkgs {inherit system;};
+      in {
         packages = {
-          default = pkgs.callPackage ./default.nix { };
+          default = pkgs.callPackage ./default.nix {};
           oxwm = self.packages.${system}.default;
         };
 
@@ -40,16 +43,33 @@
 
         formatter = pkgs.alejandra;
       }
-    ) // {
-      # NixOS module
-      nixosModules.default = { config, lib, pkgs, ... }:
-        with lib;
-        let
+    )
+    // {
+      nixosModules.default = {
+        config,
+        lib,
+        pkgs,
+        ...
+      }:
+        with lib; let
           cfg = config.services.xserver.windowManager.oxwm;
-        in
-        {
+
+          oxwmDesktopItem = pkgs.writeTextFile {
+            name = "oxwm.desktop";
+            destination = "/share/xsessions/oxwm.desktop";
+            text = ''
+              [Desktop Entry]
+              Name=OXWM
+              Comment=A dynamic window manager written in Rust
+              Exec=${cfg.package}/bin/oxwm
+              Type=Application
+              DesktopNames=OXWM
+            '';
+          };
+        in {
           options.services.xserver.windowManager.oxwm = {
             enable = mkEnableOption "oxwm window manager";
+
             package = mkOption {
               type = types.package;
               default = self.packages.${pkgs.system}.default;
@@ -58,15 +78,18 @@
           };
 
           config = mkIf cfg.enable {
-            services.xserver.windowManager.session = [{
-              name = "oxwm";
-              start = ''
-                ${cfg.package}/bin/oxwm &
-                waitPID=$!
-              '';
-            }];
+            services.xserver.windowManager.session = [
+              {
+                name = "oxwm";
+                start = ''
+                  ${cfg.package}/bin/oxwm &
+                  waitPID=$!
+                '';
+              }
+            ];
 
-            environment.systemPackages = [ cfg.package ];
+            services.displayManager.sessionPackages = [oxwmDesktopItem];
+            environment.systemPackages = [cfg.package];
           };
         };
     };
