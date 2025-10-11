@@ -26,6 +26,7 @@ pub struct Config {
     pub gap_outer_vertical: u32,
 
     // Basics
+    pub terminal: String,
     pub modkey: x11rb::protocol::xproto::KeyButMask,
 
     // Tags
@@ -59,6 +60,8 @@ impl Default for Config {
         const MODKEY: KeyButMask = KeyButMask::MOD4;
         const SHIFT: KeyButMask = KeyButMask::SHIFT;
 
+        const TERMINAL: &str = "st";
+
         Self {
             border_width: 2,
             border_focused: 0x6dade3,
@@ -69,6 +72,7 @@ impl Default for Config {
             gap_inner_vertical: 0,
             gap_outer_horizontal: 0,
             gap_outer_vertical: 0,
+            terminal: TERMINAL.to_string(),
             modkey: MODKEY,
             tags: vec!["1", "2", "3", "4", "5", "6", "7", "8", "9"]
                 .into_iter()
@@ -79,7 +83,7 @@ impl Default for Config {
                     &[MODKEY],
                     keycodes::RETURN,
                     KeyAction::Spawn,
-                    Arg::Str("st"),
+                    Arg::Str(TERMINAL),
                 ),
                 Key::new(
                     &[MODKEY],
@@ -164,7 +168,7 @@ impl Default for Config {
                 ),
             ],
             status_blocks: vec![crate::bar::BlockConfig {
-                format: "{}",
+                format: " {}",
                 command: crate::bar::BlockCommand::DateTime("%a, %b %d - %-I:%M %P"),
                 interval_secs: 1,
                 color: 0x0db9d7,
