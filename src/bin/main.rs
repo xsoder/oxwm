@@ -32,10 +32,27 @@ fn main() -> Result<()> {
         let err = Command::new(&cache_binary).args(&args[1..]).exec();
         anyhow::bail!("Failed to exec user binary: {}", err);
     } else {
-        eprintln!("No configuration found.");
-        eprintln!("Run: oxwm --init");
-        eprintln!("Then add 'exec oxwm' to your ~/.xinitrc");
-        std::process::exit(1);
+        // No user config - use built-in defaults
+        eprintln!("╔════════════════════════════════════════╗");
+        eprintln!("║  OXWM: Running with default config    ║");
+        eprintln!("╚════════════════════════════════════════╝");
+        eprintln!();
+        eprintln!("ℹ️  Run 'oxwm --init' to create a custom config");
+        eprintln!();
+
+        let config = oxwm::Config::default();
+        let mut wm = oxwm::window_manager::WindowManager::new(config)?;
+        let should_restart = wm.run()?;
+
+        drop(wm);
+
+        if should_restart {
+            use std::os::unix::process::CommandExt;
+            let err = Command::new(&args[0]).args(&args[1..]).exec();
+            eprintln!("Failed to restart: {}", err);
+        }
+
+        Ok(())
     }
 }
 
@@ -123,7 +140,7 @@ pkgs.mkShell {
     recompile_config()?;
 
     println!("\n✓ Setup complete!");
-    println!("  Add 'exec oxwm' to your ~/.xinitrc");
+    println!("  Your custom config is now active");
     println!("  Reload config anytime with Mod+Shift+R");
 
     Ok(())
@@ -253,14 +270,15 @@ fn print_help() {
     println!("    --recompile    Recompile user configuration");
     println!("    --version      Print version information");
     println!("    --help         Print this help message\n");
-    println!("SETUP:");
-    println!("    1. Run 'oxwm --init' to create your config");
-    println!("    2. Edit ~/.config/oxwm/config.rs");
-    println!("    3. Add 'exec oxwm' to your ~/.xinitrc");
-    println!("    4. Start X with 'startx'\n");
     println!("CONFIGURATION:");
-    println!("    Config location: ~/.config/oxwm/config.rs");
-    println!("    Reload hotkey:   Mod+Shift+R (auto-recompiles if needed)\n");
+    println!("    Without --init: Runs with built-in defaults");
+    println!("    With --init:    Uses custom config from ~/.config/oxwm/config.rs");
+    println!("    Reload hotkey:  Mod+Shift+R (auto-recompiles if needed)\n");
+    println!("SETUP:");
+    println!("    1. Add 'exec oxwm' to your ~/.xinitrc (works immediately with defaults)");
+    println!("    2. Optionally run 'oxwm --init' to create custom config");
+    println!("    3. Edit ~/.config/oxwm/config.rs to customize");
+    println!("    4. Restart with Mod+Shift+R\n");
     println!("ADVANCED:");
     println!("    Create flake.nix or shell.nix in ~/.config/oxwm to use nix builds");
 }

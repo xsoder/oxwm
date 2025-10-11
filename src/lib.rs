@@ -53,6 +53,16 @@ pub struct ColorScheme {
 
 impl Default for Config {
     fn default() -> Self {
+        use crate::keyboard::handlers::Key;
+        use crate::keyboard::{Arg, KeyAction, keycodes};
+        use x11rb::protocol::xproto::KeyButMask;
+
+        const MODKEY: KeyButMask = KeyButMask::MOD4;
+        const SHIFT: KeyButMask = KeyButMask::SHIFT;
+
+        // Detect terminal
+        let terminal = detect_terminal();
+
         Self {
             border_width: 2,
             border_focused: 0x6dade3,
@@ -63,13 +73,101 @@ impl Default for Config {
             gap_inner_vertical: 0,
             gap_outer_horizontal: 0,
             gap_outer_vertical: 0,
-            terminal: "xterm".to_string(),
-            modkey: x11rb::protocol::xproto::KeyButMask::MOD4,
+            terminal,
+            modkey: MODKEY,
             tags: vec!["1", "2", "3", "4", "5", "6", "7", "8", "9"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
-            keybindings: Vec::new(),
+            keybindings: vec![
+                // Launch terminal
+                Key::new(
+                    &[MODKEY],
+                    keycodes::RETURN,
+                    KeyAction::Spawn,
+                    Arg::Str("xterm"),
+                ),
+                // Window management
+                Key::new(&[MODKEY], keycodes::Q, KeyAction::KillClient, Arg::None),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::F,
+                    KeyAction::ToggleFullScreen,
+                    Arg::None,
+                ),
+                Key::new(&[MODKEY], keycodes::A, KeyAction::ToggleGaps, Arg::None),
+                // WM controls
+                Key::new(&[MODKEY, SHIFT], keycodes::Q, KeyAction::Quit, Arg::None),
+                Key::new(&[MODKEY, SHIFT], keycodes::R, KeyAction::Restart, Arg::None),
+                // Focus
+                Key::new(&[MODKEY], keycodes::J, KeyAction::FocusStack, Arg::Int(-1)),
+                Key::new(&[MODKEY], keycodes::K, KeyAction::FocusStack, Arg::Int(1)),
+                // View tags
+                Key::new(&[MODKEY], keycodes::KEY_1, KeyAction::ViewTag, Arg::Int(0)),
+                Key::new(&[MODKEY], keycodes::KEY_2, KeyAction::ViewTag, Arg::Int(1)),
+                Key::new(&[MODKEY], keycodes::KEY_3, KeyAction::ViewTag, Arg::Int(2)),
+                Key::new(&[MODKEY], keycodes::KEY_4, KeyAction::ViewTag, Arg::Int(3)),
+                Key::new(&[MODKEY], keycodes::KEY_5, KeyAction::ViewTag, Arg::Int(4)),
+                Key::new(&[MODKEY], keycodes::KEY_6, KeyAction::ViewTag, Arg::Int(5)),
+                Key::new(&[MODKEY], keycodes::KEY_7, KeyAction::ViewTag, Arg::Int(6)),
+                Key::new(&[MODKEY], keycodes::KEY_8, KeyAction::ViewTag, Arg::Int(7)),
+                Key::new(&[MODKEY], keycodes::KEY_9, KeyAction::ViewTag, Arg::Int(8)),
+                // Move windows to tags
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_1,
+                    KeyAction::MoveToTag,
+                    Arg::Int(0),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_2,
+                    KeyAction::MoveToTag,
+                    Arg::Int(1),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_3,
+                    KeyAction::MoveToTag,
+                    Arg::Int(2),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_4,
+                    KeyAction::MoveToTag,
+                    Arg::Int(3),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_5,
+                    KeyAction::MoveToTag,
+                    Arg::Int(4),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_6,
+                    KeyAction::MoveToTag,
+                    Arg::Int(5),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_7,
+                    KeyAction::MoveToTag,
+                    Arg::Int(6),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_8,
+                    KeyAction::MoveToTag,
+                    Arg::Int(7),
+                ),
+                Key::new(
+                    &[MODKEY, SHIFT],
+                    keycodes::KEY_9,
+                    KeyAction::MoveToTag,
+                    Arg::Int(8),
+                ),
+            ],
             status_blocks: Vec::new(),
             scheme_normal: ColorScheme {
                 foreground: 0xbbbbbb,
@@ -88,4 +186,20 @@ impl Default for Config {
             },
         }
     }
+}
+
+fn detect_terminal() -> String {
+    let terminals = ["alacritty", "kitty", "st", "xterm", "urxvt", "termite"];
+
+    for term in &terminals {
+        if std::process::Command::new("which")
+            .arg(term)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return term.to_string();
+        }
+    }
+    "xterm".to_string()
 }
