@@ -32,7 +32,6 @@ fn main() -> Result<()> {
         let err = Command::new(&cache_binary).args(&args[1..]).exec();
         anyhow::bail!("Failed to exec user binary: {}", err);
     } else {
-        // No user config - use built-in defaults
         eprintln!("╔════════════════════════════════════════╗");
         eprintln!("║  OXWM: Running with default config    ║");
         eprintln!("╚════════════════════════════════════════╝");
@@ -41,6 +40,7 @@ fn main() -> Result<()> {
         eprintln!();
 
         let config = oxwm::Config::default();
+
         let mut wm = oxwm::window_manager::WindowManager::new(config)?;
         let should_restart = wm.run()?;
 
@@ -198,7 +198,16 @@ fn recompile_config() -> Result<()> {
     let dest = get_cache_binary_path();
 
     std::fs::create_dir_all(dest.parent().unwrap())?;
-    std::fs::copy(&source, &dest)?;
+
+    match std::fs::copy(&source, &dest) {
+        Ok(_) => {}
+        Err(e) if e.raw_os_error() == Some(26) => {
+            let temp_dest = dest.with_extension("new");
+            std::fs::copy(&source, &temp_dest)?;
+            std::fs::rename(&temp_dest, &dest)?;
+        }
+        Err(e) => return Err(e.into()),
+    }
 
     println!("✓ Compiled successfully");
 
