@@ -26,7 +26,6 @@ pub struct Config {
     pub gap_outer_vertical: u32,
 
     // Basics
-    pub terminal: String,
     pub modkey: x11rb::protocol::xproto::KeyButMask,
 
     // Tags
@@ -60,9 +59,6 @@ impl Default for Config {
         const MODKEY: KeyButMask = KeyButMask::MOD4;
         const SHIFT: KeyButMask = KeyButMask::SHIFT;
 
-        // Detect terminal
-        let terminal = detect_terminal();
-
         Self {
             border_width: 2,
             border_focused: 0x6dade3,
@@ -73,21 +69,24 @@ impl Default for Config {
             gap_inner_vertical: 0,
             gap_outer_horizontal: 0,
             gap_outer_vertical: 0,
-            terminal,
             modkey: MODKEY,
             tags: vec!["1", "2", "3", "4", "5", "6", "7", "8", "9"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
             keybindings: vec![
-                // Launch terminal
                 Key::new(
                     &[MODKEY],
                     keycodes::RETURN,
                     KeyAction::Spawn,
-                    Arg::Str("xterm"),
+                    Arg::Str("st"),
                 ),
-                // Window management
+                Key::new(
+                    &[MODKEY],
+                    keycodes::D,
+                    KeyAction::Spawn,
+                    Arg::Array(&["sh", "-c", "dmenu_run"]),
+                ),
                 Key::new(&[MODKEY], keycodes::Q, KeyAction::KillClient, Arg::None),
                 Key::new(
                     &[MODKEY, SHIFT],
@@ -96,13 +95,10 @@ impl Default for Config {
                     Arg::None,
                 ),
                 Key::new(&[MODKEY], keycodes::A, KeyAction::ToggleGaps, Arg::None),
-                // WM controls
                 Key::new(&[MODKEY, SHIFT], keycodes::Q, KeyAction::Quit, Arg::None),
                 Key::new(&[MODKEY, SHIFT], keycodes::R, KeyAction::Restart, Arg::None),
-                // Focus
                 Key::new(&[MODKEY], keycodes::J, KeyAction::FocusStack, Arg::Int(-1)),
                 Key::new(&[MODKEY], keycodes::K, KeyAction::FocusStack, Arg::Int(1)),
-                // View tags
                 Key::new(&[MODKEY], keycodes::KEY_1, KeyAction::ViewTag, Arg::Int(0)),
                 Key::new(&[MODKEY], keycodes::KEY_2, KeyAction::ViewTag, Arg::Int(1)),
                 Key::new(&[MODKEY], keycodes::KEY_3, KeyAction::ViewTag, Arg::Int(2)),
@@ -112,7 +108,6 @@ impl Default for Config {
                 Key::new(&[MODKEY], keycodes::KEY_7, KeyAction::ViewTag, Arg::Int(6)),
                 Key::new(&[MODKEY], keycodes::KEY_8, KeyAction::ViewTag, Arg::Int(7)),
                 Key::new(&[MODKEY], keycodes::KEY_9, KeyAction::ViewTag, Arg::Int(8)),
-                // Move windows to tags
                 Key::new(
                     &[MODKEY, SHIFT],
                     keycodes::KEY_1,
@@ -168,7 +163,13 @@ impl Default for Config {
                     Arg::Int(8),
                 ),
             ],
-            status_blocks: Vec::new(),
+            status_blocks: vec![crate::bar::BlockConfig {
+                format: "{}",
+                command: crate::bar::BlockCommand::DateTime("%a, %b %d - %-I:%M %P"),
+                interval_secs: 1,
+                color: 0x0db9d7,
+                underline: true,
+            }],
             scheme_normal: ColorScheme {
                 foreground: 0xbbbbbb,
                 background: 0x1a1b26,
@@ -186,20 +187,4 @@ impl Default for Config {
             },
         }
     }
-}
-
-fn detect_terminal() -> String {
-    let terminals = ["alacritty", "kitty", "st", "xterm", "urxvt", "termite"];
-
-    for term in &terminals {
-        if std::process::Command::new("which")
-            .arg(term)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            return term.to_string();
-        }
-    }
-    "xterm".to_string()
 }
