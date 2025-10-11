@@ -46,21 +46,7 @@
       ...
     }: let
       inherit (lib) mkEnableOption mkOption mkIf types;
-
       cfg = config.services.xserver.windowManager.oxwm;
-      oxwmDesktopItem = pkgs.writeTextFile {
-        name = "oxwm.desktop";
-        destination = "/share/xsessions/oxwm.desktop";
-        text = ''
-          [Desktop Entry]
-          Name=OXWM
-          Comment=A dynamic window manager written in Rust
-          Exec=${cfg.package}/bin/oxwm
-          Type=Application
-          DesktopNames=OXWM
-        '';
-        passthru.providedSessions = ["oxwm"];
-      };
     in {
       options.services.xserver.windowManager.oxwm = {
         enable = mkEnableOption "oxwm window manager";
@@ -72,27 +58,10 @@
       };
 
       config = mkIf cfg.enable {
-        services.xserver.windowManager.session = [
-          {
-            name = "oxwm";
-            start = ''
-              ${cfg.package}/bin/oxwm &
-              waitPID=$!
-            '';
-          }
-        ];
-        services.displayManager.sessionPackages = [oxwmDesktopItem];
+        services.displayManager.sessionPackages = [cfg.package];
 
         environment.systemPackages = [
           cfg.package
-          pkgs.rustc
-          pkgs.cargo
-          pkgs.pkg-config
-          pkgs.xorg.libX11
-          pkgs.xorg.libXft
-          pkgs.xorg.libXrender
-          pkgs.freetype
-          pkgs.fontconfig
         ];
       };
     };
