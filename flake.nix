@@ -7,19 +7,16 @@
     self,
     nixpkgs,
   }: let
-    systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
-    forAllSystems = nixpkgs.lib.genAttrs systems;
+    systems = ["x86_64-linux" "aarch64-linux"];
+
+    forAllSystems = fn: nixpkgs.lib.genAttrs systems (system: fn nixpkgs.legacyPackages.${system});
   in {
-    packages = forAllSystems (system: let
-      pkgs = import nixpkgs {inherit system;};
-    in {
+    packages = forAllSystems (pkgs: rec {
       default = pkgs.callPackage ./default.nix {};
-      oxwm = self.packages.${system}.default;
+      oxwm = default;
     });
 
-    devShells = forAllSystems (system: let
-      pkgs = import nixpkgs {inherit system;};
-    in {
+    devShells = forAllSystems (pkgs: {
       default = pkgs.mkShell {
         buildInputs = [
           pkgs.rustc
@@ -40,51 +37,33 @@
       };
     });
 
-    formatter = forAllSystems (system: (import nixpkgs {inherit system;}).alejandra);
+    formatter = forAllSystems (pkgs: pkgs.alejandra);
 
     nixosModules.default = {
       config,
       lib,
       pkgs,
       ...
-    }:
-      with lib; let
-        cfg = config.services.xserver.windowManager.oxwm;
-        oxwmDesktopItem = pkgs.writeTextFile {
-          name = "oxwm.desktop";
-          destination = "/share/xsessions/oxwm.desktop";
-          text = ''
-            [Desktop Entry]
-            Name=OXWM
-            Comment=A dynamic window manager written in Rust
-            Exec=${cfg.package}/bin/oxwm
-            Type=Application
-            DesktopNames=OXWM
-          '';
-          passthru.providedSessions = ["oxwm"];
-        };
-      in {
-        options.services.xserver.windowManager.oxwm = {
-          enable = mkEnableOption "oxwm window manager";
-          package = mkOption {
-            type = types.package;
-            default = self.packages.${pkgs.system}.default;
-            description = "The oxwm package to use";
-          };
-        };
-        config = mkIf cfg.enable {
-          services.xserver.windowManager.session = [
-            {
-              name = "oxwm";
-              start = ''
-                ${cfg.package}/bin/oxwm &
-                waitPID=$!
-              '';
-            }
-          ];
-          services.displayManager.sessionPackages = [oxwmDesktopItem];
-          environment.systemPackages = [cfg.package];
+    }: let
+      inherit (lib) mkEnableOption mkOption mkIf types;
+      cfg = config.services.xserver.windowManager.oxwm;
+    in {
+      options.services.xserver.windowManager.oxwm = {
+        enable = mkEnableOption "oxwm window manager";
+        package = mkOption {
+          type = types.package;
+          default = self.packages.${pkgs.system}.default;
+          description = "The oxwm package to use";
         };
       };
+
+      config = mkIf cfg.enable {
+        services.displayManager.sessionPackages = [cfg.package];
+
+        environment.systemPackages = [
+          cfg.package
+        ];
+      };
+    };
   };
 }

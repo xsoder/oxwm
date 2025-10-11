@@ -39,6 +39,30 @@ fn main() -> Result<()> {
     }
 }
 
+#[derive(Debug)]
+enum BuildMethod {
+    NixFlake,
+    NixBuild,
+    Cargo,
+}
+
+fn detect_build_method() -> BuildMethod {
+    let config_dir = get_config_path();
+
+    if config_dir.join("flake.nix").exists() {
+        println!("Detected flake.nix, will use nix flake for recompilation");
+        return BuildMethod::NixFlake;
+    }
+
+    if config_dir.join("default.nix").exists() || config_dir.join("shell.nix").exists() {
+        println!("Detected nix files, will use nix-shell for recompilation");
+        return BuildMethod::NixBuild;
+    }
+
+    println!("Will use cargo for recompilation");
+    BuildMethod::Cargo
+}
+
 fn init_config() -> Result<()> {
     let config_dir = get_config_path();
     std::fs::create_dir_all(&config_dir)?;
@@ -55,26 +79,41 @@ fn init_config() -> Result<()> {
     let main_template = include_str!("../../templates/main.rs");
     std::fs::write(config_dir.join("main.rs"), main_template)?;
 
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let cargo_toml = format!(
-        r#"[package]
+    let cargo_toml = r#"[package]
 name = "oxwm-user"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-oxwm = {{ path = "{}" }}
+oxwm = { git = "https://github.com/tonybanters/oxwm" }
 anyhow = "1"
 
 [[bin]]
 name = "oxwm-user"
 path = "main.rs"
-"#,
-        manifest_dir
-    );
-    std::fs::write(config_dir.join("Cargo.toml"), cargo_toml)?;
+"#;
 
+    std::fs::write(config_dir.join("Cargo.toml"), cargo_toml)?;
     std::fs::write(config_dir.join(".gitignore"), "target/\nCargo.lock\n")?;
+
+    if is_nixos() {
+        let shell_nix = r#"{ pkgs ? import <nixpkgs> {} }:
+pkgs.mkShell {
+  buildInputs = with pkgs; [
+    rustc
+    cargo
+    pkg-config
+    xorg.libX11
+    xorg.libXft
+    xorg.libXrender
+    freetype
+    fontconfig
+  ];
+}
+"#;
+        std::fs::write(config_dir.join("shell.nix"), shell_nix)?;
+        println!("✓ Created shell.nix for NixOS");
+    }
 
     println!("✓ Created ~/.config/oxwm/config.rs");
     println!("✓ Created ~/.config/oxwm/main.rs");
@@ -99,10 +138,28 @@ fn recompile_config() -> Result<()> {
 
     println!("Compiling oxwm configuration...");
 
-    let output = Command::new("cargo")
-        .args(&["build", "--release"])
-        .current_dir(&config_dir)
-        .output()?;
+    let build_method = detect_build_method();
+
+    let output = match build_method {
+        BuildMethod::NixFlake => {
+            println!("Using nix flake build...");
+            Command::new("nix")
+                .args(&["build", ".#", "--no-link"])
+                .current_dir(&config_dir)
+                .output()?
+        }
+        BuildMethod::NixBuild => {
+            println!("Using nix-shell...");
+            Command::new("nix-shell")
+                .args(&["--run", "cargo build --release"])
+                .current_dir(&config_dir)
+                .output()?
+        }
+        BuildMethod::Cargo => Command::new("cargo")
+            .args(&["build", "--release"])
+            .current_dir(&config_dir)
+            .output()?,
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -138,6 +195,12 @@ fn recompile_config() -> Result<()> {
     Ok(())
 }
 
+fn is_nixos() -> bool {
+    std::path::Path::new("/etc/NIXOS").exists()
+        || std::path::Path::new("/run/current-system/nixos-version").exists()
+        || std::env::var("NIX_PATH").is_ok()
+}
+
 fn should_recompile(config: &PathBuf, binary: &PathBuf) -> Result<bool> {
     if !config.exists() {
         return Ok(false);
@@ -146,7 +209,13 @@ fn should_recompile(config: &PathBuf, binary: &PathBuf) -> Result<bool> {
     let config_dir = get_config_path();
     let binary_time = std::fs::metadata(binary)?.modified()?;
 
-    let watch_files = ["config.rs", "main.rs", "Cargo.toml"];
+    let watch_files = [
+        "config.rs",
+        "main.rs",
+        "Cargo.toml",
+        "flake.nix",
+        "shell.nix",
+    ];
 
     for filename in &watch_files {
         let path = config_dir.join(filename);
@@ -191,5 +260,7 @@ fn print_help() {
     println!("    4. Start X with 'startx'\n");
     println!("CONFIGURATION:");
     println!("    Config location: ~/.config/oxwm/config.rs");
-    println!("    Reload hotkey:   Mod+Shift+R (auto-recompiles if needed)");
+    println!("    Reload hotkey:   Mod+Shift+R (auto-recompiles if needed)\n");
+    println!("ADVANCED:");
+    println!("    Create flake.nix or shell.nix in ~/.config/oxwm to use nix builds");
 }
