@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use anyhow::Result;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -91,4 +93,42 @@ pub fn handle_key_press(event: KeyPressEvent, keybindings: &[Key]) -> Result<(Ke
     }
 
     Ok((KeyAction::None, Arg::None))
+}
+
+pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> Result<()> {
+    use std::io::ErrorKind;
+    match action {
+        KeyAction::Spawn => match arg {
+            Arg::Str(command) => match Command::new(command).spawn() {
+                Err(err) if err.kind() == ErrorKind::NotFound => {
+                    eprintln!(
+                        "KeyAction::Spawn failed: could not spawn \"{}\", command not found",
+                        command
+                    );
+                }
+                Err(err) => Err(err)?,
+                _ => (),
+            },
+            Arg::Array(command) => {
+                let Some((cmd, args)) = command.split_first() else {
+                    return Ok(());
+                };
+
+                match Command::new(cmd).args(args).spawn() {
+                    Err(err) if err.kind() == ErrorKind::NotFound => {
+                        eprintln!(
+                            "KeyAction::Spawn failed: could not spawn \"{}\", command not found",
+                            cmd
+                        );
+                    }
+                    Err(err) => Err(err)?,
+                    _ => (),
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+
+    Ok(())
 }

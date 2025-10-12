@@ -1,6 +1,6 @@
 use crate::Config;
 use crate::bar::Bar;
-use crate::keyboard::{self, Arg, KeyAction};
+use crate::keyboard::{self, Arg, KeyAction, handlers};
 use crate::layout::GapConfig;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
@@ -449,17 +449,7 @@ impl WindowManager {
 
     fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> Result<()> {
         match action {
-            KeyAction::Spawn => match arg {
-                Arg::Str(command) => {
-                    std::process::Command::new(command).spawn()?;
-                }
-                Arg::Array(cmd) => {
-                    if let Some((program, args)) = cmd.split_first() {
-                        std::process::Command::new(program).args(args).spawn()?;
-                    }
-                }
-                _ => {}
-            },
+            KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
             KeyAction::KillClient => {
                 if let Some(focused) = self.focused_window {
                     match self.connection.kill_client(focused) {
