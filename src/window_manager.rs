@@ -4,10 +4,10 @@ use crate::keyboard::{self, Arg, KeyAction};
 use crate::layout::GapConfig;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
-
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use x11rb::cursor::Handle as CursorHandle;
 
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
@@ -42,16 +42,22 @@ impl WindowManager {
         let root = connection.setup().roots[screen_number].root;
         let screen = connection.setup().roots[screen_number].clone();
 
+        let cursor_handle =
+            CursorHandle::new(&connection, screen_number, &Default::default())?.reply()?;
+        let normal_cursor = cursor_handle.load_cursor(&connection, "left_ptr")?;
+
         connection
             .change_window_attributes(
                 root,
-                &ChangeWindowAttributesAux::new().event_mask(
-                    EventMask::SUBSTRUCTURE_REDIRECT
-                        | EventMask::SUBSTRUCTURE_NOTIFY
-                        | EventMask::PROPERTY_CHANGE
-                        | EventMask::KEY_PRESS
-                        | EventMask::BUTTON_PRESS,
-                ),
+                &ChangeWindowAttributesAux::new()
+                    .cursor(normal_cursor)
+                    .event_mask(
+                        EventMask::SUBSTRUCTURE_REDIRECT
+                            | EventMask::SUBSTRUCTURE_NOTIFY
+                            | EventMask::PROPERTY_CHANGE
+                            | EventMask::KEY_PRESS
+                            | EventMask::BUTTON_PRESS,
+                    ),
             )?
             .check()?;
 
