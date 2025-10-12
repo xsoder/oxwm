@@ -17,9 +17,9 @@ clean:
 
 test:
     pkill Xephyr || true
+    rm -rf ~/.cache/oxwm  
     Xephyr -screen 1280x800 :1 & sleep 1
-    DISPLAY=:1 cargo run -- --init
-    DISPLAY=:1 ~/.cache/oxwm/oxwm-binary
+    DISPLAY=:1 cargo run --release  
 
 init:
     cargo run -- --init

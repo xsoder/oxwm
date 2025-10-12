@@ -42,9 +42,13 @@ impl WindowManager {
         let root = connection.setup().roots[screen_number].root;
         let screen = connection.setup().roots[screen_number].clone();
 
-        let cursor_handle =
-            CursorHandle::new(&connection, screen_number, &Default::default())?.reply()?;
-        let normal_cursor = cursor_handle.load_cursor(&connection, "left_ptr")?;
+        let normal_cursor = CursorHandle::new(
+            &connection,
+            screen_number,
+            &x11rb::resource_manager::new_from_default(&connection)?,
+        )?
+        .reply()?
+        .load_cursor(&connection, "left_ptr")?;
 
         connection
             .change_window_attributes(
