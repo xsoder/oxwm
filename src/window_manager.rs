@@ -36,8 +36,105 @@ pub struct WindowManager {
     bar: Bar,
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum WindowManagerError {
+    X11(X11Error),
+    Io(std::io::Error),
+    Anyhow(anyhow::Error),
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum X11Error {
+    ConnectError(x11rb::errors::ConnectError),
+    ConnectionError(x11rb::errors::ConnectionError),
+    ReplyError(x11rb::errors::ReplyError),
+    ReplyOrIdError(x11rb::errors::ReplyOrIdError),
+}
+
+impl std::fmt::Display for WindowManagerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // Self::X11(x11_error) => write!(f, "{:?}", x11_error),
+            Self::X11(error) => write!(f, "{}", error),
+            Self::Io(error) => write!(f, "{}", error),
+            Self::Anyhow(error) => write!(f, "{}", error),
+        }
+    }
+}
+
+impl std::error::Error for WindowManagerError {}
+
+impl std::fmt::Display for X11Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            X11Error::ConnectError(err) => write!(f, "{}", err),
+            X11Error::ConnectionError(err) => write!(f, "{}", err),
+            X11Error::ReplyError(err) => write!(f, "{}", err),
+            X11Error::ReplyOrIdError(err) => write!(f, "{}", err),
+        }
+    }
+}
+
+// impl<T: std::error::Error + Send + Sync + 'static> From<T> for WindowManagerError {
+//     fn from(value: T) -> Self {
+//         Self::Anyhow(value.into())
+//     }
+// }
+
+// TODO: Eliminate all library level `anyhow::Error`
+// impl<E: Into<anyhow::Error>> From<E> for WindowManagerError {
+//     fn from(value: E) -> Self {
+//         Self::Anyhow(value.into())
+//     }
+// }
+
+impl From<X11Error> for WindowManagerError {
+    fn from(value: X11Error) -> Self {
+        Self::X11(value)
+    }
+}
+
+impl From<x11rb::errors::ConnectError> for WindowManagerError {
+    fn from(value: x11rb::errors::ConnectError) -> Self {
+        Self::X11(X11Error::ConnectError(value))
+    }
+}
+
+impl From<x11rb::errors::ConnectionError> for WindowManagerError {
+    fn from(value: x11rb::errors::ConnectionError) -> Self {
+        Self::X11(X11Error::ConnectionError(value))
+    }
+}
+
+impl From<x11rb::errors::ReplyError> for WindowManagerError {
+    fn from(value: x11rb::errors::ReplyError) -> Self {
+        Self::X11(X11Error::ReplyError(value))
+    }
+}
+
+impl From<x11rb::errors::ReplyOrIdError> for WindowManagerError {
+    fn from(value: x11rb::errors::ReplyOrIdError) -> Self {
+        Self::X11(X11Error::ReplyOrIdError(value))
+    }
+}
+
+impl From<anyhow::Error> for WindowManagerError {
+    fn from(value: anyhow::Error) -> Self {
+        Self::Anyhow(value)
+    }
+}
+
+// Potentiel Errors:
+//  ::new -> x11rb::errors::ConnectError
+//  ::new -> x11rb::errors::ReplyError
+//  ::new -> x11rb::errors::ConnectionError
+//  ::new -> x11rb::errors::ReplyOrIdError
+//
+//  ::needs_recompile -> io::Result
 impl WindowManager {
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> std::result::Result<Self, WindowManagerError> {
         let (connection, screen_number) = x11rb::connect(None)?;
         let root = connection.setup().roots[screen_number].root;
         let screen = connection.setup().roots[screen_number].clone();
