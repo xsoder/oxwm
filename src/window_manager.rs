@@ -4,9 +4,7 @@ use crate::keyboard::{self, Arg, KeyAction, handlers};
 use crate::layout::GapConfig;
 use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
-use anyhow::Result;
 use std::collections::HashSet;
-use std::path::PathBuf;
 use x11rb::cursor::Handle as CursorHandle;
 
 use x11rb::connection::Connection;
@@ -202,7 +200,7 @@ impl WindowManager {
         connection: &RustConnection,
         root: Window,
         tag_count: usize,
-    ) -> Result<TagMask> {
+    ) -> std::result::Result<TagMask, WindowManagerError> {
         let net_current_desktop = connection
             .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
             .reply()?
@@ -385,7 +383,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<bool> {
+    pub fn run(&mut self) -> std::result::Result<bool, WindowManagerError> {
         println!("oxwm started on display {}", self.screen_number);
 
         // TODO: Identify errors
@@ -444,7 +442,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn update_bar(&mut self) -> Result<()> {
+    fn update_bar(&mut self) -> std::result::Result<(), WindowManagerError> {
         let mut occupied_tags: TagMask = 0;
         for &tags in self.window_tags.values() {
             occupied_tags |= tags;
@@ -457,7 +455,11 @@ impl WindowManager {
         Ok(())
     }
 
-    fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> Result<()> {
+    fn handle_key_action(
+        &mut self,
+        action: KeyAction,
+        arg: &Arg,
+    ) -> std::result::Result<(), WindowManagerError> {
         match action {
             KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
             KeyAction::KillClient => {
@@ -539,7 +541,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn view_tag(&mut self, tag_index: usize) -> Result<()> {
+    pub fn view_tag(&mut self, tag_index: usize) -> std::result::Result<(), WindowManagerError> {
         if tag_index >= self.config.tags.len() {
             return Ok(());
         }
@@ -587,7 +589,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn move_to_tag(&mut self, tag_index: usize) -> Result<()> {
+    pub fn move_to_tag(&mut self, tag_index: usize) -> std::result::Result<(), WindowManagerError> {
         if tag_index >= self.config.tags.len() {
             return Ok(());
         }
@@ -606,7 +608,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn cycle_focus(&mut self, direction: i32) -> Result<()> {
+    pub fn cycle_focus(&mut self, direction: i32) -> std::result::Result<(), WindowManagerError> {
         let visible = self.visible_windows();
 
         if visible.is_empty() {
@@ -787,7 +789,10 @@ impl WindowManager {
         Ok(())
     }
 
-    fn handle_event(&mut self, event: Event) -> Result<Option<bool>> {
+    fn handle_event(
+        &mut self,
+        event: Event,
+    ) -> std::result::Result<Option<bool>, WindowManagerError> {
         match event {
             Event::MapRequest(event) => {
                 let attrs = match self.connection.get_window_attributes(event.window)?.reply() {
