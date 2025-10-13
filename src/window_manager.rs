@@ -37,7 +37,7 @@ pub struct WindowManager {
 // TODO: Eliminate all library level `anyhow::Error`
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum WindowManagerError {
+pub enum WmError {
     X11(X11Error),
     Io(std::io::Error),
     Anyhow(anyhow::Error),
@@ -52,7 +52,7 @@ pub enum X11Error {
     ReplyOrIdError(x11rb::errors::ReplyOrIdError),
 }
 
-impl std::fmt::Display for WindowManagerError {
+impl std::fmt::Display for WmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             // Self::X11(x11_error) => write!(f, "{:?}", x11_error),
@@ -63,7 +63,7 @@ impl std::fmt::Display for WindowManagerError {
     }
 }
 
-impl std::error::Error for WindowManagerError {}
+impl std::error::Error for WmError {}
 
 impl std::fmt::Display for X11Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -76,44 +76,44 @@ impl std::fmt::Display for X11Error {
     }
 }
 
-impl From<X11Error> for WindowManagerError {
+impl From<X11Error> for WmError {
     fn from(value: X11Error) -> Self {
         Self::X11(value)
     }
 }
 
-impl From<x11rb::errors::ConnectError> for WindowManagerError {
+impl From<x11rb::errors::ConnectError> for WmError {
     fn from(value: x11rb::errors::ConnectError) -> Self {
         Self::X11(X11Error::ConnectError(value))
     }
 }
 
-impl From<x11rb::errors::ConnectionError> for WindowManagerError {
+impl From<x11rb::errors::ConnectionError> for WmError {
     fn from(value: x11rb::errors::ConnectionError) -> Self {
         Self::X11(X11Error::ConnectionError(value))
     }
 }
 
-impl From<x11rb::errors::ReplyError> for WindowManagerError {
+impl From<x11rb::errors::ReplyError> for WmError {
     fn from(value: x11rb::errors::ReplyError) -> Self {
         Self::X11(X11Error::ReplyError(value))
     }
 }
 
-impl From<x11rb::errors::ReplyOrIdError> for WindowManagerError {
+impl From<x11rb::errors::ReplyOrIdError> for WmError {
     fn from(value: x11rb::errors::ReplyOrIdError) -> Self {
         Self::X11(X11Error::ReplyOrIdError(value))
     }
 }
 
-impl From<anyhow::Error> for WindowManagerError {
+impl From<anyhow::Error> for WmError {
     fn from(value: anyhow::Error) -> Self {
         Self::Anyhow(value)
     }
 }
 
 impl WindowManager {
-    pub fn new(config: Config) -> std::result::Result<Self, WindowManagerError> {
+    pub fn new(config: Config) -> std::result::Result<Self, WmError> {
         let (connection, screen_number) = x11rb::connect(None)?;
         let root = connection.setup().roots[screen_number].root;
         let screen = connection.setup().roots[screen_number].clone();
@@ -200,7 +200,7 @@ impl WindowManager {
         connection: &RustConnection,
         root: Window,
         tag_count: usize,
-    ) -> std::result::Result<TagMask, WindowManagerError> {
+    ) -> std::result::Result<TagMask, WmError> {
         let net_current_desktop = connection
             .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
             .reply()?
@@ -230,7 +230,7 @@ impl WindowManager {
         Ok(tag_mask(0))
     }
 
-    fn scan_existing_windows(&mut self) -> std::result::Result<(), WindowManagerError> {
+    fn scan_existing_windows(&mut self) -> std::result::Result<(), WmError> {
         let tree = self.connection.query_tree(self.root)?.reply()?;
         let net_client_info = self
             .connection
@@ -301,7 +301,7 @@ impl WindowManager {
         &self,
         window: Window,
         net_client_info: Atom,
-    ) -> std::result::Result<TagMask, WindowManagerError> {
+    ) -> std::result::Result<TagMask, WmError> {
         match self
             .connection
             .get_property(false, window, net_client_info, AtomEnum::CARDINAL, 0, 2)?
@@ -328,11 +328,7 @@ impl WindowManager {
         Ok(self.selected_tags)
     }
 
-    fn save_client_tag(
-        &self,
-        window: Window,
-        tag: TagMask,
-    ) -> std::result::Result<(), WindowManagerError> {
+    fn save_client_tag(&self, window: Window, tag: TagMask) -> std::result::Result<(), WmError> {
         let net_client_info = self
             .connection
             .intern_atom(false, b"_NET_CLIENT_INFO")?
@@ -355,11 +351,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn set_wm_state(
-        &self,
-        window: Window,
-        state: u32,
-    ) -> std::result::Result<(), WindowManagerError> {
+    fn set_wm_state(&self, window: Window, state: u32) -> std::result::Result<(), WmError> {
         let wm_state_atom = self
             .connection
             .intern_atom(false, b"WM_STATE")?
@@ -383,7 +375,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn run(&mut self) -> std::result::Result<bool, WindowManagerError> {
+    pub fn run(&mut self) -> std::result::Result<bool, WmError> {
         println!("oxwm started on display {}", self.screen_number);
 
         // TODO: Identify errors
@@ -408,7 +400,7 @@ impl WindowManager {
         }
     }
 
-    fn toggle_fullscreen(&mut self) -> std::result::Result<(), WindowManagerError> {
+    fn toggle_fullscreen(&mut self) -> std::result::Result<(), WmError> {
         if let Some(focused) = self.focused_window {
             if self.fullscreen_window == Some(focused) {
                 self.fullscreen_window = None;
@@ -442,7 +434,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn update_bar(&mut self) -> std::result::Result<(), WindowManagerError> {
+    fn update_bar(&mut self) -> std::result::Result<(), WmError> {
         let mut occupied_tags: TagMask = 0;
         for &tags in self.window_tags.values() {
             occupied_tags |= tags;
@@ -459,7 +451,7 @@ impl WindowManager {
         &mut self,
         action: KeyAction,
         arg: &Arg,
-    ) -> std::result::Result<(), WindowManagerError> {
+    ) -> std::result::Result<(), WmError> {
         match action {
             KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
             KeyAction::KillClient => {
@@ -529,7 +521,7 @@ impl WindowManager {
             .collect()
     }
 
-    fn update_window_visibility(&self) -> std::result::Result<(), WindowManagerError> {
+    fn update_window_visibility(&self) -> std::result::Result<(), WmError> {
         for &window in &self.windows {
             if self.is_window_visible(window) {
                 self.connection.map_window(window)?;
@@ -541,7 +533,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn view_tag(&mut self, tag_index: usize) -> std::result::Result<(), WindowManagerError> {
+    pub fn view_tag(&mut self, tag_index: usize) -> std::result::Result<(), WmError> {
         if tag_index >= self.config.tags.len() {
             return Ok(());
         }
@@ -565,7 +557,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn save_selected_tags(&self) -> std::result::Result<(), WindowManagerError> {
+    fn save_selected_tags(&self) -> std::result::Result<(), WmError> {
         let net_current_desktop = self
             .connection
             .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
@@ -589,7 +581,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn move_to_tag(&mut self, tag_index: usize) -> std::result::Result<(), WindowManagerError> {
+    pub fn move_to_tag(&mut self, tag_index: usize) -> std::result::Result<(), WmError> {
         if tag_index >= self.config.tags.len() {
             return Ok(());
         }
@@ -608,7 +600,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn cycle_focus(&mut self, direction: i32) -> std::result::Result<(), WindowManagerError> {
+    pub fn cycle_focus(&mut self, direction: i32) -> std::result::Result<(), WmError> {
         let visible = self.visible_windows();
 
         if visible.is_empty() {
@@ -634,10 +626,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn set_focus(
-        &mut self,
-        window: Option<Window>,
-    ) -> std::result::Result<(), WindowManagerError> {
+    pub fn set_focus(&mut self, window: Option<Window>) -> std::result::Result<(), WmError> {
         self.focused_window = window;
 
         if let Some(win) = window {
@@ -650,7 +639,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn update_focus_visuals(&self) -> std::result::Result<(), WindowManagerError> {
+    fn update_focus_visuals(&self) -> std::result::Result<(), WmError> {
         for &window in &self.windows {
             let (border_color, border_width) = if self.focused_window == Some(window) {
                 (self.config.border_focused, self.config.border_width)
@@ -672,7 +661,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn move_mouse(&mut self, window: Window) -> std::result::Result<(), WindowManagerError> {
+    fn move_mouse(&mut self, window: Window) -> std::result::Result<(), WmError> {
         self.floating_windows.insert(window);
 
         let geometry = self.connection.get_geometry(window)?.reply()?;
@@ -725,7 +714,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn resize_mouse(&mut self, window: Window) -> std::result::Result<(), WindowManagerError> {
+    fn resize_mouse(&mut self, window: Window) -> std::result::Result<(), WmError> {
         self.floating_windows.insert(window);
 
         let geometry = self.connection.get_geometry(window)?.reply()?;
@@ -789,10 +778,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn handle_event(
-        &mut self,
-        event: Event,
-    ) -> std::result::Result<Option<bool>, WindowManagerError> {
+    fn handle_event(&mut self, event: Event) -> std::result::Result<Option<bool>, WmError> {
         match event {
             Event::MapRequest(event) => {
                 let attrs = match self.connection.get_window_attributes(event.window)?.reply() {
@@ -875,7 +861,7 @@ impl WindowManager {
         Ok(None)
     }
 
-    fn apply_layout(&self) -> std::result::Result<(), WindowManagerError> {
+    fn apply_layout(&self) -> std::result::Result<(), WmError> {
         if self.fullscreen_window.is_some() {
             return Ok(());
         }
@@ -931,7 +917,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn remove_window(&mut self, window: Window) -> std::result::Result<(), WindowManagerError> {
+    fn remove_window(&mut self, window: Window) -> std::result::Result<(), WmError> {
         let initial_count = self.windows.len();
         self.windows.retain(|&w| w != window);
         self.window_tags.remove(&window);
