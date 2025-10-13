@@ -76,39 +76,39 @@ impl std::fmt::Display for X11Error {
     }
 }
 
-impl From<X11Error> for WmError {
-    fn from(value: X11Error) -> Self {
-        Self::X11(value)
-    }
-}
-
-impl From<x11rb::errors::ConnectError> for WmError {
-    fn from(value: x11rb::errors::ConnectError) -> Self {
-        Self::X11(X11Error::ConnectError(value))
-    }
-}
-
-impl From<x11rb::errors::ConnectionError> for WmError {
-    fn from(value: x11rb::errors::ConnectionError) -> Self {
-        Self::X11(X11Error::ConnectionError(value))
-    }
-}
-
-impl From<x11rb::errors::ReplyError> for WmError {
-    fn from(value: x11rb::errors::ReplyError) -> Self {
-        Self::X11(X11Error::ReplyError(value))
-    }
-}
-
-impl From<x11rb::errors::ReplyOrIdError> for WmError {
-    fn from(value: x11rb::errors::ReplyOrIdError) -> Self {
-        Self::X11(X11Error::ReplyOrIdError(value))
+impl<T: Into<X11Error>> From<T> for WmError {
+    fn from(value: T) -> Self {
+        Self::X11(value.into())
     }
 }
 
 impl From<anyhow::Error> for WmError {
     fn from(value: anyhow::Error) -> Self {
         Self::Anyhow(value)
+    }
+}
+
+impl From<x11rb::errors::ConnectError> for X11Error {
+    fn from(value: x11rb::errors::ConnectError) -> Self {
+        X11Error::ConnectError(value)
+    }
+}
+
+impl From<x11rb::errors::ConnectionError> for X11Error {
+    fn from(value: x11rb::errors::ConnectionError) -> Self {
+        X11Error::ConnectionError(value)
+    }
+}
+
+impl From<x11rb::errors::ReplyError> for X11Error {
+    fn from(value: x11rb::errors::ReplyError) -> Self {
+        X11Error::ReplyError(value)
+    }
+}
+
+impl From<x11rb::errors::ReplyOrIdError> for X11Error {
+    fn from(value: x11rb::errors::ReplyOrIdError) -> Self {
+        X11Error::ReplyOrIdError(value)
     }
 }
 
