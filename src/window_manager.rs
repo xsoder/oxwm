@@ -168,7 +168,6 @@ impl WindowManager {
         // TODO: identify error types
         let bar = Bar::new(&connection, &screen, screen_number, &config)?;
 
-        // TODO: identify error types
         let selected_tags = Self::get_saved_selected_tags(&connection, root, config.tags.len())?;
         let gaps_enabled = config.gaps_enabled;
 
