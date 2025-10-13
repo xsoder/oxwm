@@ -1,13 +1,10 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use std::process::Command;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
     match args.get(1).map(|s| s.as_str()) {
-        Some("--init") => return init_config(),
-        Some("--recompile") => return recompile_config(),
         Some("--version") => {
             println!("oxwm {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
@@ -16,65 +13,79 @@ fn main() -> Result<()> {
             print_help();
             return Ok(());
         }
+        Some("--init") => {
+            init_config()?;
+            println!("✓ Config created at ~/.config/oxwm/config.rs");
+            println!("  Edit and reload with Mod+Shift+R");
+            return Ok(());
+        }
+        Some("--recompile") => {
+            recompile_config()?;
+            return Ok(());
+        }
         _ => {}
     }
 
+    let user_binary = get_user_binary_path();
     let config_path = get_config_path().join("config.rs");
-    let cache_binary = get_cache_binary_path();
 
-    if !config_path.exists() {
-        init_config()?;
-        notify(
-            "OXWM First Run",
-            "Config created at ~/.config/oxwm/config.rs\nEdit and reload with Mod+Shift+R",
-        );
-    } else {
-        let config_dir = get_config_path();
-        if !config_dir.join("Cargo.toml").exists() || !config_dir.join("main.rs").exists() {
-            ensure_build_files(&config_dir)?;
-        }
-    }
-
-    if !cache_binary.exists() || should_recompile(&config_path, &cache_binary)? {
-        if let Err(e) = recompile_config() {
-            eprintln!("\nCompilation failed: {}", e);
-            eprintln!("\nYour config may be incompatible with this version of OXWM.");
-            eprintln!("Options:");
-            eprintln!("  1. Fix the errors in ~/.config/oxwm/config.rs");
-            eprintln!("  2. Run 'oxwm --init' to regenerate default config");
-            eprintln!("\nBackup your config first if you have customizations!");
+    if config_path.exists() && user_binary.exists() {
+        if !should_recompile(&config_path, &user_binary)? {
+            use std::os::unix::process::CommandExt;
+            let err = std::process::Command::new(&user_binary)
+                .args(&args[1..])
+                .exec();
+            eprintln!("Failed to exec user binary: {}", err);
             std::process::exit(1);
         }
     }
 
-    use std::os::unix::process::CommandExt;
-    let err = Command::new(&cache_binary).args(&args[1..]).exec();
-    eprintln!("Failed to exec: {}", err);
-    std::process::exit(1);
+    if !config_path.exists() {
+        eprintln!("No config found, creating default at ~/.config/oxwm/config.rs");
+        init_config()?;
+        eprintln!("✓ Edit ~/.config/oxwm/config.rs and run 'oxwm --recompile'");
+    }
+
+    let config = oxwm::Config::default();
+    run_wm_with_config(config, &args)?;
+
+    Ok(())
 }
 
-#[derive(Debug)]
-enum BuildMethod {
-    NixFlake,
-    NixBuild,
-    Cargo,
+fn run_wm_with_config(config: oxwm::Config, args: &[String]) -> Result<()> {
+    let mut wm = oxwm::window_manager::WindowManager::new(config)?;
+    let should_restart = wm.run()?;
+
+    drop(wm);
+
+    if should_restart {
+        use std::os::unix::process::CommandExt;
+        let err = std::process::Command::new(&args[0]).args(&args[1..]).exec();
+        eprintln!("Failed to restart: {}", err);
+    }
+
+    Ok(())
 }
 
-fn detect_build_method() -> BuildMethod {
+fn should_recompile(config: &PathBuf, binary: &PathBuf) -> Result<bool> {
     let config_dir = get_config_path();
+    let binary_time = std::fs::metadata(binary)?.modified()?;
 
-    if config_dir.join("flake.nix").exists() {
-        println!("Detected flake.nix, will use nix flake for recompilation");
-        return BuildMethod::NixFlake;
+    let watch_files = ["config.rs", "Cargo.toml"];
+
+    for filename in &watch_files {
+        let path = config_dir.join(filename);
+        if !path.exists() {
+            continue;
+        }
+
+        let file_time = std::fs::metadata(&path)?.modified()?;
+        if file_time > binary_time {
+            return Ok(true);
+        }
     }
 
-    if config_dir.join("default.nix").exists() || config_dir.join("shell.nix").exists() {
-        println!("Detected nix files, will use nix-shell for recompilation");
-        return BuildMethod::NixBuild;
-    }
-
-    println!("Will use cargo for recompilation");
-    BuildMethod::Cargo
+    Ok(false)
 }
 
 fn init_config() -> Result<()> {
@@ -84,12 +95,6 @@ fn init_config() -> Result<()> {
     let config_template = include_str!("../../templates/config.rs");
     std::fs::write(config_dir.join("config.rs"), config_template)?;
 
-    ensure_build_files(&config_dir)?;
-
-    Ok(())
-}
-
-fn ensure_build_files(config_dir: &PathBuf) -> Result<()> {
     let main_template = include_str!("../../templates/main.rs");
     std::fs::write(config_dir.join("main.rs"), main_template)?;
 
@@ -126,6 +131,7 @@ pkgs.mkShell {
 }
 "#;
         std::fs::write(config_dir.join("shell.nix"), shell_nix)?;
+        println!("✓ Created shell.nix for NixOS");
     }
 
     Ok(())
@@ -145,19 +151,19 @@ fn recompile_config() -> Result<()> {
     let output = match build_method {
         BuildMethod::NixFlake => {
             println!("Using nix flake build...");
-            Command::new("nix")
+            std::process::Command::new("nix")
                 .args(&["build", ".#", "--no-link"])
                 .current_dir(&config_dir)
                 .output()?
         }
         BuildMethod::NixBuild => {
             println!("Using nix-shell...");
-            Command::new("nix-shell")
+            std::process::Command::new("nix-shell")
                 .args(&["--run", "cargo build --release"])
                 .current_dir(&config_dir)
                 .output()?
         }
-        BuildMethod::Cargo => Command::new("cargo")
+        BuildMethod::Cargo => std::process::Command::new("cargo")
             .args(&["build", "--release"])
             .current_dir(&config_dir)
             .output()?,
@@ -166,35 +172,43 @@ fn recompile_config() -> Result<()> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         eprintln!("\n❌ Compilation failed:\n{}", stderr);
-
-        notify_error("OXWM Compile Error", "Check terminal for details");
-
         anyhow::bail!("Failed to compile configuration");
     }
 
     let source = config_dir.join("target/release/oxwm-user");
-    let dest = get_cache_binary_path();
+    let dest = get_user_binary_path();
 
     std::fs::create_dir_all(dest.parent().unwrap())?;
+    std::fs::copy(&source, &dest)?;
 
-    match std::fs::copy(&source, &dest) {
-        Ok(_) => {}
-        Err(e) if e.raw_os_error() == Some(26) => {
-            let temp_dest = dest.with_extension("new");
-            std::fs::copy(&source, &temp_dest)?;
-            std::fs::rename(&temp_dest, &dest)?;
-        }
-        Err(e) => return Err(e.into()),
-    }
-
-    println!("✓ Compiled successfully");
-
-    notify(
-        "OXWM",
-        "Configuration recompiled! Hit Mod+Shift+R to restart.",
-    );
+    println!("✓ Compiled successfully to {}", dest.display());
+    println!("  Restart oxwm to use new config");
 
     Ok(())
+}
+
+#[derive(Debug)]
+enum BuildMethod {
+    NixFlake,
+    NixBuild,
+    Cargo,
+}
+
+fn detect_build_method() -> BuildMethod {
+    let config_dir = get_config_path();
+
+    if config_dir.join("flake.nix").exists() {
+        println!("Detected flake.nix, will use nix flake for recompilation");
+        return BuildMethod::NixFlake;
+    }
+
+    if config_dir.join("default.nix").exists() || config_dir.join("shell.nix").exists() {
+        println!("Detected nix files, will use nix-shell for recompilation");
+        return BuildMethod::NixBuild;
+    }
+
+    println!("Will use cargo for recompilation");
+    BuildMethod::Cargo
 }
 
 fn is_nixos() -> bool {
@@ -203,57 +217,14 @@ fn is_nixos() -> bool {
         || std::env::var("NIX_PATH").is_ok()
 }
 
-fn should_recompile(config: &PathBuf, binary: &PathBuf) -> Result<bool> {
-    if !config.exists() {
-        return Ok(false);
-    }
-
-    let config_dir = get_config_path();
-    let binary_time = std::fs::metadata(binary)?.modified()?;
-
-    let watch_files = [
-        "config.rs",
-        "main.rs",
-        "Cargo.toml",
-        "flake.nix",
-        "shell.nix",
-    ];
-
-    for filename in &watch_files {
-        let path = config_dir.join(filename);
-        if !path.exists() {
-            continue;
-        }
-
-        let file_time = std::fs::metadata(&path)?.modified()?;
-        if file_time > binary_time {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
-}
-
 fn get_config_path() -> PathBuf {
     dirs::config_dir()
         .expect("Could not find config directory")
         .join("oxwm")
 }
 
-fn get_cache_binary_path() -> PathBuf {
-    dirs::cache_dir()
-        .expect("Could not find cache directory")
-        .join("oxwm/oxwm-binary")
-}
-
-fn notify(title: &str, body: &str) {
-    let _ = Command::new("notify-send").args(&[title, body]).spawn();
-}
-
-fn notify_error(title: &str, body: &str) {
-    let _ = Command::new("notify-send")
-        .args(&["-u", "critical", title, body])
-        .spawn();
+fn get_user_binary_path() -> PathBuf {
+    get_config_path().join("oxwm-user")
 }
 
 fn print_help() {
@@ -261,12 +232,12 @@ fn print_help() {
     println!("USAGE:");
     println!("    oxwm [OPTIONS]\n");
     println!("OPTIONS:");
-    println!("    --init         Recreate config template in ~/.config/oxwm");
-    println!("    --recompile    Manually recompile configuration");
+    println!("    --init         Create default config in ~/.config/oxwm");
+    println!("    --recompile    Recompile user configuration");
     println!("    --version      Print version information");
     println!("    --help         Print this help message\n");
-    println!("FIRST RUN:");
-    println!("    Just run 'oxwm' - config will be auto-generated at:");
-    println!("    ~/.config/oxwm/config.rs");
-    println!("\n    Edit your config and reload with Mod+Shift+R\n");
+    println!("CONFIG:");
+    println!("    First run: Creates config at ~/.config/oxwm/config.rs");
+    println!("    Edit your config and run 'oxwm --recompile'");
+    println!("    Use Mod+Shift+R to hot-reload after recompiling\n");
 }

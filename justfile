@@ -15,11 +15,23 @@ uninstall:
 clean:
     cargo clean
 
+test-clean:
+	pkill Xephyr || true
+	rm -rf ~/.config/oxwm
+	Xephyr -screen 1280x800 :1 & sleep 1
+	DISPLAY=:1 cargo run --release
+
 test:
-    pkill Xephyr || true
-    rm -rf ~/.cache/oxwm  
-    Xephyr -screen 1280x800 :1 & sleep 1
-    DISPLAY=:1 cargo run --release  
+	pkill Xephyr || true
+	rm -f ~/.config/oxwm/oxwm-user
+	Xephyr -screen 1280x800 :1 & sleep 1
+	DISPLAY=:1 cargo run --release
+
+test-user:
+	pkill Xephyr || true
+	cargo run --release -- --recompile
+	Xephyr -screen 1280x800 :1 & sleep 1
+	DISPLAY=:1 ~/.config/oxwm/oxwm-user
 
 init:
     cargo run -- --init

@@ -300,13 +300,9 @@ impl WindowManager {
     }
 
     fn handle_restart(&self) -> Result<bool> {
-        if !can_recompile() {
-            eprintln!("Error: cargo not found. Install rust toolchain.");
-            notify_error("OXWM", "Cannot recompile: cargo not installed");
-            return Ok(false);
-        }
+        let user_binary = get_config_path().join("oxwm-user");
 
-        if self.needs_recompile()? {
+        if user_binary.exists() && self.needs_recompile()? {
             println!("Config changed, recompiling...");
             self.recompile()?;
         }
@@ -316,7 +312,7 @@ impl WindowManager {
 
     fn needs_recompile(&self) -> Result<bool> {
         let config_dir = get_config_path();
-        let binary_path = get_cache_binary_path();
+        let binary_path = get_user_binary_path();
 
         if !binary_path.exists() {
             return Ok(true);
@@ -360,18 +356,10 @@ impl WindowManager {
         }
 
         let source = config_dir.join("target/release/oxwm-user");
-        let dest = get_cache_binary_path();
-        let backup = dest.with_extension("old");
+        let dest = get_user_binary_path();
 
         std::fs::create_dir_all(dest.parent().unwrap())?;
-
-        if dest.exists() {
-            std::fs::rename(&dest, &backup)?;
-        }
-
         std::fs::copy(&source, &dest)?;
-
-        let _ = std::fs::remove_file(&backup);
 
         notify("OXWM", "Recompiled successfully! Restarting...");
 
@@ -943,10 +931,8 @@ fn get_config_path() -> PathBuf {
         .join("oxwm")
 }
 
-fn get_cache_binary_path() -> PathBuf {
-    dirs::cache_dir()
-        .expect("Could not find cache directory")
-        .join("oxwm/oxwm-binary")
+fn get_user_binary_path() -> PathBuf {
+    get_config_path().join("oxwm-user")
 }
 
 fn can_recompile() -> bool {
