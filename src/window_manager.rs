@@ -299,10 +299,6 @@ impl WindowManager {
         Ok(())
     }
 
-    fn handle_restart(&self) -> Result<bool> {
-        Ok(true)
-    }
-
     pub fn run(&mut self) -> Result<bool> {
         println!("oxwm started on display {}", self.screen_number);
 
@@ -752,7 +748,7 @@ impl WindowManager {
                 let (action, arg) = keyboard::handle_key_press(event, &self.config.keybindings)?;
                 match action {
                     KeyAction::Quit => return Ok(Some(false)),
-                    KeyAction::Restart => return Ok(Some(self.handle_restart()?)),
+                    KeyAction::Restart => return Ok(Some(true)),
                     _ => self.handle_key_action(action, &arg)?,
                 }
             }
