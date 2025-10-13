@@ -170,9 +170,8 @@ impl WindowManager {
                 continue;
             }
 
-            let attrs = match self.connection.get_window_attributes(window)?.reply() {
-                Ok(attrs) => attrs,
-                Err(_) => continue,
+            let Ok(attrs) = self.connection.get_window_attributes(window)?.reply() else {
+                continue;
             };
 
             if attrs.override_redirect {
