@@ -36,6 +36,7 @@ pub struct WindowManager {
     bar: Bar,
 }
 
+// TODO: Eliminate all library level `anyhow::Error`
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum WindowManagerError {
@@ -77,19 +78,6 @@ impl std::fmt::Display for X11Error {
     }
 }
 
-// impl<T: std::error::Error + Send + Sync + 'static> From<T> for WindowManagerError {
-//     fn from(value: T) -> Self {
-//         Self::Anyhow(value.into())
-//     }
-// }
-
-// TODO: Eliminate all library level `anyhow::Error`
-// impl<E: Into<anyhow::Error>> From<E> for WindowManagerError {
-//     fn from(value: E) -> Self {
-//         Self::Anyhow(value.into())
-//     }
-// }
-
 impl From<X11Error> for WindowManagerError {
     fn from(value: X11Error) -> Self {
         Self::X11(value)
@@ -126,13 +114,6 @@ impl From<anyhow::Error> for WindowManagerError {
     }
 }
 
-// Potentiel Errors:
-//  ::new -> x11rb::errors::ConnectError
-//  ::new -> x11rb::errors::ReplyError
-//  ::new -> x11rb::errors::ConnectionError
-//  ::new -> x11rb::errors::ReplyOrIdError
-//
-//  ::needs_recompile -> io::Result
 impl WindowManager {
     pub fn new(config: Config) -> std::result::Result<Self, WindowManagerError> {
         let (connection, screen_number) = x11rb::connect(None)?;
