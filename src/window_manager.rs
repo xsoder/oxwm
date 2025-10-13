@@ -300,70 +300,7 @@ impl WindowManager {
     }
 
     fn handle_restart(&self) -> Result<bool> {
-        let user_binary = get_config_path().join("oxwm-user");
-
-        if user_binary.exists() && self.needs_recompile()? {
-            println!("Config changed, recompiling...");
-            self.recompile()?;
-        }
-
         Ok(true)
-    }
-
-    fn needs_recompile(&self) -> Result<bool> {
-        let config_dir = get_config_path();
-        let binary_path = get_user_binary_path();
-
-        if !binary_path.exists() {
-            return Ok(true);
-        }
-
-        let binary_time = std::fs::metadata(&binary_path)?.modified()?;
-
-        let watch_files = ["config.rs", "main.rs", "Cargo.toml"];
-
-        for filename in &watch_files {
-            let path = config_dir.join(filename);
-            if !path.exists() {
-                continue;
-            }
-
-            let file_time = std::fs::metadata(&path)?.modified()?;
-            if file_time > binary_time {
-                println!("✓ Change detected: {}", filename);
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
-
-    fn recompile(&self) -> Result<()> {
-        let config_dir = get_config_path();
-
-        notify("OXWM", "Recompiling configuration...");
-
-        let output = std::process::Command::new("cargo")
-            .args(&["build", "--release"])
-            .current_dir(&config_dir)
-            .output()?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            notify_error("OXWM Compile Error", &stderr);
-            eprintln!("Compilation failed:\n{}", stderr);
-            anyhow::bail!("Failed to compile configuration");
-        }
-
-        let source = config_dir.join("target/release/oxwm-user");
-        let dest = get_user_binary_path();
-
-        std::fs::create_dir_all(dest.parent().unwrap())?;
-        std::fs::copy(&source, &dest)?;
-
-        notify("OXWM", "Recompiled successfully! Restarting...");
-
-        Ok(())
     }
 
     pub fn run(&mut self) -> Result<bool> {
@@ -462,8 +399,12 @@ impl WindowManager {
                 // Handled in handle_event
             }
             KeyAction::Recompile => {
-                if let Err(e) = self.recompile() {
-                    eprintln!("Recompile failed: {}", e);
+                match std::process::Command::new("oxwm")
+                    .arg("--recompile")
+                    .spawn()
+                {
+                    Ok(_) => eprintln!("Recompiling in background"),
+                    Err(e) => eprintln!("Failed to spawn recompile: {}", e),
                 }
             }
             KeyAction::ViewTag => {
@@ -923,34 +864,4 @@ impl WindowManager {
         }
         Ok(())
     }
-}
-
-fn get_config_path() -> PathBuf {
-    dirs::config_dir()
-        .expect("Could not find config directory")
-        .join("oxwm")
-}
-
-fn get_user_binary_path() -> PathBuf {
-    get_config_path().join("oxwm-user")
-}
-
-fn can_recompile() -> bool {
-    std::process::Command::new("cargo")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn notify(title: &str, body: &str) {
-    let _ = std::process::Command::new("notify-send")
-        .args(&[title, body])
-        .spawn();
-}
-
-fn notify_error(title: &str, body: &str) {
-    let _ = std::process::Command::new("notify-send")
-        .args(&["-u", "critical", title, body])
-        .spawn();
 }
