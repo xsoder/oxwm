@@ -7,16 +7,16 @@ use oxwm::prelude::*;
 pub const BORDER_WIDTH: u32 = 2;
 pub const BORDER_FOCUSED: u32 = 0x6dade3;
 pub const BORDER_UNFOCUSED: u32 = 0xbbbbbb;
-pub const FONT: &str = "JetBrainsMono Nerd Font:style=Bold:size=12";
+pub const FONT: &str = "monospace:size=12";
 
 // ========================================
 // GAPS (Vanity Gaps)
 // ========================================
-pub const GAPS_ENABLED: bool = false;
-pub const GAP_INNER_HORIZONTAL: u32 = 3;
-pub const GAP_INNER_VERTICAL: u32 = 3;
-pub const GAP_OUTER_HORIZONTAL: u32 = 3;
-pub const GAP_OUTER_VERTICAL: u32 = 3;
+pub const GAPS_ENABLED: bool = true;
+pub const GAP_INNER_HORIZONTAL: u32 = 6;
+pub const GAP_INNER_VERTICAL: u32 = 6;
+pub const GAP_OUTER_HORIZONTAL: u32 = 6;
+pub const GAP_OUTER_VERTICAL: u32 = 6;
 
 // ========================================
 // DEFAULTS
@@ -30,23 +30,14 @@ pub const MODKEY: KeyButMask = KeyButMask::MOD4;
 pub const TAG_COUNT: usize = 9;
 pub const TAGS: [&str; TAG_COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
-// Alternative tag styles you can use:
-// pub const TAGS: [&str; TAG_COUNT] = ["", "󰊯", "", "", "󰙯", "󱇤", "", "󱘶", "󰧮"];
-// pub const TAGS: [&str; TAG_COUNT] = ["DEV", "WWW", "SYS", "DOC", "VBOX", "CHAT", "MUS", "VID", "MISC"];
-
 // ========================================
 // BAR COLORS
 // ========================================
 const GRAY_DARK: u32 = 0x1a1b26;
-const GRAY_SEP: u32 = 0xa9b1d6;
 const GRAY_MID: u32 = 0x444444;
 const GRAY_LIGHT: u32 = 0xbbbbbb;
 const CYAN: u32 = 0x0db9d7;
 const MAGENTA: u32 = 0xad8ee6;
-const RED: u32 = 0xf7768e;
-const GREEN: u32 = 0x9ece6a;
-const BLUE: u32 = 0x7aa2f7;
-const YELLOW: u32 = 0xe0af68;
 
 pub const SCHEME_NORMAL: ColorScheme = ColorScheme {
     foreground: GRAY_LIGHT,
@@ -67,17 +58,6 @@ pub const SCHEME_SELECTED: ColorScheme = ColorScheme {
 };
 
 // ========================================
-// COMMANDS
-// ========================================
-const SCREENSHOT_CMD: &[&str] = &[
-    "sh",
-    "-c",
-    "maim -s | xclip -selection clipboard -t image/png",
-];
-
-const DMENU_CMD: &[&str] = &["sh", "-c", "dmenu_run -l 10"];
-
-// ========================================
 // KEYBINDINGS
 // ========================================
 const SHIFT: KeyButMask = KeyButMask::SHIFT;
@@ -86,9 +66,7 @@ const SHIFT: KeyButMask = KeyButMask::SHIFT;
 pub const KEYBINDINGS: &[Key] = &[
     // Launch applications
     Key::new(&[MODKEY],        keycodes::RETURN, KeyAction::Spawn,      Arg::Str(TERMINAL)),
-    Key::new(&[MODKEY],        keycodes::F,      KeyAction::Spawn,      Arg::Str("xclock")),
-    Key::new(&[MODKEY],        keycodes::S,      KeyAction::Spawn,      Arg::Array(SCREENSHOT_CMD)),
-    Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
+    Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(&["sh", "-c", "dmenu_run"])),
     
     // Window management
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
@@ -98,7 +76,6 @@ pub const KEYBINDINGS: &[Key] = &[
     // WM controls
     Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::R,      KeyAction::Restart,    Arg::None),
-    Key::new(&[MODKEY, SHIFT], keycodes::C,      KeyAction::Recompile,  Arg::None),
     
     // Focus
     Key::new(&[MODKEY],        keycodes::J,      KeyAction::FocusStack, Arg::Int(-1)),
@@ -130,61 +107,13 @@ pub const KEYBINDINGS: &[Key] = &[
 // ========================================
 // STATUS BAR BLOCKS
 // ========================================
-pub const STATUS_BLOCKS: &[BlockConfig] = &[
-    BlockConfig {
-        format: "",
-        command: BlockCommand::Battery {
-            format_charging: "󰂄 Bat: {}%",
-            format_discharging: "󰁹 Bat:{}%",
-            format_full: "󰁹 Bat: {}%",
-        },
-        interval_secs: 30,
-        color: GREEN,
-        underline: true,
-    },
-    BlockConfig {
-        format: " │  ",
-        command: BlockCommand::Static(""),
-        interval_secs: u64::MAX,
-        color: GRAY_SEP,
-        underline: false,
-    },
-    BlockConfig {
-        format: "󰍛 {used}/{total} GB",
-        command: BlockCommand::Ram,
-        interval_secs: 5,
-        color: BLUE,
-        underline: true,
-    },
-    BlockConfig {
-        format: " │  ",
-        command: BlockCommand::Static(""),
-        interval_secs: u64::MAX,
-        color: GRAY_SEP,
-        underline: false,
-    },
-    BlockConfig {
-        format: " {}",
-        command: BlockCommand::Shell("uname -r"),
-        interval_secs: u64::MAX,
-        color: RED,
-        underline: true,
-    },
-    BlockConfig {
-        format: " │  ",
-        command: BlockCommand::Static(""),
-        interval_secs: u64::MAX,
-        color: GRAY_SEP,
-        underline: false,
-    },
-    BlockConfig {
-        format: "󰸘 {}",
-        command: BlockCommand::DateTime("%a, %b %d - %-I:%M %P"),
-        interval_secs: 1,
-        color: CYAN,
-        underline: true,
-    },
-];
+pub const STATUS_BLOCKS: &[BlockConfig] = &[BlockConfig {
+    format: "{}",
+    command: BlockCommand::DateTime("%a, %b %d - %-I:%M %P"),
+    interval_secs: 1,
+    color: CYAN,
+    underline: true,
+}];
 
 // ========================================
 // BUILD CONFIG FROM CONSTANTS

@@ -28,10 +28,23 @@ fn main() -> Result<()> {
             "OXWM First Run",
             "Config created at ~/.config/oxwm/config.rs\nEdit and reload with Mod+Shift+R",
         );
+    } else {
+        let config_dir = get_config_path();
+        if !config_dir.join("Cargo.toml").exists() || !config_dir.join("main.rs").exists() {
+            ensure_build_files(&config_dir)?;
+        }
     }
 
     if !cache_binary.exists() || should_recompile(&config_path, &cache_binary)? {
-        recompile_config()?;
+        if let Err(e) = recompile_config() {
+            eprintln!("\nCompilation failed: {}", e);
+            eprintln!("\nYour config may be incompatible with this version of OXWM.");
+            eprintln!("Options:");
+            eprintln!("  1. Fix the errors in ~/.config/oxwm/config.rs");
+            eprintln!("  2. Run 'oxwm --init' to regenerate default config");
+            eprintln!("\nBackup your config first if you have customizations!");
+            std::process::exit(1);
+        }
     }
 
     use std::os::unix::process::CommandExt;
@@ -71,6 +84,12 @@ fn init_config() -> Result<()> {
     let config_template = include_str!("../../templates/config.rs");
     std::fs::write(config_dir.join("config.rs"), config_template)?;
 
+    ensure_build_files(&config_dir)?;
+
+    Ok(())
+}
+
+fn ensure_build_files(config_dir: &PathBuf) -> Result<()> {
     let main_template = include_str!("../../templates/main.rs");
     std::fs::write(config_dir.join("main.rs"), main_template)?;
 
