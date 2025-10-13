@@ -89,8 +89,10 @@ impl WindowManager {
             u16::from(config.modkey).into(),
         )?;
 
+        // TODO: identify error types
         let bar = Bar::new(&connection, &screen, screen_number, &config)?;
 
+        // TODO: identify error types
         let selected_tags = Self::get_saved_selected_tags(&connection, root, config.tags.len())?;
         let gaps_enabled = config.gaps_enabled;
 
@@ -111,6 +113,7 @@ impl WindowManager {
             bar,
         };
 
+        // TODO: identify error types
         window_manager.scan_existing_windows()?;
         window_manager.update_bar()?;
 
@@ -179,6 +182,7 @@ impl WindowManager {
             }
 
             if attrs.map_state == MapState::VIEWABLE {
+                // TODO: Identify errors
                 let tag = self.get_saved_tag(window, net_client_info)?;
                 self.windows.push(window);
                 self.window_tags.insert(window, tag);
@@ -203,6 +207,7 @@ impl WindowManager {
                     .is_ok_and(|prop| !prop.value.is_empty());
 
                 if has_wm_class {
+                    // TODO: Identify errors
                     let tag = self.get_saved_tag(window, net_client_info)?;
                     self.windows.push(window);
                     self.window_tags.insert(window, tag);
@@ -211,9 +216,11 @@ impl WindowManager {
         }
 
         if let Some(&first) = self.windows.first() {
+            // TODO: Identify errors
             self.set_focus(Some(first))?;
         }
 
+        // TODO: Identify errors
         self.apply_layout()?;
         Ok(())
     }
@@ -295,10 +302,12 @@ impl WindowManager {
     pub fn run(&mut self) -> Result<bool> {
         println!("oxwm started on display {}", self.screen_number);
 
+        // TODO: Identify errors
         keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
         self.update_bar()?;
 
         loop {
+            // TODO: Identify errors
             self.bar.update_blocks()?;
 
             if let Ok(Some(event)) = self.connection.poll_for_event() {
@@ -322,6 +331,7 @@ impl WindowManager {
 
                 self.connection.map_window(self.bar.window())?;
 
+                // TODO: Identify errors
                 self.apply_layout()?;
                 self.update_focus_visuals()?;
             } else {
@@ -356,6 +366,7 @@ impl WindowManager {
         }
 
         self.bar.invalidate();
+        // TODO: Identify errors
         self.bar
             .draw(&self.connection, self.selected_tags, occupied_tags)?;
         Ok(())
@@ -545,6 +556,7 @@ impl WindowManager {
             self.connection.flush()?;
         }
 
+        // TODO: Indentify errors
         self.update_focus_visuals()?;
         Ok(())
     }

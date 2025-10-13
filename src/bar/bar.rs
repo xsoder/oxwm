@@ -32,6 +32,9 @@ pub struct Bar {
     scheme_selected: crate::ColorScheme,
 }
 
+// Potential Errors:
+//  ::new -> x11rb::errors::ReplyOrIdError
+//  ::new -> x11rb::errors::ConnectionError
 impl Bar {
     pub fn new(
         connection: &RustConnection,
@@ -48,6 +51,7 @@ impl Bar {
         if display.is_null() {
             anyhow::bail!("Failed to open X11 display for XFT");
         }
+        // TODO: Identify errors
         let font = Font::new(display, screen_num as i32, &config.font)?;
 
         let height = (font.height() as f32 * 1.4) as u16;
@@ -83,6 +87,7 @@ impl Bar {
         let visual = unsafe { x11::xlib::XDefaultVisual(display, screen_num as i32) };
         let colormap = unsafe { x11::xlib::XDefaultColormap(display, screen_num as i32) };
 
+        // TODO: Identify errors
         let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
 
         let horizontal_padding = (font.height() as f32 * 0.4) as u16;
