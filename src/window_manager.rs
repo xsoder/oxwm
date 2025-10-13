@@ -187,27 +187,21 @@ impl WindowManager {
             }
 
             if attrs.map_state == MapState::UNMAPPED {
-                let has_wm_state = match self
+                let has_wm_state = self
                     .connection
                     .get_property(false, window, wm_state_atom, AtomEnum::ANY, 0, 2)?
                     .reply()
-                {
-                    Ok(prop) => !prop.value.is_empty(),
-                    Err(_) => false,
-                };
+                    .is_ok_and(|prop| !prop.value.is_empty());
 
                 if !has_wm_state {
                     continue;
                 }
 
-                let has_wm_class = match self
+                let has_wm_class = self
                     .connection
                     .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024)?
                     .reply()
-                {
-                    Ok(prop) => !prop.value.is_empty(),
-                    Err(_) => false,
-                };
+                    .is_ok_and(|prop| !prop.value.is_empty());
 
                 if has_wm_class {
                     let tag = self.get_saved_tag(window, net_client_info)?;
