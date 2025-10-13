@@ -36,7 +36,6 @@ pub struct WindowManager {
 
 // TODO: Eliminate all library level `anyhow::Error`
 #[derive(Debug)]
-#[non_exhaustive]
 pub enum WmError {
     X11(X11Error),
     Io(std::io::Error),
@@ -44,13 +43,14 @@ pub enum WmError {
 }
 
 #[derive(Debug)]
-#[non_exhaustive]
 pub enum X11Error {
     ConnectError(x11rb::errors::ConnectError),
     ConnectionError(x11rb::errors::ConnectionError),
     ReplyError(x11rb::errors::ReplyError),
     ReplyOrIdError(x11rb::errors::ReplyOrIdError),
 }
+
+type WmResult<T> = Result<T, WmError>;
 
 impl std::fmt::Display for WmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -113,7 +113,7 @@ impl From<anyhow::Error> for WmError {
 }
 
 impl WindowManager {
-    pub fn new(config: Config) -> std::result::Result<Self, WmError> {
+    pub fn new(config: Config) -> WmResult<Self> {
         let (connection, screen_number) = x11rb::connect(None)?;
         let root = connection.setup().roots[screen_number].root;
         let screen = connection.setup().roots[screen_number].clone();
@@ -200,7 +200,7 @@ impl WindowManager {
         connection: &RustConnection,
         root: Window,
         tag_count: usize,
-    ) -> std::result::Result<TagMask, WmError> {
+    ) -> WmResult<TagMask> {
         let net_current_desktop = connection
             .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
             .reply()?
@@ -230,7 +230,7 @@ impl WindowManager {
         Ok(tag_mask(0))
     }
 
-    fn scan_existing_windows(&mut self) -> std::result::Result<(), WmError> {
+    fn scan_existing_windows(&mut self) -> WmResult<()> {
         let tree = self.connection.query_tree(self.root)?.reply()?;
         let net_client_info = self
             .connection
@@ -297,11 +297,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn get_saved_tag(
-        &self,
-        window: Window,
-        net_client_info: Atom,
-    ) -> std::result::Result<TagMask, WmError> {
+    fn get_saved_tag(&self, window: Window, net_client_info: Atom) -> WmResult<TagMask> {
         match self
             .connection
             .get_property(false, window, net_client_info, AtomEnum::CARDINAL, 0, 2)?
@@ -328,7 +324,7 @@ impl WindowManager {
         Ok(self.selected_tags)
     }
 
-    fn save_client_tag(&self, window: Window, tag: TagMask) -> std::result::Result<(), WmError> {
+    fn save_client_tag(&self, window: Window, tag: TagMask) -> WmResult<()> {
         let net_client_info = self
             .connection
             .intern_atom(false, b"_NET_CLIENT_INFO")?
@@ -351,7 +347,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn set_wm_state(&self, window: Window, state: u32) -> std::result::Result<(), WmError> {
+    fn set_wm_state(&self, window: Window, state: u32) -> WmResult<()> {
         let wm_state_atom = self
             .connection
             .intern_atom(false, b"WM_STATE")?
@@ -375,7 +371,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn run(&mut self) -> std::result::Result<bool, WmError> {
+    pub fn run(&mut self) -> WmResult<bool> {
         println!("oxwm started on display {}", self.screen_number);
 
         // TODO: Identify errors
@@ -400,7 +396,7 @@ impl WindowManager {
         }
     }
 
-    fn toggle_fullscreen(&mut self) -> std::result::Result<(), WmError> {
+    fn toggle_fullscreen(&mut self) -> WmResult<()> {
         if let Some(focused) = self.focused_window {
             if self.fullscreen_window == Some(focused) {
                 self.fullscreen_window = None;
@@ -434,7 +430,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn update_bar(&mut self) -> std::result::Result<(), WmError> {
+    fn update_bar(&mut self) -> WmResult<()> {
         let mut occupied_tags: TagMask = 0;
         for &tags in self.window_tags.values() {
             occupied_tags |= tags;
@@ -447,11 +443,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn handle_key_action(
-        &mut self,
-        action: KeyAction,
-        arg: &Arg,
-    ) -> std::result::Result<(), WmError> {
+    fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> WmResult<()> {
         match action {
             KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
             KeyAction::KillClient => {
@@ -521,7 +513,7 @@ impl WindowManager {
             .collect()
     }
 
-    fn update_window_visibility(&self) -> std::result::Result<(), WmError> {
+    fn update_window_visibility(&self) -> WmResult<()> {
         for &window in &self.windows {
             if self.is_window_visible(window) {
                 self.connection.map_window(window)?;
@@ -533,7 +525,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn view_tag(&mut self, tag_index: usize) -> std::result::Result<(), WmError> {
+    pub fn view_tag(&mut self, tag_index: usize) -> WmResult<()> {
         if tag_index >= self.config.tags.len() {
             return Ok(());
         }
@@ -557,7 +549,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn save_selected_tags(&self) -> std::result::Result<(), WmError> {
+    fn save_selected_tags(&self) -> WmResult<()> {
         let net_current_desktop = self
             .connection
             .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
@@ -581,7 +573,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn move_to_tag(&mut self, tag_index: usize) -> std::result::Result<(), WmError> {
+    pub fn move_to_tag(&mut self, tag_index: usize) -> WmResult<()> {
         if tag_index >= self.config.tags.len() {
             return Ok(());
         }
@@ -600,7 +592,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn cycle_focus(&mut self, direction: i32) -> std::result::Result<(), WmError> {
+    pub fn cycle_focus(&mut self, direction: i32) -> WmResult<()> {
         let visible = self.visible_windows();
 
         if visible.is_empty() {
@@ -626,7 +618,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn set_focus(&mut self, window: Option<Window>) -> std::result::Result<(), WmError> {
+    pub fn set_focus(&mut self, window: Option<Window>) -> WmResult<()> {
         self.focused_window = window;
 
         if let Some(win) = window {
@@ -639,7 +631,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn update_focus_visuals(&self) -> std::result::Result<(), WmError> {
+    fn update_focus_visuals(&self) -> WmResult<()> {
         for &window in &self.windows {
             let (border_color, border_width) = if self.focused_window == Some(window) {
                 (self.config.border_focused, self.config.border_width)
@@ -661,7 +653,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn move_mouse(&mut self, window: Window) -> std::result::Result<(), WmError> {
+    fn move_mouse(&mut self, window: Window) -> WmResult<()> {
         self.floating_windows.insert(window);
 
         let geometry = self.connection.get_geometry(window)?.reply()?;
@@ -714,7 +706,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn resize_mouse(&mut self, window: Window) -> std::result::Result<(), WmError> {
+    fn resize_mouse(&mut self, window: Window) -> WmResult<()> {
         self.floating_windows.insert(window);
 
         let geometry = self.connection.get_geometry(window)?.reply()?;
@@ -778,7 +770,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn handle_event(&mut self, event: Event) -> std::result::Result<Option<bool>, WmError> {
+    fn handle_event(&mut self, event: Event) -> WmResult<Option<bool>> {
         match event {
             Event::MapRequest(event) => {
                 let attrs = match self.connection.get_window_attributes(event.window)?.reply() {
@@ -861,7 +853,7 @@ impl WindowManager {
         Ok(None)
     }
 
-    fn apply_layout(&self) -> std::result::Result<(), WmError> {
+    fn apply_layout(&self) -> WmResult<()> {
         if self.fullscreen_window.is_some() {
             return Ok(());
         }
@@ -917,7 +909,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn remove_window(&mut self, window: Window) -> std::result::Result<(), WmError> {
+    fn remove_window(&mut self, window: Window) -> WmResult<()> {
         let initial_count = self.windows.len();
         self.windows.retain(|&w| w != window);
         self.window_tags.remove(&window);
