@@ -19,41 +19,25 @@ fn main() -> Result<()> {
         _ => {}
     }
 
+    let config_path = get_config_path().join("config.rs");
     let cache_binary = get_cache_binary_path();
 
-    if cache_binary.exists() {
-        let config_path = get_config_path().join("config.rs");
-        if should_recompile(&config_path, &cache_binary)? {
-            println!("Config changed, recompiling...");
-            recompile_config()?;
-        }
-
-        use std::os::unix::process::CommandExt;
-        let err = Command::new(&cache_binary).args(&args[1..]).exec();
-        anyhow::bail!("Failed to exec user binary: {}", err);
-    } else {
-        eprintln!("╔════════════════════════════════════════╗");
-        eprintln!("║  OXWM: Running with default config    ║");
-        eprintln!("╚════════════════════════════════════════╝");
-        eprintln!();
-        eprintln!("ℹ️  Run 'oxwm --init' to create a custom config");
-        eprintln!();
-
-        let config = oxwm::Config::default();
-
-        let mut wm = oxwm::window_manager::WindowManager::new(config)?;
-        let should_restart = wm.run()?;
-
-        drop(wm);
-
-        if should_restart {
-            use std::os::unix::process::CommandExt;
-            let err = Command::new(&args[0]).args(&args[1..]).exec();
-            eprintln!("Failed to restart: {}", err);
-        }
-
-        Ok(())
+    if !config_path.exists() {
+        init_config()?;
+        notify(
+            "OXWM First Run",
+            "Config created at ~/.config/oxwm/config.rs\nEdit and reload with Mod+Shift+R",
+        );
     }
+
+    if !cache_binary.exists() || should_recompile(&config_path, &cache_binary)? {
+        recompile_config()?;
+    }
+
+    use std::os::unix::process::CommandExt;
+    let err = Command::new(&cache_binary).args(&args[1..]).exec();
+    eprintln!("Failed to exec: {}", err);
+    std::process::exit(1);
 }
 
 #[derive(Debug)]
@@ -83,12 +67,6 @@ fn detect_build_method() -> BuildMethod {
 fn init_config() -> Result<()> {
     let config_dir = get_config_path();
     std::fs::create_dir_all(&config_dir)?;
-
-    if config_dir.join("config.rs").exists() {
-        eprintln!("Config already exists at ~/.config/oxwm/config.rs");
-        eprintln!("Remove it first if you want to reinitialize.");
-        return Ok(());
-    }
 
     let config_template = include_str!("../../templates/config.rs");
     std::fs::write(config_dir.join("config.rs"), config_template)?;
@@ -129,19 +107,7 @@ pkgs.mkShell {
 }
 "#;
         std::fs::write(config_dir.join("shell.nix"), shell_nix)?;
-        println!("✓ Created shell.nix for NixOS");
     }
-
-    println!("✓ Created ~/.config/oxwm/config.rs");
-    println!("✓ Created ~/.config/oxwm/main.rs");
-    println!("✓ Edit ~/.config/oxwm/config.rs to customize your setup");
-
-    println!("\nCompiling initial configuration...");
-    recompile_config()?;
-
-    println!("\n✓ Setup complete!");
-    println!("  Your custom config is now active");
-    println!("  Reload config anytime with Mod+Shift+R");
 
     Ok(())
 }
@@ -182,14 +148,7 @@ fn recompile_config() -> Result<()> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         eprintln!("\n❌ Compilation failed:\n{}", stderr);
 
-        let _ = Command::new("notify-send")
-            .args(&[
-                "-u",
-                "critical",
-                "OXWM Compile Error",
-                "Check terminal for details",
-            ])
-            .spawn();
+        notify_error("OXWM Compile Error", "Check terminal for details");
 
         anyhow::bail!("Failed to compile configuration");
     }
@@ -211,12 +170,10 @@ fn recompile_config() -> Result<()> {
 
     println!("✓ Compiled successfully");
 
-    let _ = Command::new("notify-send")
-        .args(&[
-            "OXWM",
-            "Configuration recompiled! Hit Mod+Shift+R to restart.",
-        ])
-        .spawn();
+    notify(
+        "OXWM",
+        "Configuration recompiled! Hit Mod+Shift+R to restart.",
+    );
 
     Ok(())
 }
@@ -270,24 +227,27 @@ fn get_cache_binary_path() -> PathBuf {
         .join("oxwm/oxwm-binary")
 }
 
+fn notify(title: &str, body: &str) {
+    let _ = Command::new("notify-send").args(&[title, body]).spawn();
+}
+
+fn notify_error(title: &str, body: &str) {
+    let _ = Command::new("notify-send")
+        .args(&["-u", "critical", title, body])
+        .spawn();
+}
+
 fn print_help() {
     println!("OXWM - A dynamic window manager written in Rust\n");
     println!("USAGE:");
     println!("    oxwm [OPTIONS]\n");
     println!("OPTIONS:");
-    println!("    --init         Initialize user configuration in ~/.config/oxwm");
-    println!("    --recompile    Recompile user configuration");
+    println!("    --init         Recreate config template in ~/.config/oxwm");
+    println!("    --recompile    Manually recompile configuration");
     println!("    --version      Print version information");
     println!("    --help         Print this help message\n");
-    println!("CONFIGURATION:");
-    println!("    Without --init: Runs with built-in defaults");
-    println!("    With --init:    Uses custom config from ~/.config/oxwm/config.rs");
-    println!("    Reload hotkey:  Mod+Shift+R (auto-recompiles if needed)\n");
-    println!("SETUP:");
-    println!("    1. Add 'exec oxwm' to your ~/.xinitrc (works immediately with defaults)");
-    println!("    2. Optionally run 'oxwm --init' to create custom config");
-    println!("    3. Edit ~/.config/oxwm/config.rs to customize");
-    println!("    4. Restart with Mod+Shift+R\n");
-    println!("ADVANCED:");
-    println!("    Create flake.nix or shell.nix in ~/.config/oxwm to use nix builds");
+    println!("FIRST RUN:");
+    println!("    Just run 'oxwm' - config will be auto-generated at:");
+    println!("    ~/.config/oxwm/config.rs");
+    println!("\n    Edit your config and reload with Mod+Shift+R\n");
 }
