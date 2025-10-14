@@ -1,4 +1,5 @@
 pub mod bar;
+pub mod config;
 pub mod errors;
 pub mod keyboard;
 pub mod layout;
@@ -67,7 +68,7 @@ impl Default for Config {
             border_width: 2,
             border_focused: 0x6dade3,
             border_unfocused: 0xbbbbbb,
-            font: "monospace:size=12".to_string(),
+            font: "monospace:size=10".to_string(),
             gaps_enabled: false,
             gap_inner_horizontal: 0,
             gap_inner_vertical: 0,

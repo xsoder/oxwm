@@ -5,12 +5,12 @@ install: build
     cp target/release/oxwm ~/.local/bin/oxwm
     chmod +x ~/.local/bin/oxwm
     @echo "✓ oxwm installed to ~/.local/bin/oxwm"
-    @echo "  Run 'oxwm --init' to set up your config"
+    @echo "  Run 'oxwm --init' to create your config"
 
 uninstall:
     rm -f ~/.local/bin/oxwm
     @echo "✓ oxwm uninstalled"
-    @echo "  Your config at ~/.config/oxwm is preserved"
+    @echo "  Your config at ~/.config/oxwm/config.ron is preserved"
 
 clean:
     cargo clean
@@ -23,24 +23,14 @@ test-clean:
 
 test:
 	pkill Xephyr || true
-	rm -f ~/.config/oxwm/oxwm-user
 	Xephyr -screen 1280x800 :1 & sleep 1
 	DISPLAY=:1 cargo run --release
 
-test-user:
-	pkill Xephyr || true
-	cargo run --release -- --recompile
-	Xephyr -screen 1280x800 :1 & sleep 1
-	DISPLAY=:1 ~/.config/oxwm/oxwm-user
-
 init:
-    cargo run -- --init
-
-recompile:
-    cargo run -- --recompile
+    cargo run --release -- --init
 
 edit:
-    $EDITOR ~/.config/oxwm/config.rs
+    $EDITOR ~/.config/oxwm/config.ron
 
 check:
     cargo clippy -- -W clippy::all
