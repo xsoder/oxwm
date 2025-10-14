@@ -48,6 +48,9 @@ pub enum X11Error {
     ConnectionError(x11rb::errors::ConnectionError),
     ReplyError(x11rb::errors::ReplyError),
     ReplyOrIdError(x11rb::errors::ReplyOrIdError),
+    DisplayOpenFailed,
+    FontLoadFailed(String),
+    DrawCreateFailed,
 }
 
 type WmResult<T> = Result<T, WmError>;
@@ -55,7 +58,6 @@ type WmResult<T> = Result<T, WmError>;
 impl std::fmt::Display for WmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            // Self::X11(x11_error) => write!(f, "{:?}", x11_error),
             Self::X11(error) => write!(f, "{}", error),
             Self::Io(error) => write!(f, "{}", error),
             Self::Anyhow(error) => write!(f, "{}", error),
@@ -68,10 +70,13 @@ impl std::error::Error for WmError {}
 impl std::fmt::Display for X11Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            X11Error::ConnectError(err) => write!(f, "{}", err),
-            X11Error::ConnectionError(err) => write!(f, "{}", err),
-            X11Error::ReplyError(err) => write!(f, "{}", err),
-            X11Error::ReplyOrIdError(err) => write!(f, "{}", err),
+            Self::ConnectError(err) => write!(f, "{}", err),
+            Self::ConnectionError(err) => write!(f, "{}", err),
+            Self::ReplyError(err) => write!(f, "{}", err),
+            Self::ReplyOrIdError(err) => write!(f, "{}", err),
+            Self::DisplayOpenFailed => write!(f, "failed to open X11 display"),
+            Self::FontLoadFailed(font_name) => write!(f, "failed to load Xft font: {}", font_name),
+            Self::DrawCreateFailed => write!(f, "failed to create XftDraw"),
         }
     }
 }

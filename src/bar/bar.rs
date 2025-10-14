@@ -2,7 +2,6 @@ use super::blocks::Block;
 use super::font::{Font, FontDraw};
 use crate::Config;
 use crate::window_manager::X11Error;
-use anyhow::Result;
 use std::time::Instant;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;
@@ -33,16 +32,13 @@ pub struct Bar {
     scheme_selected: crate::ColorScheme,
 }
 
-// Potential Errors:
-//  ::new -> x11rb::errors::ReplyOrIdError
-//  ::new -> x11rb::errors::ConnectionError
 impl Bar {
     pub fn new(
         connection: &RustConnection,
         screen: &Screen,
         screen_num: usize,
         config: &Config,
-    ) -> Result<Self> {
+    ) -> Result<Self, X11Error> {
         let window = connection.generate_id()?;
         let graphics_context = connection.generate_id()?;
 
@@ -50,9 +46,9 @@ impl Bar {
 
         let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
         if display.is_null() {
-            anyhow::bail!("Failed to open X11 display for XFT");
+            return Err(X11Error::DisplayOpenFailed.into());
         }
-        // TODO: Identify errors
+
         let font = Font::new(display, screen_num as i32, &config.font)?;
 
         let height = (font.height() as f32 * 1.4) as u16;
@@ -88,7 +84,6 @@ impl Bar {
         let visual = unsafe { x11::xlib::XDefaultVisual(display, screen_num as i32) };
         let colormap = unsafe { x11::xlib::XDefaultColormap(display, screen_num as i32) };
 
-        // TODO: Identify errors
         let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
 
         let horizontal_padding = (font.height() as f32 * 0.4) as u16;
@@ -181,7 +176,7 @@ impl Bar {
         connection: &RustConnection,
         current_tags: u32,
         occupied_tags: u32,
-    ) -> std::result::Result<(), X11Error> {
+    ) -> Result<(), X11Error> {
         if !self.needs_redraw {
             return Ok(());
         }

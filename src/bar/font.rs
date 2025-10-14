@@ -1,8 +1,9 @@
-use anyhow::Result;
 use std::ffi::CString;
 use x11::xft::{XftColor, XftDraw, XftDrawStringUtf8, XftFont, XftFontOpenName};
 use x11::xlib::{Colormap, Display, Drawable, Visual};
 use x11::xrender::XRenderColor;
+
+use crate::window_manager::X11Error;
 
 pub struct Font {
     xft_font: *mut XftFont,
@@ -10,13 +11,14 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(display: *mut Display, screen: i32, font_name: &str) -> Result<Self> {
-        let font_name_cstr = CString::new(font_name)?;
+    pub fn new(display: *mut Display, screen: i32, font_name: &str) -> Result<Self, X11Error> {
+        let font_name_cstr =
+            CString::new(font_name).map_err(|_| X11Error::FontLoadFailed(font_name.to_string()))?;
 
         let xft_font = unsafe { XftFontOpenName(display, screen, font_name_cstr.as_ptr()) };
 
         if xft_font.is_null() {
-            anyhow::bail!("Failed to load font: {}", font_name);
+            return Err(X11Error::FontLoadFailed(font_name.to_string()));
         }
 
         Ok(Font { xft_font, display })
@@ -71,11 +73,11 @@ impl FontDraw {
         drawable: Drawable,
         visual: *mut Visual,
         colormap: Colormap,
-    ) -> Result<Self> {
+    ) -> Result<Self, X11Error> {
         let xft_draw = unsafe { x11::xft::XftDrawCreate(display, drawable, visual, colormap) };
 
         if xft_draw.is_null() {
-            anyhow::bail!("Failed to create XftDraw");
+            return Err(X11Error::DrawCreateFailed);
         }
 
         Ok(FontDraw { xft_draw })
