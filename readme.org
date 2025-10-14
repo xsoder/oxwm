@@ -1,6 +1,8 @@
 #+AUTHOR: Tony
 #+STARTUP: overview
 
+[[file:./images/oxwm1.png]]
+
 * Table of Contents :toc:
 - [[#oxwm--dwm-but-better-and-oxidized][OXWM — DWM but Better (and oxidized)]]
 - [[#installation][Installation]]
