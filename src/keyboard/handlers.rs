@@ -99,8 +99,8 @@ pub fn handle_key_press(event: KeyPressEvent, keybindings: &[Key]) -> (KeyAction
 
 pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> io::Result<()> {
     use io::ErrorKind;
-    match action {
-        KeyAction::Spawn => match arg {
+    if let KeyAction::Spawn = action {
+        match arg {
             Arg::Str(command) => match Command::new(command).spawn() {
                 Err(err) if err.kind() == ErrorKind::NotFound => {
                     eprintln!(
@@ -128,8 +128,7 @@ pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> io::Result<()> {
                 }
             }
             _ => {}
-        },
-        _ => {}
+        }
     }
 
     Ok(())
