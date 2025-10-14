@@ -1,6 +1,7 @@
 use super::blocks::Block;
 use super::font::{Font, FontDraw};
 use crate::Config;
+use crate::window_manager::X11Error;
 use anyhow::Result;
 use std::time::Instant;
 use x11rb::COPY_DEPTH_FROM_PARENT;
@@ -148,7 +149,7 @@ impl Bar {
         self.needs_redraw = true;
     }
 
-    pub fn update_blocks(&mut self) -> Result<()> {
+    pub fn update_blocks(&mut self) {
         let now = Instant::now();
         let mut changed = false;
 
@@ -173,8 +174,6 @@ impl Bar {
             self.status_text = parts.join("");
             self.needs_redraw = true;
         }
-
-        Ok(())
     }
 
     pub fn draw(
@@ -182,7 +181,7 @@ impl Bar {
         connection: &RustConnection,
         current_tags: u32,
         occupied_tags: u32,
-    ) -> Result<()> {
+    ) -> std::result::Result<(), X11Error> {
         if !self.needs_redraw {
             return Ok(());
         }

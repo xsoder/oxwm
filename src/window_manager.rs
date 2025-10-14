@@ -378,8 +378,7 @@ impl WindowManager {
         self.update_bar()?;
 
         loop {
-            // TODO: Identify errors
-            self.bar.update_blocks()?;
+            self.bar.update_blocks();
 
             if let Ok(Some(event)) = self.connection.poll_for_event() {
                 if let Some(should_restart) = self.handle_event(event)? {
@@ -436,7 +435,6 @@ impl WindowManager {
         }
 
         self.bar.invalidate();
-        // TODO: Identify errors
         self.bar
             .draw(&self.connection, self.selected_tags, occupied_tags)?;
         Ok(())
