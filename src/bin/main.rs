@@ -26,24 +26,16 @@ fn main() -> Result<()> {
         _ => {}
     }
 
-    let user_binary = get_user_binary_path();
-    let config_path = get_config_path().join("config.rs");
+    let config_dir = get_config_path();
+    let user_bin = config_dir.join("target/release/oxwm-user");
 
-    if config_path.exists() && user_binary.exists() {
-        if !should_recompile(&config_path, &user_binary)? {
-            use std::os::unix::process::CommandExt;
-            let err = std::process::Command::new(&user_binary)
-                .args(&args[1..])
-                .exec();
-            eprintln!("Failed to exec user binary: {}", err);
-            std::process::exit(1);
-        }
-    }
-
-    if !config_path.exists() {
-        eprintln!("No config found, creating default at ~/.config/oxwm/config.rs");
-        init_config()?;
-        eprintln!("✓ Edit ~/.config/oxwm/config.rs and run 'oxwm --recompile'");
+    if user_bin.exists() {
+        use std::os::unix::process::CommandExt;
+        let err = std::process::Command::new(&user_bin)
+            .args(&args[1..])
+            .exec();
+        eprintln!("Failed to exec user binary: {}", err);
+        std::process::exit(1);
     }
 
     let config = oxwm::Config::default();
@@ -175,13 +167,7 @@ fn recompile_config() -> Result<()> {
         anyhow::bail!("Failed to compile configuration");
     }
 
-    let source = config_dir.join("target/release/oxwm-user");
-    let dest = get_user_binary_path();
-
-    std::fs::create_dir_all(dest.parent().unwrap())?;
-    std::fs::copy(&source, &dest)?;
-
-    println!("✓ Compiled successfully to {}", dest.display());
+    println!("✓ Compiled successfully.");
     println!("  Restart oxwm to use new config");
 
     Ok(())
