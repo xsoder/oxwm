@@ -177,19 +177,20 @@ When contributing to OXWM:
 * Key Bindings
 Default keybindings (customizable in config.rs):
 
-| Binding         | Action                  |
-|-----------------+-------------------------|
-| Super+Return    | Spawn terminal          |
-| Super+J/K       | Cycle focus down/up     |
-| Super+Q         | Kill focused window     |
-| Super+Shift+Q   | Quit WM                 |
-| Super+Shift+R   | Hot reload WM           |
-| Super+1-9       | View tag 1-9            |
-| Super+Shift+1-9 | Move window to tag 1-9  |
-| Super+S         | Screenshot (maim)       |
-| Super+D         | dmenu launcher          |
-| Super+A         | Toggle gaps             |
-| Super+Shift+F   | Toggle fullscreen       |
+| Binding           | Action                  |
+|-------------------+-------------------------|
+| Super+Return      | Spawn terminal          |
+| Super+J/K         | Cycle focus down/up     |
+| Super+Q           | Kill focused window     |
+| Super+Shift+Q     | Quit WM                 |
+| Super+Shift+R     | Hot reload WM           |
+| Super+1-9         | View tag 1-9            |
+| Super+Shift+1-9   | Move window to tag 1-9  |
+| Super+S           | Screenshot (maim)       |
+| Super+D           | dmenu launcher          |
+| Super+A           | Toggle gaps             |
+| Super+Shift+F     | Toggle fullscreen       |
+| Super+Shift+Space | Toggle floating         |
 
 * Features
 - Dynamic tiling layout with master/stack
