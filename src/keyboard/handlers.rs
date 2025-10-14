@@ -4,7 +4,7 @@ use std::process::Command;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-use crate::window_manager::X11Error;
+use crate::errors::X11Error;
 
 #[derive(Debug, Copy, Clone)]
 pub enum KeyAction {

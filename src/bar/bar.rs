@@ -1,7 +1,7 @@
 use super::blocks::Block;
 use super::font::{Font, FontDraw};
 use crate::Config;
-use crate::window_manager::X11Error;
+use crate::errors::X11Error;
 use std::time::Instant;
 use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::connection::Connection;

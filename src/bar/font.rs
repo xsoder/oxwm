@@ -3,7 +3,7 @@ use x11::xft::{XftColor, XftDraw, XftDrawStringUtf8, XftFont, XftFontOpenName};
 use x11::xlib::{Colormap, Display, Drawable, Visual};
 use x11::xrender::XRenderColor;
 
-use crate::window_manager::X11Error;
+use crate::errors::X11Error;
 
 pub struct Font {
     xft_font: *mut XftFont,

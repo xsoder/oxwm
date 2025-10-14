@@ -1,5 +1,6 @@
 use crate::Config;
 use crate::bar::Bar;
+use crate::errors::WmError;
 use crate::keyboard::{self, Arg, KeyAction, handlers};
 use crate::layout::GapConfig;
 use crate::layout::Layout;
@@ -34,93 +35,7 @@ pub struct WindowManager {
     bar: Bar,
 }
 
-#[derive(Debug)]
-pub enum WmError {
-    X11(X11Error),
-    Io(std::io::Error),
-    Anyhow(anyhow::Error),
-}
-
-#[derive(Debug)]
-pub enum X11Error {
-    ConnectError(x11rb::errors::ConnectError),
-    ConnectionError(x11rb::errors::ConnectionError),
-    ReplyError(x11rb::errors::ReplyError),
-    ReplyOrIdError(x11rb::errors::ReplyOrIdError),
-    DisplayOpenFailed,
-    FontLoadFailed(String),
-    DrawCreateFailed,
-}
-
 type WmResult<T> = Result<T, WmError>;
-
-impl std::fmt::Display for WmError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::X11(error) => write!(f, "{}", error),
-            Self::Io(error) => write!(f, "{}", error),
-            Self::Anyhow(error) => write!(f, "{}", error),
-        }
-    }
-}
-
-impl std::error::Error for WmError {}
-
-impl std::fmt::Display for X11Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ConnectError(err) => write!(f, "{}", err),
-            Self::ConnectionError(err) => write!(f, "{}", err),
-            Self::ReplyError(err) => write!(f, "{}", err),
-            Self::ReplyOrIdError(err) => write!(f, "{}", err),
-            Self::DisplayOpenFailed => write!(f, "failed to open X11 display"),
-            Self::FontLoadFailed(font_name) => write!(f, "failed to load Xft font: {}", font_name),
-            Self::DrawCreateFailed => write!(f, "failed to create XftDraw"),
-        }
-    }
-}
-
-impl<T: Into<X11Error>> From<T> for WmError {
-    fn from(value: T) -> Self {
-        Self::X11(value.into())
-    }
-}
-
-impl From<std::io::Error> for WmError {
-    fn from(value: std::io::Error) -> Self {
-        Self::Io(value)
-    }
-}
-
-impl From<anyhow::Error> for WmError {
-    fn from(value: anyhow::Error) -> Self {
-        Self::Anyhow(value)
-    }
-}
-
-impl From<x11rb::errors::ConnectError> for X11Error {
-    fn from(value: x11rb::errors::ConnectError) -> Self {
-        X11Error::ConnectError(value)
-    }
-}
-
-impl From<x11rb::errors::ConnectionError> for X11Error {
-    fn from(value: x11rb::errors::ConnectionError) -> Self {
-        X11Error::ConnectionError(value)
-    }
-}
-
-impl From<x11rb::errors::ReplyError> for X11Error {
-    fn from(value: x11rb::errors::ReplyError) -> Self {
-        X11Error::ReplyError(value)
-    }
-}
-
-impl From<x11rb::errors::ReplyOrIdError> for X11Error {
-    fn from(value: x11rb::errors::ReplyOrIdError) -> Self {
-        X11Error::ReplyOrIdError(value)
-    }
-}
 
 impl WindowManager {
     pub fn new(config: Config) -> WmResult<Self> {

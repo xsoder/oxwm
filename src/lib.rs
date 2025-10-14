@@ -1,4 +1,5 @@
 pub mod bar;
+pub mod errors;
 pub mod keyboard;
 pub mod layout;
 pub mod window_manager;
