@@ -34,7 +34,6 @@ pub struct WindowManager {
     bar: Bar,
 }
 
-// TODO: Eliminate all library level `anyhow::Error`
 #[derive(Debug)]
 pub enum WmError {
     X11(X11Error),
@@ -84,6 +83,12 @@ impl std::fmt::Display for X11Error {
 impl<T: Into<X11Error>> From<T> for WmError {
     fn from(value: T) -> Self {
         Self::X11(value.into())
+    }
+}
+
+impl From<std::io::Error> for WmError {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
     }
 }
 
@@ -376,7 +381,6 @@ impl WindowManager {
     pub fn run(&mut self) -> WmResult<bool> {
         println!("oxwm started on display {}", self.screen_number);
 
-        // TODO: Identify errors
         keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
         self.update_bar()?;
 
@@ -820,7 +824,7 @@ impl WindowManager {
                 }
             }
             Event::KeyPress(event) => {
-                let (action, arg) = keyboard::handle_key_press(event, &self.config.keybindings)?;
+                let (action, arg) = keyboard::handle_key_press(event, &self.config.keybindings);
                 match action {
                     KeyAction::Quit => return Ok(Some(false)),
                     KeyAction::Restart => return Ok(Some(true)),
