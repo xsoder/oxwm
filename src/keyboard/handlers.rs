@@ -1,8 +1,10 @@
+use std::io;
 use std::process::Command;
 
-use anyhow::Result;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+
+use crate::errors::X11Error;
 
 #[derive(Debug, Copy, Clone)]
 pub enum KeyAction {
@@ -68,7 +70,7 @@ pub fn setup_keybinds(
     connection: &impl Connection,
     root: Window,
     keybindings: &[Key],
-) -> Result<()> {
+) -> Result<(), X11Error> {
     for keybinding in keybindings {
         let modifier_mask = modifiers_to_mask(keybinding.modifiers);
 
@@ -84,22 +86,22 @@ pub fn setup_keybinds(
     Ok(())
 }
 
-pub fn handle_key_press(event: KeyPressEvent, keybindings: &[Key]) -> Result<(KeyAction, Arg)> {
+pub fn handle_key_press(event: KeyPressEvent, keybindings: &[Key]) -> (KeyAction, Arg) {
     for keybinding in keybindings {
         let modifier_mask = modifiers_to_mask(keybinding.modifiers);
 
         if event.detail == keybinding.key && event.state == modifier_mask.into() {
-            return Ok((keybinding.func, keybinding.arg.clone()));
+            return (keybinding.func, keybinding.arg.clone());
         }
     }
 
-    Ok((KeyAction::None, Arg::None))
+    (KeyAction::None, Arg::None)
 }
 
-pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> Result<()> {
-    use std::io::ErrorKind;
-    match action {
-        KeyAction::Spawn => match arg {
+pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> io::Result<()> {
+    use io::ErrorKind;
+    if let KeyAction::Spawn = action {
+        match arg {
             Arg::Str(command) => match Command::new(command).spawn() {
                 Err(err) if err.kind() == ErrorKind::NotFound => {
                     eprintln!(
@@ -127,8 +129,7 @@ pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> Result<()> {
                 }
             }
             _ => {}
-        },
-        _ => {}
+        }
     }
 
     Ok(())
