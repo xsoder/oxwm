@@ -316,6 +316,24 @@ impl WindowManager {
         }
     }
 
+    fn toggle_floating(&mut self) -> WmResult<()> {
+        if let Some(focused) = self.focused_window {
+            if self.floating_windows.contains(&focused) {
+                self.floating_windows.remove(&focused);
+                self.apply_layout()?;
+            } else {
+                self.floating_windows.insert(focused);
+                self.connection.configure_window(
+                    focused,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                )?;
+                self.apply_layout()?;
+                self.connection.flush()?;
+            }
+        }
+        Ok(())
+    }
+
     fn toggle_fullscreen(&mut self) -> WmResult<()> {
         if let Some(focused) = self.focused_window {
             if self.fullscreen_window == Some(focused) {
@@ -380,6 +398,10 @@ impl WindowManager {
             KeyAction::ToggleFullScreen => {
                 self.toggle_fullscreen()?;
             }
+            KeyAction::ToggleFloating => {
+                self.toggle_floating()?;
+            }
+
             KeyAction::FocusStack => {
                 if let Arg::Int(direction) = arg {
                     self.cycle_focus(*direction)?;

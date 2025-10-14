@@ -100,6 +100,7 @@ pub const KEYBINDINGS: &[Key] = &[
     Key::new(&[MODKEY],        keycodes::D,      KeyAction::Spawn,      Arg::Array(DMENU_CMD)),
     Key::new(&[MODKEY],        keycodes::Q,      KeyAction::KillClient, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::F,      KeyAction::ToggleFullScreen, Arg::None),
+    Key::new(&[MODKEY, SHIFT], keycodes::SPACE,  KeyAction::ToggleFloating, Arg::None),
     Key::new(&[MODKEY],        keycodes::A,      KeyAction::ToggleGaps, Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::Q,      KeyAction::Quit,       Arg::None),
     Key::new(&[MODKEY, SHIFT], keycodes::R,      KeyAction::Restart,    Arg::None),
