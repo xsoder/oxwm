@@ -170,7 +170,6 @@ impl WindowManager {
             u16::from(config.modkey).into(),
         )?;
 
-        // TODO: identify error types
         let bar = Bar::new(&connection, &screen, screen_number, &config)?;
 
         let selected_tags = Self::get_saved_selected_tags(&connection, root, config.tags.len())?;
@@ -194,7 +193,6 @@ impl WindowManager {
         };
 
         window_manager.scan_existing_windows()?;
-        // TODO: identify error types
         window_manager.update_bar()?;
 
         Ok(window_manager)
