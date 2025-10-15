@@ -98,19 +98,15 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
             .map(|s| parse_modkey(s))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let modifiers_static: &'static [KeyButMask] = Box::leak(modifiers.into_boxed_slice());
-
         let key = string_to_keycode(&kb_data.key)?;
         let action = parse_key_action(&kb_data.action)?;
         let arg = arg_data_to_arg(kb_data.arg)?;
 
-        keybindings.push(Key::new(modifiers_static, key, action, arg));
+        keybindings.push(Key::new(modifiers, key, action, arg));
     }
 
     let mut status_blocks = Vec::new();
     for block_data in data.status_blocks {
-        let format_static: &'static str = Box::leak(block_data.format.into_boxed_str());
-
         let command = match block_data.command.as_str() {
             "DateTime" => {
                 let fmt = block_data
@@ -119,8 +115,7 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
                         command: "DateTime".to_string(),
                         field: "command_arg".to_string(),
                     })?;
-                let fmt_static: &'static str = Box::leak(fmt.into_boxed_str());
-                BlockCommand::DateTime(fmt_static)
+                BlockCommand::DateTime(fmt)
             }
             "Shell" => {
                 let cmd = block_data
@@ -129,14 +124,12 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
                         command: "Shell".to_string(),
                         field: "command_arg".to_string(),
                     })?;
-                let cmd_static: &'static str = Box::leak(cmd.into_boxed_str());
-                BlockCommand::Shell(cmd_static)
+                BlockCommand::Shell(cmd)
             }
             "Ram" => BlockCommand::Ram,
             "Static" => {
                 let text = block_data.command_arg.unwrap_or_default();
-                let text_static: &'static str = Box::leak(text.into_boxed_str());
-                BlockCommand::Static(text_static)
+                BlockCommand::Static(text)
             }
             "Battery" => {
                 let formats =
@@ -147,16 +140,16 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
                             field: "battery_formats".to_string(),
                         })?;
                 BlockCommand::Battery {
-                    format_charging: Box::leak(formats.charging.into_boxed_str()),
-                    format_discharging: Box::leak(formats.discharging.into_boxed_str()),
-                    format_full: Box::leak(formats.full.into_boxed_str()),
+                    format_charging: formats.charging,
+                    format_discharging: formats.discharging,
+                    format_full: formats.full,
                 }
             }
             _ => return Err(ConfigError::UnknownBlockCommand(block_data.command)),
         };
 
         status_blocks.push(BlockConfig {
-            format: format_static,
+            format: block_data.format,
             command,
             interval_secs: block_data.interval_secs,
             color: block_data.color,
@@ -312,21 +305,11 @@ fn parse_key_action(s: &str) -> Result<crate::keyboard::KeyAction, ConfigError> 
     }
 }
 
-fn arg_data_to_arg(data: ArgData) -> Result<crate::keyboard::Arg, ConfigError> {
+fn arg_data_to_arg(data: ArgData) -> Result<Arg, ConfigError> {
     match data {
         ArgData::None => Ok(Arg::None),
-        ArgData::String(s) => {
-            let static_str: &'static str = Box::leak(s.into_boxed_str());
-            Ok(Arg::Str(static_str))
-        }
+        ArgData::String(s) => Ok(Arg::Str(s)),
         ArgData::Int(n) => Ok(Arg::Int(n)),
-        ArgData::Array(arr) => {
-            let static_strs: Vec<&'static str> = arr
-                .into_iter()
-                .map(|s| Box::leak(s.into_boxed_str()) as &'static str)
-                .collect();
-            let static_slice: &'static [&'static str] = Box::leak(static_strs.into_boxed_slice());
-            Ok(Arg::Array(static_slice))
-        }
+        ArgData::Array(arr) => Ok(Arg::Array(arr)),
     }
 }

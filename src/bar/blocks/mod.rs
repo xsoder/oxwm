@@ -19,7 +19,7 @@ pub trait Block {
 
 #[derive(Clone)]
 pub struct BlockConfig {
-    pub format: &'static str,
+    pub format: String,
     pub command: BlockCommand,
     pub interval_secs: u64,
     pub color: u32,
@@ -28,28 +28,28 @@ pub struct BlockConfig {
 
 #[derive(Clone)]
 pub enum BlockCommand {
-    Shell(&'static str),
-    DateTime(&'static str),
+    Shell(String),
+    DateTime(String),
     Battery {
-        format_charging: &'static str,
-        format_discharging: &'static str,
-        format_full: &'static str,
+        format_charging: String,
+        format_discharging: String,
+        format_full: String,
     },
     Ram,
-    Static(&'static str),
+    Static(String),
 }
 
 impl BlockConfig {
     pub fn to_block(&self) -> Box<dyn Block> {
-        match self.command {
+        match &self.command {
             BlockCommand::Shell(cmd) => Box::new(ShellBlock::new(
-                self.format,
+                &self.format,
                 cmd,
                 self.interval_secs,
                 self.color,
             )),
             BlockCommand::DateTime(fmt) => Box::new(DateTime::new(
-                self.format,
+                &self.format,
                 fmt,
                 self.interval_secs,
                 self.color,
@@ -65,7 +65,7 @@ impl BlockConfig {
                 self.interval_secs,
                 self.color,
             )),
-            BlockCommand::Ram => Box::new(Ram::new(self.format, self.interval_secs, self.color)),
+            BlockCommand::Ram => Box::new(Ram::new(&self.format, self.interval_secs, self.color)),
             BlockCommand::Static(text) => Box::new(StaticBlock::new(
                 &format!("{}{}", self.format, text),
                 self.color,
