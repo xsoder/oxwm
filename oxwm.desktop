@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=OXWM
+Comment=A dynamic window manager written in Rust, inspired by dwm
+Exec=oxwm
+Type=Application
+DesktopNames=OXWM

@@ -2,14 +2,18 @@ build:
     cargo build --release
 
 install: build
-    cp target/release/oxwm ~/.local/bin/oxwm
-    chmod +x ~/.local/bin/oxwm
+    mkdir -p /usr/local/bin/
+    mkdir -p /usr/share/xsessions/
+    install -Dm755 oxwm /usr/local/bin
+    install -Dm644 oxwm.desktop /usr/share/xsessions
     @echo "✓ oxwm installed to ~/.local/bin/oxwm"
-    @echo "  Run 'oxwm --init' to create your config"
+    @echo "✓ oxwm-desktop session added to /usr/share/xsessions/oxwm.desktop"
 
 uninstall:
     rm -f ~/.local/bin/oxwm
+    rm -f /usr/share/xsessions/oxwm.desktop 
     @echo "✓ oxwm uninstalled"
+    @echo "✓ oxwm.desktop session uninstalled"
     @echo "  Your config at ~/.config/oxwm/config.ron is preserved"
 
 clean:
