@@ -52,11 +52,11 @@
     ],
     
     status_blocks: [
-        (format: "󰍛 {used}/{total} GB", command: "Ram", interval_secs: 5, color: 0x7aa2f7, underline: true),
+        (format: "Ram: {used}/{total} GB", command: "Ram", interval_secs: 5, color: 0x7aa2f7, underline: true),
         (format: " │  ", command: "Static", interval_secs: 18446744073709551615, color: 0xa9b1d6, underline: false),
-        (format: " {}", command: "Shell", command_arg: "uname -r", interval_secs: 18446744073709551615, color: 0xf7768e, underline: true),
+        (format: "Kernel: {}", command: "Shell", command_arg: "uname -r", interval_secs: 18446744073709551615, color: 0xf7768e, underline: true),
         (format: " │  ", command: "Static", interval_secs: 18446744073709551615, color: 0xa9b1d6, underline: false),
-        (format: "󰸘 {}", command: "DateTime", command_arg: "%a, %b %d - %-I:%M %P", interval_secs: 1, color: 0x0db9d7, underline: true),
+        (format: "{}", command: "DateTime", command_arg: "%a, %b %d - %-I:%M %P", interval_secs: 1, color: 0x0db9d7, underline: true),
     ],
     
     scheme_normal: (foreground: 0xbbbbbb, background: 0x1a1b26, underline: 0x444444),

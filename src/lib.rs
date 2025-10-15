@@ -91,7 +91,7 @@ impl Default for Config {
                     &[MODKEY],
                     keycodes::D,
                     KeyAction::Spawn,
-                    Arg::Array(&["sh", "-c", "dmenu_run"]),
+                    Arg::Array(&["sh", "-c", "dmenu_run -l 10"]),
                 ),
                 Key::new(&[MODKEY], keycodes::Q, KeyAction::KillClient, Arg::None),
                 Key::new(
@@ -103,6 +103,7 @@ impl Default for Config {
                 Key::new(&[MODKEY], keycodes::A, KeyAction::ToggleGaps, Arg::None),
                 Key::new(&[MODKEY, SHIFT], keycodes::Q, KeyAction::Quit, Arg::None),
                 Key::new(&[MODKEY, SHIFT], keycodes::R, KeyAction::Restart, Arg::None),
+                Key::new(&[MODKEY], keycodes::F, KeyAction::ToggleFloating, Arg::None),
                 Key::new(&[MODKEY], keycodes::J, KeyAction::FocusStack, Arg::Int(-1)),
                 Key::new(&[MODKEY], keycodes::K, KeyAction::FocusStack, Arg::Int(1)),
                 Key::new(&[MODKEY], keycodes::KEY_1, KeyAction::ViewTag, Arg::Int(0)),
@@ -170,7 +171,7 @@ impl Default for Config {
                 ),
             ],
             status_blocks: vec![crate::bar::BlockConfig {
-                format: " {}",
+                format: "{}",
                 command: crate::bar::BlockCommand::DateTime("%a, %b %d - %-I:%M %P"),
                 interval_secs: 1,
                 color: 0x0db9d7,

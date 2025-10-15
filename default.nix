@@ -9,7 +9,7 @@
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "oxwm";
-  version = "0.1.0";
+  version = "0.1.12";
 
   src = ./.;
 
