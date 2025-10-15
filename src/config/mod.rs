@@ -1,12 +1,13 @@
-use anyhow::{Context, Result, bail};
+use crate::bar::{BlockCommand, BlockConfig};
+use crate::errors::ConfigError;
+use crate::keyboard::handlers::Key;
+use crate::keyboard::keycodes;
+use crate::keyboard::{Arg, KeyAction};
 use serde::Deserialize;
+use x11rb::protocol::xproto::{KeyButMask, Keycode};
 
-pub fn parse_config(input: &str) -> Result<crate::Config> {
-    let config_data: ConfigData = ron::from_str(input).map_err(|e| {
-        eprintln!("RON Parse Error Details: {}", e);
-        anyhow::anyhow!("Failed to parse RON config: {}", e)
-    })?;
-
+pub fn parse_config(input: &str) -> Result<crate::Config, ConfigError> {
+    let config_data: ConfigData = ron::from_str(input)?;
     config_data_to_config(config_data)
 }
 
@@ -86,22 +87,16 @@ struct ColorSchemeData {
     underline: u32,
 }
 
-fn config_data_to_config(data: ConfigData) -> Result<crate::Config> {
-    use crate::keyboard::handlers::Key;
-    use crate::keyboard::{Arg, KeyAction};
-    use x11rb::protocol::xproto::KeyButMask;
-
-    // Parse modkey
+fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError> {
     let modkey = parse_modkey(&data.modkey)?;
 
-    // Parse keybindings
     let mut keybindings = Vec::new();
     for kb_data in data.keybindings {
         let modifiers = kb_data
             .modifiers
             .iter()
             .map(|s| parse_modkey(s))
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         let modifiers_static: &'static [KeyButMask] = Box::leak(modifiers.into_boxed_slice());
 
@@ -112,25 +107,28 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config> {
         keybindings.push(Key::new(modifiers_static, key, action, arg));
     }
 
-    // Parse status blocks
     let mut status_blocks = Vec::new();
     for block_data in data.status_blocks {
-        use crate::bar::{BlockCommand, BlockConfig};
-
         let format_static: &'static str = Box::leak(block_data.format.into_boxed_str());
 
         let command = match block_data.command.as_str() {
             "DateTime" => {
                 let fmt = block_data
                     .command_arg
-                    .context("DateTime command requires command_arg")?;
+                    .ok_or_else(|| ConfigError::MissingCommandArg {
+                        command: "DateTime".to_string(),
+                        field: "command_arg".to_string(),
+                    })?;
                 let fmt_static: &'static str = Box::leak(fmt.into_boxed_str());
                 BlockCommand::DateTime(fmt_static)
             }
             "Shell" => {
                 let cmd = block_data
                     .command_arg
-                    .context("Shell command requires command_arg")?;
+                    .ok_or_else(|| ConfigError::MissingCommandArg {
+                        command: "Shell".to_string(),
+                        field: "command_arg".to_string(),
+                    })?;
                 let cmd_static: &'static str = Box::leak(cmd.into_boxed_str());
                 BlockCommand::Shell(cmd_static)
             }
@@ -141,16 +139,20 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config> {
                 BlockCommand::Static(text_static)
             }
             "Battery" => {
-                let formats = block_data
-                    .battery_formats
-                    .context("Battery command requires battery_formats")?;
+                let formats =
+                    block_data
+                        .battery_formats
+                        .ok_or_else(|| ConfigError::MissingCommandArg {
+                            command: "Battery".to_string(),
+                            field: "battery_formats".to_string(),
+                        })?;
                 BlockCommand::Battery {
                     format_charging: Box::leak(formats.charging.into_boxed_str()),
                     format_discharging: Box::leak(formats.discharging.into_boxed_str()),
                     format_full: Box::leak(formats.full.into_boxed_str()),
                 }
             }
-            _ => bail!("Unknown block command: {}", block_data.command),
+            _ => return Err(ConfigError::UnknownBlockCommand(block_data.command)),
         };
 
         status_blocks.push(BlockConfig {
@@ -195,9 +197,7 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config> {
     })
 }
 
-fn parse_modkey(s: &str) -> Result<x11rb::protocol::xproto::KeyButMask> {
-    use x11rb::protocol::xproto::KeyButMask;
-
+fn parse_modkey(s: &str) -> Result<KeyButMask, ConfigError> {
     match s {
         "Mod1" => Ok(KeyButMask::MOD1),
         "Mod2" => Ok(KeyButMask::MOD2),
@@ -206,13 +206,11 @@ fn parse_modkey(s: &str) -> Result<x11rb::protocol::xproto::KeyButMask> {
         "Mod5" => Ok(KeyButMask::MOD5),
         "Shift" => Ok(KeyButMask::SHIFT),
         "Control" => Ok(KeyButMask::CONTROL),
-        _ => bail!("Invalid modkey: {}", s),
+        _ => Err(ConfigError::InvalidModkey(s.to_string())),
     }
 }
 
-fn string_to_keycode(s: &str) -> Result<x11rb::protocol::xproto::Keycode> {
-    use crate::keyboard::keycodes;
-
+fn string_to_keycode(s: &str) -> Result<Keycode, ConfigError> {
     match s.to_lowercase().as_str() {
         "return" => Ok(keycodes::RETURN),
         "q" => Ok(keycodes::Q),
@@ -222,7 +220,6 @@ fn string_to_keycode(s: &str) -> Result<x11rb::protocol::xproto::Keycode> {
         "backspace" => Ok(keycodes::BACKSPACE),
         "delete" => Ok(keycodes::DELETE),
 
-        // Function keys
         "f1" => Ok(keycodes::F1),
         "f2" => Ok(keycodes::F2),
         "f3" => Ok(keycodes::F3),
@@ -236,7 +233,6 @@ fn string_to_keycode(s: &str) -> Result<x11rb::protocol::xproto::Keycode> {
         "f11" => Ok(keycodes::F11),
         "f12" => Ok(keycodes::F12),
 
-        // Letters
         "a" => Ok(keycodes::A),
         "b" => Ok(keycodes::B),
         "c" => Ok(keycodes::C),
@@ -263,7 +259,6 @@ fn string_to_keycode(s: &str) -> Result<x11rb::protocol::xproto::Keycode> {
         "y" => Ok(keycodes::Y),
         "z" => Ok(keycodes::Z),
 
-        // Numbers
         "0" => Ok(keycodes::KEY_0),
         "1" => Ok(keycodes::KEY_1),
         "2" => Ok(keycodes::KEY_2),
@@ -275,7 +270,6 @@ fn string_to_keycode(s: &str) -> Result<x11rb::protocol::xproto::Keycode> {
         "8" => Ok(keycodes::KEY_8),
         "9" => Ok(keycodes::KEY_9),
 
-        // Arrows
         "left" => Ok(keycodes::LEFT),
         "right" => Ok(keycodes::RIGHT),
         "up" => Ok(keycodes::UP),
@@ -286,7 +280,6 @@ fn string_to_keycode(s: &str) -> Result<x11rb::protocol::xproto::Keycode> {
         "pagedown" => Ok(keycodes::PAGE_DOWN),
         "insert" => Ok(keycodes::INSERT),
 
-        // Symbols
         "minus" | "-" => Ok(keycodes::MINUS),
         "equal" | "=" => Ok(keycodes::EQUAL),
         "bracketleft" | "[" => Ok(keycodes::LEFT_BRACKET),
@@ -299,13 +292,11 @@ fn string_to_keycode(s: &str) -> Result<x11rb::protocol::xproto::Keycode> {
         "period" | "." => Ok(keycodes::PERIOD),
         "slash" | "/" => Ok(keycodes::SLASH),
 
-        _ => bail!("Unknown key: {}", s),
+        _ => Err(ConfigError::UnknownKey(s.to_string())),
     }
 }
 
-fn parse_key_action(s: &str) -> Result<crate::keyboard::KeyAction> {
-    use crate::keyboard::KeyAction;
-
+fn parse_key_action(s: &str) -> Result<crate::keyboard::KeyAction, ConfigError> {
     match s {
         "Spawn" => Ok(KeyAction::Spawn),
         "KillClient" => Ok(KeyAction::KillClient),
@@ -317,13 +308,11 @@ fn parse_key_action(s: &str) -> Result<crate::keyboard::KeyAction> {
         "ToggleGaps" => Ok(KeyAction::ToggleGaps),
         "ToggleFullScreen" => Ok(KeyAction::ToggleFullScreen),
         "ToggleFloating" => Ok(KeyAction::ToggleFloating),
-        _ => bail!("Unknown action: {}", s),
+        _ => Err(ConfigError::UnknownAction(s.to_string())),
     }
 }
 
-fn arg_data_to_arg(data: ArgData) -> Result<crate::keyboard::Arg> {
-    use crate::keyboard::Arg;
-
+fn arg_data_to_arg(data: ArgData) -> Result<crate::keyboard::Arg, ConfigError> {
     match data {
         ArgData::None => Ok(Arg::None),
         ArgData::String(s) => {
