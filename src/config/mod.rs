@@ -6,6 +6,155 @@ use crate::keyboard::{Arg, KeyAction};
 use serde::Deserialize;
 use x11rb::protocol::xproto::{KeyButMask, Keycode};
 
+#[derive(Debug, Deserialize)]
+pub enum ModKey {
+    Mod1,
+    Mod2,
+    Mod3,
+    Mod4,
+    Mod5,
+    Shift,
+    Control,
+}
+
+impl ModKey {
+    fn to_keybut_mask(&self) -> KeyButMask {
+        match self {
+            ModKey::Mod1 => KeyButMask::MOD1,
+            ModKey::Mod2 => KeyButMask::MOD2,
+            ModKey::Mod3 => KeyButMask::MOD3,
+            ModKey::Mod4 => KeyButMask::MOD4,
+            ModKey::Mod5 => KeyButMask::MOD5,
+            ModKey::Shift => KeyButMask::SHIFT,
+            ModKey::Control => KeyButMask::CONTROL,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub enum KeyData {
+    Return,
+    Q,
+    Escape,
+    Space,
+    Tab,
+    Backspace,
+    Delete,
+    F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, R, S, T, U, V, W, X, Y, Z,
+    Key0,
+    Key1,
+    Key2,
+    Key3,
+    Key4,
+    Key5,
+    Key6,
+    Key7,
+    Key8,
+    Key9,
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Insert,
+    Minus,
+    Equal,
+    BracketLeft,
+    BracketRight,
+    Semicolon,
+    Apostrophe,
+    Grave,
+    Backslash,
+    Comma,
+    Period,
+    Slash,
+}
+
+impl KeyData {
+    fn to_keycode(&self) -> Keycode {
+        match self {
+            KeyData::Return => keycodes::RETURN,
+            KeyData::Q => keycodes::Q,
+            KeyData::Escape => keycodes::ESCAPE,
+            KeyData::Space => keycodes::SPACE,
+            KeyData::Tab => keycodes::TAB,
+            KeyData::Backspace => keycodes::BACKSPACE,
+            KeyData::Delete => keycodes::DELETE,
+            KeyData::F1 => keycodes::F1,
+            KeyData::F2 => keycodes::F2,
+            KeyData::F3 => keycodes::F3,
+            KeyData::F4 => keycodes::F4,
+            KeyData::F5 => keycodes::F5,
+            KeyData::F6 => keycodes::F6,
+            KeyData::F7 => keycodes::F7,
+            KeyData::F8 => keycodes::F8,
+            KeyData::F9 => keycodes::F9,
+            KeyData::F10 => keycodes::F10,
+            KeyData::F11 => keycodes::F11,
+            KeyData::F12 => keycodes::F12,
+            KeyData::A => keycodes::A,
+            KeyData::B => keycodes::B,
+            KeyData::C => keycodes::C,
+            KeyData::D => keycodes::D,
+            KeyData::E => keycodes::E,
+            KeyData::F => keycodes::F,
+            KeyData::G => keycodes::G,
+            KeyData::H => keycodes::H,
+            KeyData::I => keycodes::I,
+            KeyData::J => keycodes::J,
+            KeyData::K => keycodes::K,
+            KeyData::L => keycodes::L,
+            KeyData::M => keycodes::M,
+            KeyData::N => keycodes::N,
+            KeyData::O => keycodes::O,
+            KeyData::P => keycodes::P,
+            KeyData::R => keycodes::R,
+            KeyData::S => keycodes::S,
+            KeyData::T => keycodes::T,
+            KeyData::U => keycodes::U,
+            KeyData::V => keycodes::V,
+            KeyData::W => keycodes::W,
+            KeyData::X => keycodes::X,
+            KeyData::Y => keycodes::Y,
+            KeyData::Z => keycodes::Z,
+            KeyData::Key0 => keycodes::KEY_0,
+            KeyData::Key1 => keycodes::KEY_1,
+            KeyData::Key2 => keycodes::KEY_2,
+            KeyData::Key3 => keycodes::KEY_3,
+            KeyData::Key4 => keycodes::KEY_4,
+            KeyData::Key5 => keycodes::KEY_5,
+            KeyData::Key6 => keycodes::KEY_6,
+            KeyData::Key7 => keycodes::KEY_7,
+            KeyData::Key8 => keycodes::KEY_8,
+            KeyData::Key9 => keycodes::KEY_9,
+            KeyData::Left => keycodes::LEFT,
+            KeyData::Right => keycodes::RIGHT,
+            KeyData::Up => keycodes::UP,
+            KeyData::Down => keycodes::DOWN,
+            KeyData::Home => keycodes::HOME,
+            KeyData::End => keycodes::END,
+            KeyData::PageUp => keycodes::PAGE_UP,
+            KeyData::PageDown => keycodes::PAGE_DOWN,
+            KeyData::Insert => keycodes::INSERT,
+            KeyData::Minus => keycodes::MINUS,
+            KeyData::Equal => keycodes::EQUAL,
+            KeyData::BracketLeft => keycodes::LEFT_BRACKET,
+            KeyData::BracketRight => keycodes::RIGHT_BRACKET,
+            KeyData::Semicolon => keycodes::SEMICOLON,
+            KeyData::Apostrophe => keycodes::APOSTROPHE,
+            KeyData::Grave => keycodes::GRAVE,
+            KeyData::Backslash => keycodes::BACKSLASH,
+            KeyData::Comma => keycodes::COMMA,
+            KeyData::Period => keycodes::PERIOD,
+            KeyData::Slash => keycodes::SLASH,
+        }
+    }
+}
+
 pub fn parse_config(input: &str) -> Result<crate::Config, ConfigError> {
     let config_data: ConfigData = ron::from_str(input)?;
     config_data_to_config(config_data)
@@ -25,7 +174,7 @@ struct ConfigData {
     gap_outer_vertical: u32,
 
     terminal: String,
-    modkey: String,
+    modkey: ModKey,
 
     tags: Vec<String>,
     keybindings: Vec<KeybindingData>,
@@ -38,9 +187,9 @@ struct ConfigData {
 
 #[derive(Debug, Deserialize)]
 struct KeybindingData {
-    modifiers: Vec<String>,
-    key: String,
-    action: String,
+    modifiers: Vec<ModKey>,
+    key: KeyData,
+    action: KeyAction,
     #[serde(default)]
     arg: ArgData,
 }
@@ -88,18 +237,18 @@ struct ColorSchemeData {
 }
 
 fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError> {
-    let modkey = parse_modkey(&data.modkey)?;
+    let modkey = data.modkey.to_keybut_mask();
 
     let mut keybindings = Vec::new();
     for kb_data in data.keybindings {
         let modifiers = kb_data
             .modifiers
             .iter()
-            .map(|s| parse_modkey(s))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|m| m.to_keybut_mask())
+            .collect();
 
-        let key = string_to_keycode(&kb_data.key)?;
-        let action = parse_key_action(&kb_data.action)?;
+        let key = kb_data.key.to_keycode();
+        let action = kb_data.action;
         let arg = arg_data_to_arg(kb_data.arg)?;
 
         keybindings.push(Key::new(modifiers, key, action, arg));
@@ -188,121 +337,6 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
             underline: data.scheme_selected.underline,
         },
     })
-}
-
-fn parse_modkey(s: &str) -> Result<KeyButMask, ConfigError> {
-    match s {
-        "Mod1" => Ok(KeyButMask::MOD1),
-        "Mod2" => Ok(KeyButMask::MOD2),
-        "Mod3" => Ok(KeyButMask::MOD3),
-        "Mod4" => Ok(KeyButMask::MOD4),
-        "Mod5" => Ok(KeyButMask::MOD5),
-        "Shift" => Ok(KeyButMask::SHIFT),
-        "Control" => Ok(KeyButMask::CONTROL),
-        _ => Err(ConfigError::InvalidModkey(s.to_string())),
-    }
-}
-
-fn string_to_keycode(s: &str) -> Result<Keycode, ConfigError> {
-    match s.to_lowercase().as_str() {
-        "return" => Ok(keycodes::RETURN),
-        "q" => Ok(keycodes::Q),
-        "escape" => Ok(keycodes::ESCAPE),
-        "space" => Ok(keycodes::SPACE),
-        "tab" => Ok(keycodes::TAB),
-        "backspace" => Ok(keycodes::BACKSPACE),
-        "delete" => Ok(keycodes::DELETE),
-
-        "f1" => Ok(keycodes::F1),
-        "f2" => Ok(keycodes::F2),
-        "f3" => Ok(keycodes::F3),
-        "f4" => Ok(keycodes::F4),
-        "f5" => Ok(keycodes::F5),
-        "f6" => Ok(keycodes::F6),
-        "f7" => Ok(keycodes::F7),
-        "f8" => Ok(keycodes::F8),
-        "f9" => Ok(keycodes::F9),
-        "f10" => Ok(keycodes::F10),
-        "f11" => Ok(keycodes::F11),
-        "f12" => Ok(keycodes::F12),
-
-        "a" => Ok(keycodes::A),
-        "b" => Ok(keycodes::B),
-        "c" => Ok(keycodes::C),
-        "d" => Ok(keycodes::D),
-        "e" => Ok(keycodes::E),
-        "f" => Ok(keycodes::F),
-        "g" => Ok(keycodes::G),
-        "h" => Ok(keycodes::H),
-        "i" => Ok(keycodes::I),
-        "j" => Ok(keycodes::J),
-        "k" => Ok(keycodes::K),
-        "l" => Ok(keycodes::L),
-        "m" => Ok(keycodes::M),
-        "n" => Ok(keycodes::N),
-        "o" => Ok(keycodes::O),
-        "p" => Ok(keycodes::P),
-        "r" => Ok(keycodes::R),
-        "s" => Ok(keycodes::S),
-        "t" => Ok(keycodes::T),
-        "u" => Ok(keycodes::U),
-        "v" => Ok(keycodes::V),
-        "w" => Ok(keycodes::W),
-        "x" => Ok(keycodes::X),
-        "y" => Ok(keycodes::Y),
-        "z" => Ok(keycodes::Z),
-
-        "0" => Ok(keycodes::KEY_0),
-        "1" => Ok(keycodes::KEY_1),
-        "2" => Ok(keycodes::KEY_2),
-        "3" => Ok(keycodes::KEY_3),
-        "4" => Ok(keycodes::KEY_4),
-        "5" => Ok(keycodes::KEY_5),
-        "6" => Ok(keycodes::KEY_6),
-        "7" => Ok(keycodes::KEY_7),
-        "8" => Ok(keycodes::KEY_8),
-        "9" => Ok(keycodes::KEY_9),
-
-        "left" => Ok(keycodes::LEFT),
-        "right" => Ok(keycodes::RIGHT),
-        "up" => Ok(keycodes::UP),
-        "down" => Ok(keycodes::DOWN),
-        "home" => Ok(keycodes::HOME),
-        "end" => Ok(keycodes::END),
-        "pageup" => Ok(keycodes::PAGE_UP),
-        "pagedown" => Ok(keycodes::PAGE_DOWN),
-        "insert" => Ok(keycodes::INSERT),
-
-        "minus" | "-" => Ok(keycodes::MINUS),
-        "equal" | "=" => Ok(keycodes::EQUAL),
-        "bracketleft" | "[" => Ok(keycodes::LEFT_BRACKET),
-        "bracketright" | "]" => Ok(keycodes::RIGHT_BRACKET),
-        "semicolon" | ";" => Ok(keycodes::SEMICOLON),
-        "apostrophe" | "'" => Ok(keycodes::APOSTROPHE),
-        "grave" | "`" => Ok(keycodes::GRAVE),
-        "backslash" | "\\" => Ok(keycodes::BACKSLASH),
-        "comma" | "," => Ok(keycodes::COMMA),
-        "period" | "." => Ok(keycodes::PERIOD),
-        "slash" | "/" => Ok(keycodes::SLASH),
-
-        _ => Err(ConfigError::UnknownKey(s.to_string())),
-    }
-}
-
-fn parse_key_action(s: &str) -> Result<crate::keyboard::KeyAction, ConfigError> {
-    match s {
-        "Spawn" => Ok(KeyAction::Spawn),
-        "KillClient" => Ok(KeyAction::KillClient),
-        "FocusStack" => Ok(KeyAction::FocusStack),
-        "Quit" => Ok(KeyAction::Quit),
-        "Restart" => Ok(KeyAction::Restart),
-        "ViewTag" => Ok(KeyAction::ViewTag),
-        "MoveToTag" => Ok(KeyAction::MoveToTag),
-        "ToggleGaps" => Ok(KeyAction::ToggleGaps),
-        "ToggleFullScreen" => Ok(KeyAction::ToggleFullScreen),
-        "ToggleFloating" => Ok(KeyAction::ToggleFloating),
-        _ => Err(ConfigError::UnknownAction(s.to_string())),
-    }
 }
 
 fn arg_data_to_arg(data: ArgData) -> Result<Arg, ConfigError> {

@@ -1,12 +1,13 @@
 use std::io;
 use std::process::Command;
 
+use serde::Deserialize;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use crate::errors::X11Error;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Deserialize)]
 pub enum KeyAction {
     Spawn,
     KillClient,
