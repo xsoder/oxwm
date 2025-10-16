@@ -81,13 +81,9 @@ Add this to your =configuration.nix=:
 #+end_src
 
 *** Initialize your config
-After rebuilding your system with =sudo nixos-rebuild switch=, log in via your display manager, then run:
+After rebuilding your system with =sudo nixos-rebuild switch=, log in via your display manager.
 
-#+begin_src sh
-oxwm --init
-#+end_src
-
-This creates your personal config at =~/.config/oxwm/config.rs=. Edit it and reload with =Mod+Shift+R=.
+On first launch, your initial config file will be automatically created and placed in =~/.config/oxwm/config.ron=. Edit it and reload with =Mod+Shift+R=.
 
 *** Advanced: Using a specific oxwm version
 If you want to pin or customize the oxwm package:
@@ -153,25 +149,23 @@ startx
 If using a display manager (LightDM, GDM, SDDM), OXWM should appear in the session list after installation.
 
 * Configuration
-OXWM follows the suckless philosophy: configuration is done by editing =~/.config/oxwm/config.rs= and recompiling.
+OXWM was inspired by dwm, but ditched the suckless philosophy. This philosophy quite literally discourages users from using the software for the sake of 'elitism'. I find that quite nonsensical, so I went ahead and created this project to be user friendly. The configuration is done by editing =~/.config/oxwm/config.ron= and the binary can be reloaded with a hotkey (Super+Shift+R by efault).
 
-On first run with =oxwm --init=, your config is automatically created from the template. Your =config.rs= is gitignored, so you can customize it without worrying about merge conflicts.
-
-Edit =~/.config/oxwm/config.rs= to customize:
+Edit =~/.config/oxwm/config.ron= to customize:
 - Keybindings
 - Colors and appearance
 - Status bar blocks
 - Gaps and borders
 - Terminal and applications
 
-After making changes, reload OXWM with =Mod+Shift+R= (auto-recompiles if needed).
+After making changes, reload OXWM with =Mod+Shift+R= 
 
 * Contributing
 When contributing to OXWM:
 
-1. Never commit your personal =~/.config/oxwm/config.rs=
-2. Only modify =templates/config.rs= if adding new configuration options
-3. Test your changes with =just test= using Xephyr
+1. Never commit your personal =~/.config/oxwm/config.ron=
+2. Only modify =templates/config.ron= if adding new configuration options
+3. Test your changes with =just test= using Xephyr/Xwayland
 4. Document any new features or keybindings
 
 * Key Bindings

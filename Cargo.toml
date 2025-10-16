@@ -1,6 +1,6 @@
 [package]
 name = "oxwm"
-version = "0.1.11"
+version = "0.2.0"
 edition = "2024"
 
 [lib]
@@ -17,4 +17,5 @@ x11rb = { version = "0.13", features = ["cursor"] }
 anyhow = "1"
 chrono = "0.4"
 dirs = "5.0"
-# xcursor-rs = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+ron = "0.8"

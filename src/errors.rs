@@ -3,6 +3,7 @@ pub enum WmError {
     X11(X11Error),
     Io(std::io::Error),
     Anyhow(anyhow::Error),
+    Config(ConfigError),
 }
 
 #[derive(Debug)]
@@ -16,12 +17,23 @@ pub enum X11Error {
     DrawCreateFailed,
 }
 
+#[derive(Debug)]
+pub enum ConfigError {
+    ParseError(ron::error::SpannedError),
+    InvalidModkey(String),
+    UnknownKey(String),
+    UnknownAction(String),
+    UnknownBlockCommand(String),
+    MissingCommandArg { command: String, field: String },
+}
+
 impl std::fmt::Display for WmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::X11(error) => write!(f, "{}", error),
             Self::Io(error) => write!(f, "{}", error),
             Self::Anyhow(error) => write!(f, "{}", error),
+            Self::Config(error) => write!(f, "{}", error),
         }
     }
 }
@@ -44,6 +56,23 @@ impl std::fmt::Display for X11Error {
 
 impl std::error::Error for X11Error {}
 
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParseError(err) => write!(f, "Failed to parse RON config: {}", err),
+            Self::InvalidModkey(key) => write!(f, "Invalid modkey: {}", key),
+            Self::UnknownKey(key) => write!(f, "Unknown key: {}", key),
+            Self::UnknownAction(action) => write!(f, "Unknown action: {}", action),
+            Self::UnknownBlockCommand(cmd) => write!(f, "Unknown block command: {}", cmd),
+            Self::MissingCommandArg { command, field } => {
+                write!(f, "{} command requires {}", command, field)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
 impl<T: Into<X11Error>> From<T> for WmError {
     fn from(value: T) -> Self {
         Self::X11(value.into())
@@ -59,6 +88,18 @@ impl From<std::io::Error> for WmError {
 impl From<anyhow::Error> for WmError {
     fn from(value: anyhow::Error) -> Self {
         Self::Anyhow(value)
+    }
+}
+
+impl From<ConfigError> for WmError {
+    fn from(value: ConfigError) -> Self {
+        Self::Config(value)
+    }
+}
+
+impl From<ron::error::SpannedError> for ConfigError {
+    fn from(value: ron::error::SpannedError) -> Self {
+        ConfigError::ParseError(value)
     }
 }
 
