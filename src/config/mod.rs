@@ -31,6 +31,7 @@ impl ModKey {
     }
 }
 
+#[rustfmt::skip]
 #[derive(Debug, Deserialize)]
 pub enum KeyData {
     Return,
