@@ -20,6 +20,7 @@ pub enum KeyAction {
     ToggleFullScreen,
     ToggleFloating,
     MoveToTag,
+    FocusMonitor,
     None,
 }
 

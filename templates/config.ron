@@ -31,6 +31,8 @@
         (modifiers: [Mod4, Shift], key: R, action: Restart),
         (modifiers: [Mod4], key: J, action: FocusStack, arg: -1),
         (modifiers: [Mod4], key: K, action: FocusStack, arg: 1),
+        (modifiers: [Mod4], key: Comma, action: FocusMonitor, arg: -1),
+        (modifiers: [Mod4], key: Period, action: FocusMonitor, arg: 1),
         (modifiers: [Mod4], key: Key1, action: ViewTag, arg: 0),
         (modifiers: [Mod4], key: Key2, action: ViewTag, arg: 1),
         (modifiers: [Mod4], key: Key3, action: ViewTag, arg: 2),

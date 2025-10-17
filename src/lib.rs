@@ -3,6 +3,7 @@ pub mod config;
 pub mod errors;
 pub mod keyboard;
 pub mod layout;
+pub mod monitor;
 pub mod window_manager;
 
 pub mod prelude {

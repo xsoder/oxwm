@@ -38,11 +38,12 @@ impl Bar {
         screen: &Screen,
         screen_num: usize,
         config: &Config,
+        x: i16,
+        y: i16,
+        width: u16,
     ) -> Result<Self, X11Error> {
         let window = connection.generate_id()?;
         let graphics_context = connection.generate_id()?;
-
-        let width = screen.width_in_pixels;
 
         let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
         if display.is_null() {
@@ -57,8 +58,8 @@ impl Bar {
             COPY_DEPTH_FROM_PARENT,
             window,
             screen.root,
-            0,
-            0,
+            x,
+            y,
             width,
             height,
             0,
