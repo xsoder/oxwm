@@ -177,6 +177,7 @@ impl Bar {
         connection: &RustConnection,
         current_tags: u32,
         occupied_tags: u32,
+        draw_blocks: bool,
     ) -> Result<(), X11Error> {
         if !self.needs_redraw {
             return Ok(());
@@ -252,7 +253,7 @@ impl Bar {
             x_position += tag_width as i16;
         }
 
-        if !self.status_text.is_empty() {
+        if draw_blocks && !self.status_text.is_empty() {
             let padding = 10;
             let mut x_position = self.width as i16 - padding;
 

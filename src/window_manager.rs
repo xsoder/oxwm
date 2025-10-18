@@ -63,7 +63,8 @@ impl WindowManager {
                             | EventMask::SUBSTRUCTURE_NOTIFY
                             | EventMask::PROPERTY_CHANGE
                             | EventMask::KEY_PRESS
-                            | EventMask::BUTTON_PRESS,
+                            | EventMask::BUTTON_PRESS
+                            | EventMask::POINTER_MOTION,
                     ),
             )?
             .check()?;
@@ -323,7 +324,7 @@ impl WindowManager {
         self.update_bar()?;
 
         loop {
-            for bar in &mut self.bars {
+            if let Some(bar) = self.bars.get_mut(self.selected_monitor) {
                 bar.update_blocks();
             }
 
@@ -399,17 +400,18 @@ impl WindowManager {
     }
 
     fn update_bar(&mut self) -> WmResult<()> {
-        for (mon_idx, monitor) in self.monitors.iter().enumerate() {
-            if let Some(bar) = self.bars.get_mut(mon_idx) {
+        for (monitor_index, monitor) in self.monitors.iter().enumerate() {
+            if let Some(bar) = self.bars.get_mut(monitor_index) {
                 let mut occupied_tags: TagMask = 0;
                 for (&window, &tags) in &self.window_tags {
-                    if self.window_monitor.get(&window).copied().unwrap_or(0) == mon_idx {
+                    if self.window_monitor.get(&window).copied().unwrap_or(0) == monitor_index {
                         occupied_tags |= tags;
                     }
                 }
 
+                let draw_blocks = monitor_index == self.selected_monitor;
                 bar.invalidate();
-                bar.draw(&self.connection, monitor.selected_tags, occupied_tags)?;
+                bar.draw(&self.connection, monitor.selected_tags, occupied_tags, draw_blocks)?;
             }
         }
         Ok(())
@@ -495,11 +497,9 @@ impl WindowManager {
 
         self.selected_monitor = new_monitor;
 
-        self.update_window_visibility()?;
-        self.apply_layout()?;
         self.update_bar()?;
 
-        let visible = self.visible_windows();
+        let visible = self.visible_windows_on_monitor(new_monitor);
         if let Some(&win) = visible.first() {
             self.set_focus(win)?;
         }
@@ -509,12 +509,10 @@ impl WindowManager {
 
     fn is_window_visible(&self, window: Window) -> bool {
         let window_mon = self.window_monitor.get(&window).copied().unwrap_or(0);
-        if window_mon != self.selected_monitor {
-            return false;
-        }
 
         if let Some(&tags) = self.window_tags.get(&window) {
-            let selected_tags = self.monitors.get(self.selected_monitor).map(|m| m.selected_tags).unwrap_or(0);
+            let monitor = self.monitors.get(window_mon);
+            let selected_tags = monitor.map(|m| m.selected_tags).unwrap_or(0);
             (tags & selected_tags) != 0
         } else {
             false
@@ -527,6 +525,32 @@ impl WindowManager {
             .filter(|&&w| self.is_window_visible(w))
             .copied()
             .collect()
+    }
+
+    fn visible_windows_on_monitor(&self, monitor_index: usize) -> Vec<Window> {
+        self.windows
+            .iter()
+            .filter(|&&w| {
+                let window_mon = self.window_monitor.get(&w).copied().unwrap_or(0);
+                if window_mon != monitor_index {
+                    return false;
+                }
+                if let Some(&tags) = self.window_tags.get(&w) {
+                    let monitor = self.monitors.get(monitor_index);
+                    let selected_tags = monitor.map(|m| m.selected_tags).unwrap_or(0);
+                    (tags & selected_tags) != 0
+                } else {
+                    false
+                }
+            })
+            .copied()
+            .collect()
+    }
+
+    fn get_monitor_at_point(&self, x: i32, y: i32) -> Option<usize> {
+        self.monitors
+            .iter()
+            .position(|mon| mon.contains_point(x, y))
     }
 
     fn update_window_visibility(&self) -> WmResult<()> {
@@ -849,6 +873,19 @@ impl WindowManager {
                     self.set_focus(event.event)?;
                 }
             }
+            Event::MotionNotify(event) => {
+                if let Some(monitor_index) = self.get_monitor_at_point(event.root_x as i32, event.root_y as i32) {
+                    if monitor_index != self.selected_monitor {
+                        self.selected_monitor = monitor_index;
+                        self.update_bar()?;
+
+                        let visible = self.visible_windows_on_monitor(monitor_index);
+                        if let Some(&win) = visible.first() {
+                            self.set_focus(win)?;
+                        }
+                    }
+                }
+            }
             Event::KeyPress(event) => {
                 let (action, arg) = keyboard::handle_key_press(event, &self.config.keybindings);
                 match action {
@@ -862,10 +899,10 @@ impl WindowManager {
                     .enumerate()
                     .find(|(_, bar)| bar.window() == event.event);
 
-                if let Some((mon_idx, bar)) = is_bar_click {
+                if let Some((monitor_index, bar)) = is_bar_click {
                     if let Some(tag_index) = bar.handle_click(event.event_x) {
-                        if mon_idx != self.selected_monitor {
-                            self.selected_monitor = mon_idx;
+                        if monitor_index != self.selected_monitor {
+                            self.selected_monitor = monitor_index;
                         }
                         self.view_tag(tag_index)?;
                     }
@@ -916,13 +953,13 @@ impl WindowManager {
             }
         };
 
-        for (mon_idx, monitor) in self.monitors.iter().enumerate() {
+        for (monitor_index, monitor) in self.monitors.iter().enumerate() {
             let visible: Vec<Window> = self
                 .windows
                 .iter()
                 .filter(|&&w| {
                     let window_mon = self.window_monitor.get(&w).copied().unwrap_or(0);
-                    if window_mon != mon_idx {
+                    if window_mon != monitor_index {
                         return false;
                     }
                     if self.floating_windows.contains(&w) {
@@ -937,7 +974,7 @@ impl WindowManager {
                 .copied()
                 .collect();
 
-            let bar_height = self.bars.get(mon_idx).map(|b| b.height() as u32).unwrap_or(0);
+            let bar_height = self.bars.get(monitor_index).map(|b| b.height() as u32).unwrap_or(0);
             let usable_height = monitor.height.saturating_sub(bar_height);
 
             let geometries = self
