@@ -19,6 +19,37 @@ pub fn tag_mask(tag: usize) -> TagMask {
     1 << tag
 }
 
+struct AtomCache {
+    net_current_desktop: Atom,
+    net_client_info: Atom,
+    wm_state: Atom,
+}
+
+impl AtomCache {
+    fn new(connection: &RustConnection) -> WmResult<Self> {
+        let net_current_desktop = connection
+            .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
+            .reply()?
+            .atom;
+
+        let net_client_info = connection
+            .intern_atom(false, b"_NET_CLIENT_INFO")?
+            .reply()?
+            .atom;
+
+        let wm_state = connection
+            .intern_atom(false, b"WM_STATE")?
+            .reply()?
+            .atom;
+
+        Ok(Self {
+            net_current_desktop,
+            net_client_info,
+            wm_state,
+        })
+    }
+}
+
 pub struct WindowManager {
     config: Config,
     connection: RustConnection,
@@ -35,6 +66,8 @@ pub struct WindowManager {
     bars: Vec<Bar>,
     monitors: Vec<Monitor>,
     selected_monitor: usize,
+    atoms: AtomCache,
+    previous_focused: Option<Window>,
 }
 
 type WmResult<T> = Result<T, WmError>;
@@ -116,6 +149,8 @@ impl WindowManager {
 
         let gaps_enabled = config.gaps_enabled;
 
+        let atoms = AtomCache::new(&connection)?;
+
         let mut window_manager = Self {
             config,
             connection,
@@ -132,6 +167,8 @@ impl WindowManager {
             bars,
             monitors,
             selected_monitor: 0,
+            atoms,
+            previous_focused: None,
         };
 
         window_manager.scan_existing_windows()?;
@@ -176,17 +213,8 @@ impl WindowManager {
 
     fn scan_existing_windows(&mut self) -> WmResult<()> {
         let tree = self.connection.query_tree(self.root)?.reply()?;
-        let net_client_info = self
-            .connection
-            .intern_atom(false, b"_NET_CLIENT_INFO")?
-            .reply()?
-            .atom;
-
-        let wm_state_atom = self
-            .connection
-            .intern_atom(false, b"WM_STATE")?
-            .reply()?
-            .atom;
+        let net_client_info = self.atoms.net_client_info;
+        let wm_state_atom = self.atoms.wm_state;
 
         for &window in &tree.children {
             if self.bars.iter().any(|bar| bar.window() == window) {
@@ -271,11 +299,7 @@ impl WindowManager {
     }
 
     fn save_client_tag(&self, window: Window, tag: TagMask) -> WmResult<()> {
-        let net_client_info = self
-            .connection
-            .intern_atom(false, b"_NET_CLIENT_INFO")?
-            .reply()?
-            .atom;
+        let net_client_info = self.atoms.net_client_info;
 
         let bytes = tag.to_ne_bytes().to_vec();
 
@@ -294,11 +318,7 @@ impl WindowManager {
     }
 
     fn set_wm_state(&self, window: Window, state: u32) -> WmResult<()> {
-        let wm_state_atom = self
-            .connection
-            .intern_atom(false, b"WM_STATE")?
-            .reply()?
-            .atom;
+        let wm_state_atom = self.atoms.wm_state;
 
         let data = [state, 0u32];
         let bytes: Vec<u8> = data.iter().flat_map(|&v| v.to_ne_bytes()).collect();
@@ -324,21 +344,21 @@ impl WindowManager {
         self.update_bar()?;
 
         loop {
-            if let Some(bar) = self.bars.get_mut(self.selected_monitor) {
-                bar.update_blocks();
-            }
-
-            if let Ok(Some(event)) = self.connection.poll_for_event() {
+            while let Some(event) = self.connection.poll_for_event()? {
                 if let Some(should_restart) = self.handle_event(event)? {
                     return Ok(should_restart);
                 }
+            }
+
+            if let Some(bar) = self.bars.get_mut(self.selected_monitor) {
+                bar.update_blocks();
             }
 
             if self.bars.iter().any(|bar| bar.needs_redraw()) {
                 self.update_bar()?;
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }
 
@@ -370,7 +390,6 @@ impl WindowManager {
                 }
 
                 self.apply_layout()?;
-                self.update_focus_visuals()?;
             } else {
                 self.fullscreen_window = Some(focused);
 
@@ -596,11 +615,7 @@ impl WindowManager {
     }
 
     fn save_selected_tags(&self) -> WmResult<()> {
-        let net_current_desktop = self
-            .connection
-            .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
-            .reply()?
-            .atom;
+        let net_current_desktop = self.atoms.net_current_desktop;
 
         let selected_tags = self.monitors.get(self.selected_monitor).map(|m| m.selected_tags).unwrap_or(tag_mask(0));
         let desktop = selected_tags.trailing_zeros();
@@ -668,6 +683,8 @@ impl WindowManager {
     }
 
     pub fn set_focus(&mut self, window: Window) -> WmResult<()> {
+        let old_focused = self.previous_focused;
+
         if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
             monitor.focused_window = Some(window);
         }
@@ -676,30 +693,36 @@ impl WindowManager {
             .set_input_focus(InputFocus::POINTER_ROOT, window, x11rb::CURRENT_TIME)?;
         self.connection.flush()?;
 
-        self.update_focus_visuals()?;
+        self.update_focus_visuals(old_focused, window)?;
+        self.previous_focused = Some(window);
         Ok(())
     }
 
-    fn update_focus_visuals(&self) -> WmResult<()> {
-        let focused = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window);
+    fn update_focus_visuals(&self, old_focused: Option<Window>, new_focused: Window) -> WmResult<()> {
+        if let Some(old_win) = old_focused {
+            if old_win != new_focused {
+                self.connection.configure_window(
+                    old_win,
+                    &ConfigureWindowAux::new().border_width(self.config.border_width),
+                )?;
 
-        for &window in &self.windows {
-            let (border_color, border_width) = if focused == Some(window) {
-                (self.config.border_focused, self.config.border_width)
-            } else {
-                (self.config.border_unfocused, self.config.border_width)
-            };
-
-            self.connection.configure_window(
-                window,
-                &ConfigureWindowAux::new().border_width(border_width),
-            )?;
-
-            self.connection.change_window_attributes(
-                window,
-                &ChangeWindowAttributesAux::new().border_pixel(border_color),
-            )?;
+                self.connection.change_window_attributes(
+                    old_win,
+                    &ChangeWindowAttributesAux::new().border_pixel(self.config.border_unfocused),
+                )?;
+            }
         }
+
+        self.connection.configure_window(
+            new_focused,
+            &ConfigureWindowAux::new().border_width(self.config.border_width),
+        )?;
+
+        self.connection.change_window_attributes(
+            new_focused,
+            &ChangeWindowAttributesAux::new().border_pixel(self.config.border_focused),
+        )?;
+
         self.connection.flush()?;
         Ok(())
     }
