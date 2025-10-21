@@ -1,6 +1,6 @@
 mod bar;
 mod blocks;
-mod font;
+pub mod font;
 
 pub use bar::Bar;
 pub use blocks::{BlockCommand, BlockConfig};

@@ -14,9 +14,7 @@ pub struct Bar {
     height: u16,
     graphics_context: Gcontext,
 
-    font: Font,
     font_draw: FontDraw,
-    display: *mut x11::xlib::Display,
 
     tag_widths: Vec<u16>,
     needs_redraw: bool,
@@ -38,19 +36,14 @@ impl Bar {
         screen: &Screen,
         screen_num: usize,
         config: &Config,
+        display: *mut x11::xlib::Display,
+        font: &Font,
         x: i16,
         y: i16,
         width: u16,
     ) -> Result<Self, X11Error> {
         let window = connection.generate_id()?;
         let graphics_context = connection.generate_id()?;
-
-        let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
-        if display.is_null() {
-            return Err(X11Error::DisplayOpenFailed.into());
-        }
-
-        let font = Font::new(display, screen_num as i32, &config.font)?;
 
         let height = (font.height() as f32 * 1.4) as u16;
 
@@ -117,9 +110,7 @@ impl Bar {
             width,
             height,
             graphics_context,
-            font,
             font_draw,
-            display,
             tag_widths,
             needs_redraw: true,
             blocks,
@@ -175,6 +166,8 @@ impl Bar {
     pub fn draw(
         &mut self,
         connection: &RustConnection,
+        font: &Font,
+        display: *mut x11::xlib::Display,
         current_tags: u32,
         occupied_tags: u32,
         draw_blocks: bool,
@@ -215,17 +208,17 @@ impl Bar {
                 &self.scheme_normal
             };
 
-            let text_width = self.font.text_width(tag);
+            let text_width = font.text_width(tag);
             let text_x = x_position + ((tag_width - text_width) / 2) as i16;
 
             let top_padding = 4;
-            let text_y = top_padding + self.font.ascent();
+            let text_y = top_padding + font.ascent();
 
             self.font_draw
-                .draw_text(&self.font, scheme.foreground, text_x, text_y, tag);
+                .draw_text(font, scheme.foreground, text_x, text_y, tag);
 
             if is_selected {
-                let font_height = self.font.height();
+                let font_height = font.height();
                 let underline_height = font_height / 8;
                 let bottom_gap = 3;
                 let underline_y = self.height as i16 - underline_height as i16 - bottom_gap;
@@ -259,17 +252,17 @@ impl Bar {
 
             for (i, block) in self.blocks.iter_mut().enumerate().rev() {
                 if let Ok(text) = block.content() {
-                    let text_width = self.font.text_width(&text);
+                    let text_width = font.text_width(&text);
                     x_position -= text_width as i16;
 
                     let top_padding = 4;
-                    let text_y = top_padding + self.font.ascent();
+                    let text_y = top_padding + font.ascent();
 
                     self.font_draw
-                        .draw_text(&self.font, block.color(), x_position, text_y, &text);
+                        .draw_text(font, block.color(), x_position, text_y, &text);
 
                     if self.block_underlines[i] {
-                        let font_height = self.font.height();
+                        let font_height = font.height();
                         let underline_height = font_height / 8;
                         let bottom_gap = 3;
                         let underline_y = self.height as i16 - underline_height as i16 - bottom_gap;
@@ -299,7 +292,7 @@ impl Bar {
         }
         connection.flush()?;
         unsafe {
-            x11::xlib::XFlush(self.display);
+            x11::xlib::XFlush(display);
         }
         self.needs_redraw = false;
 

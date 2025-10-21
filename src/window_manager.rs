@@ -68,6 +68,8 @@ pub struct WindowManager {
     selected_monitor: usize,
     atoms: AtomCache,
     previous_focused: Option<Window>,
+    display: *mut x11::xlib::Display,
+    font: crate::bar::font::Font,
 }
 
 type WmResult<T> = Result<T, WmError>;
@@ -133,6 +135,13 @@ impl WindowManager {
             monitors[0].selected_tags = selected_tags;
         }
 
+        let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
+        if display.is_null() {
+            return Err(WmError::X11(crate::errors::X11Error::DisplayOpenFailed));
+        }
+
+        let font = crate::bar::font::Font::new(display, screen_number as i32, &config.font)?;
+
         let mut bars = Vec::new();
         for monitor in &monitors {
             let bar = Bar::new(
@@ -140,6 +149,8 @@ impl WindowManager {
                 &screen,
                 screen_number,
                 &config,
+                display,
+                &font,
                 monitor.x as i16,
                 monitor.y as i16,
                 monitor.width as u16,
@@ -169,6 +180,8 @@ impl WindowManager {
             selected_monitor: 0,
             atoms,
             previous_focused: None,
+            display,
+            font,
         };
 
         window_manager.scan_existing_windows()?;
@@ -430,7 +443,7 @@ impl WindowManager {
 
                 let draw_blocks = monitor_index == self.selected_monitor;
                 bar.invalidate();
-                bar.draw(&self.connection, monitor.selected_tags, occupied_tags, draw_blocks)?;
+                bar.draw(&self.connection, &self.font, self.display, monitor.selected_tags, occupied_tags, draw_blocks)?;
             }
         }
         Ok(())
