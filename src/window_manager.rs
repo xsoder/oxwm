@@ -143,7 +143,7 @@ impl WindowManager {
         let font = crate::bar::font::Font::new(display, screen_number as i32, &config.font)?;
 
         let mut bars = Vec::new();
-        for monitor in &monitors {
+        for monitor in monitors.iter() {
             let bar = Bar::new(
                 &connection,
                 &screen,
@@ -619,7 +619,7 @@ impl WindowManager {
         self.apply_layout()?;
         self.update_bar()?;
 
-        let visible = self.visible_windows();
+        let visible = self.visible_windows_on_monitor(self.selected_monitor);
         if let Some(&win) = visible.first() {
             self.set_focus(win)?;
         }
@@ -910,6 +910,10 @@ impl WindowManager {
                 }
             }
             Event::MotionNotify(event) => {
+                if event.event != self.root {
+                    return Ok(None);
+                }
+
                 if let Some(monitor_index) = self.get_monitor_at_point(event.root_x as i32, event.root_y as i32) {
                     if monitor_index != self.selected_monitor {
                         self.selected_monitor = monitor_index;
@@ -1056,7 +1060,7 @@ impl WindowManager {
         if self.windows.len() < initial_count {
             let focused = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window);
             if focused == Some(window) {
-                let visible = self.visible_windows();
+                let visible = self.visible_windows_on_monitor(self.selected_monitor);
                 if let Some(&new_win) = visible.last() {
                     self.set_focus(new_win)?;
                 } else if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {

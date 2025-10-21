@@ -4,6 +4,8 @@ use std::path::PathBuf;
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
+    let mut custom_config_path: Option<PathBuf> = None;
+
     match args.get(1).map(|s| s.as_str()) {
         Some("--version") => {
             println!("oxwm {}", env!("CARGO_PKG_VERSION"));
@@ -17,10 +19,18 @@ fn main() -> Result<()> {
             init_config()?;
             return Ok(());
         }
+        Some("--config") => {
+            if let Some(path) = args.get(2) {
+                custom_config_path = Some(PathBuf::from(path));
+            } else {
+                eprintln!("Error: --config requires a path argument");
+                std::process::exit(1);
+            }
+        }
         _ => {}
     }
 
-    let config = load_config()?;
+    let config = load_config(custom_config_path)?;
 
     let mut wm = oxwm::window_manager::WindowManager::new(config)?;
     let should_restart = wm.run()?;
@@ -36,14 +46,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn load_config() -> Result<oxwm::Config> {
-    let config_path = get_config_path().join("config.ron");
-
-    if !config_path.exists() {
-        println!("No config found at {:?}", config_path);
-        println!("Creating default config...");
-        init_config()?;
-    }
+fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
+    let config_path = if let Some(path) = custom_path {
+        path
+    } else {
+        let default_path = get_config_path().join("config.ron");
+        if !default_path.exists() {
+            println!("No config found at {:?}", default_path);
+            println!("Creating default config...");
+            init_config()?;
+        }
+        default_path
+    };
 
     let config_str = std::fs::read_to_string(&config_path)
         .map_err(|e| anyhow::anyhow!("Failed to read config file: {}", e))?;
@@ -79,9 +93,10 @@ fn print_help() {
     println!("USAGE:");
     println!("    oxwm [OPTIONS]\n");
     println!("OPTIONS:");
-    println!("    --init         Create default config in ~/.config/oxwm/config.ron");
-    println!("    --version      Print version information");
-    println!("    --help         Print this help message\n");
+    println!("    --init              Create default config in ~/.config/oxwm/config.ron");
+    println!("    --config <PATH>     Use custom config file");
+    println!("    --version           Print version information");
+    println!("    --help              Print this help message\n");
     println!("CONFIG:");
     println!("    Location: ~/.config/oxwm/config.ron");
     println!("    Edit the config file and use Mod+Shift+R to reload");
