@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -59,11 +59,10 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
         default_path
     };
 
-    let config_str = std::fs::read_to_string(&config_path)
-        .map_err(|e| anyhow::anyhow!("Failed to read config file: {}", e))?;
+    let config_str =
+        std::fs::read_to_string(&config_path).with_context(|| "Failed to read config file")?;
 
-    oxwm::config::parse_config(&config_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))
+    oxwm::config::parse_config(&config_str).with_context(|| "Failed to parse config")
 }
 
 fn init_config() -> Result<()> {

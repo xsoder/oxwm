@@ -381,11 +381,26 @@ impl WindowManager {
                 self.floating_windows.remove(&focused);
                 self.apply_layout()?;
             } else {
-                self.floating_windows.insert(focused);
+                let float_width = (self.screen.width_in_pixels / 2) as u32;
+                let float_height = (self.screen.height_in_pixels / 2) as u32;
+
+                let border_width = self.config.border_width;
+                
+                let center_width = ((self.screen.width_in_pixels - float_width as u16)/2) as i32;
+                let center_height = ((self.screen.height_in_pixels - float_height as u16)/2) as i32;
+
                 self.connection.configure_window(
                     focused,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                    &ConfigureWindowAux::new()
+                        .x(center_width)
+                        .y(center_height)
+                        .width(float_width)
+                        .height(float_height)
+                        .border_width(border_width)
+                        .stack_mode(StackMode::ABOVE),
                 )?;
+
+                self.floating_windows.insert(focused);
                 self.apply_layout()?;
                 self.connection.flush()?;
             }
