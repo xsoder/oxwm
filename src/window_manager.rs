@@ -57,6 +57,7 @@ pub struct WindowManager {
     layout: Box<dyn Layout>,
     window_tags: std::collections::HashMap<Window, TagMask>,
     window_monitor: std::collections::HashMap<Window, usize>,
+    window_geometries: std::collections::HashMap<Window, (i16, i16, u16, u16)>,
     gaps_enabled: bool,
     fullscreen_window: Option<Window>,
     floating_windows: HashSet<Window>,
@@ -164,6 +165,7 @@ impl WindowManager {
             layout: Box::new(TilingLayout),
             window_tags: std::collections::HashMap::new(),
             window_monitor: std::collections::HashMap::new(),
+            window_geometries: std::collections::HashMap::new(),
             gaps_enabled,
             fullscreen_window: None,
             floating_windows: HashSet::new(),
@@ -941,6 +943,11 @@ impl WindowManager {
                     return Ok(None);
                 }
 
+                if let Ok(geom) = self.connection.get_geometry(event.window)?.reply() {
+                    self.window_geometries
+                        .insert(event.window, (geom.x, geom.y, geom.width, geom.height));
+                }
+
                 self.connection.map_window(event.window)?;
                 self.connection.change_window_attributes(
                     event.window,
@@ -1052,6 +1059,10 @@ impl WindowManager {
             return Ok(());
         }
 
+        if self.layout.name() == crate::layout::NORMIE {
+            return Ok(());
+        }
+
         let border_width = self.config.border_width;
 
         let gaps = if self.gaps_enabled {
@@ -1135,6 +1146,7 @@ impl WindowManager {
         self.windows.retain(|&w| w != window);
         self.window_tags.remove(&window);
         self.window_monitor.remove(&window);
+        self.window_geometries.remove(&window);
         self.floating_windows.remove(&window);
 
         if self.fullscreen_window == Some(window) {
