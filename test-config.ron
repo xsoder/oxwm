@@ -1,0 +1,144 @@
+#![enable(implicit_some)]
+// OXWM Configuration File
+// Edit this file and reload with Mod+Shift+R (no compilation needed!)
+
+(
+    border_width: 2,
+    border_focused: 0x6dade3,
+    border_unfocused: 0xbbbbbb,
+    font: "JetBrainsMono Nerd Font:style=Bold:size=12",
+    
+    gaps_enabled: true,
+    gap_inner_horizontal: 5,
+    gap_inner_vertical: 5,
+    gap_outer_horizontal: 5,
+    gap_outer_vertical: 5,
+    
+    terminal: "st",
+    modkey: Mod1,
+
+    tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+
+    // Alternative icon tags (uncomment to use):
+    // tags: ["", "󰊯", "", "", "󰙯", "󱇤", "", "󱘶", "󰧮"],
+    
+    // Alternative text tags (uncomment to use):
+    // tags: ["DEV", "WWW", "SYS", "DOC", "VBOX", "CHAT", "MUS", "VID", "MISC"],
+
+    keybindings: [
+        (modifiers: [Mod1], key: Return, action: Spawn, arg: "st"),
+        (modifiers: [Mod1], key: D, action: Spawn, arg: ["sh", "-c", "dmenu_run -l 10"]),
+        (modifiers: [Mod1], key: S, action: Spawn, arg: ["sh", "-c", "maim -s | xclip -selection clipboard -t image/png"]),
+        (modifiers: [Mod1], key: Q, action: KillClient),
+        (modifiers: [Mod1, Shift], key: F, action: ToggleFullScreen),
+        (modifiers: [Mod1, Shift], key: Space, action: ToggleFloating),
+        (modifiers: [Mod1], key: F, action: ChangeLayout, arg: "normie"),
+        (modifiers: [Mod1], key: C, action: ChangeLayout, arg: "tiling"),
+        (modifiers: [Mod1], key: N, action: CycleLayout),
+        (modifiers: [Mod1], key: A, action: ToggleGaps),
+        (modifiers: [Mod1, Shift], key: Q, action: Quit),
+        (modifiers: [Mod1, Shift], key: R, action: Restart),
+        (modifiers: [Mod1], key: J, action: FocusStack, arg: -1),
+        (modifiers: [Mod1], key: K, action: FocusStack, arg: 1),
+        // Exchange client (vim-style with Mod+Shift)
+        (modifiers: [Mod1, Shift], key: K, action: ExchangeClient, arg: 0), // UP
+        (modifiers: [Mod1, Shift], key: J, action: ExchangeClient, arg: 1), // DOWN
+        (modifiers: [Mod1, Shift], key: H, action: ExchangeClient, arg: 2), // LEFT
+        (modifiers: [Mod1, Shift], key: L, action: ExchangeClient, arg: 3), // RIGHT
+        (modifiers: [Mod1], key: Key1, action: ViewTag, arg: 0),
+        (modifiers: [Mod1], key: Key2, action: ViewTag, arg: 1),
+        (modifiers: [Mod1], key: Key3, action: ViewTag, arg: 2),
+        (modifiers: [Mod1], key: Key4, action: ViewTag, arg: 3),
+        (modifiers: [Mod1], key: Key5, action: ViewTag, arg: 4),
+        (modifiers: [Mod1], key: Key6, action: ViewTag, arg: 5),
+        (modifiers: [Mod1], key: Key7, action: ViewTag, arg: 6),
+        (modifiers: [Mod1], key: Key8, action: ViewTag, arg: 7),
+        (modifiers: [Mod1], key: Key9, action: ViewTag, arg: 8),
+        (modifiers: [Mod1, Shift], key: Key1, action: MoveToTag, arg: 0),
+        (modifiers: [Mod1, Shift], key: Key2, action: MoveToTag, arg: 1),
+        (modifiers: [Mod1, Shift], key: Key3, action: MoveToTag, arg: 2),
+        (modifiers: [Mod1, Shift], key: Key4, action: MoveToTag, arg: 3),
+        (modifiers: [Mod1, Shift], key: Key5, action: MoveToTag, arg: 4),
+        (modifiers: [Mod1, Shift], key: Key6, action: MoveToTag, arg: 5),
+        (modifiers: [Mod1, Shift], key: Key7, action: MoveToTag, arg: 6),
+        (modifiers: [Mod1, Shift], key: Key8, action: MoveToTag, arg: 7),
+        (modifiers: [Mod1, Shift], key: Key9, action: MoveToTag, arg: 8),
+    ],
+    
+    status_blocks: [
+        // Battery block (shows charging/discharging status)
+        (
+            format: "",
+            command: "Battery",
+            battery_formats: (
+                charging: "󰂄 Bat: {}%",
+                discharging: "󰁹 Bat:{}%",
+                full: "󰁹 Bat: {}%",
+            ),
+            interval_secs: 30,
+            color: 0x9ece6a,
+            underline: true,
+        ),
+        
+        // Separator
+        (
+            format: " │  ",
+            command: "Static",
+            interval_secs: 18446744073709551615,
+            color: 0xa9b1d6,
+            underline: false,
+        ),
+        
+        // RAM usage
+        (
+            format: "󰍛 {used}/{total} GB",
+            command: "Ram",
+            interval_secs: 5,
+            color: 0x7aa2f7,
+            underline: true,
+        ),
+        
+        // Separator
+        (
+            format: " │  ",
+            command: "Static",
+            interval_secs: 18446744073709551615,
+            color: 0xa9b1d6,
+            underline: false,
+        ),
+        
+        // Kernel version
+        (
+            format: " {}",
+            command: "Shell",
+            command_arg: "uname -r",
+            interval_secs: 18446744073709551615,
+            color: 0xf7768e,
+            underline: true,
+        ),
+        
+        // Separator
+        (
+            format: " │  ",
+            command: "Static",
+            interval_secs: 18446744073709551615,
+            color: 0xa9b1d6,
+            underline: false,
+        ),
+        
+        // Date and time
+        (
+            format: "󰸘 {}",
+            command: "DateTime",
+            command_arg: "%a, %b %d - %-I:%M %P",
+            interval_secs: 1,
+            color: 0x0db9d7,
+            underline: true,
+        ),
+    ],
+    
+    scheme_normal: (foreground: 0xbbbbbb, background: 0x1a1b26, underline: 0x444444),
+    scheme_occupied: (foreground: 0x0db9d7, background: 0x1a1b26, underline: 0x0db9d7),
+    scheme_selected: (foreground: 0x0db9d7, background: 0x1a1b26, underline: 0xad8ee6),
+)
+

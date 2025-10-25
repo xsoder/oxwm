@@ -4,6 +4,10 @@ use x11rb::protocol::xproto::Window;
 pub struct TilingLayout;
 
 impl Layout for TilingLayout {
+    fn name(&self) -> &'static str {
+        super::TILING
+    }
+
     fn arrange(
         &self,
         windows: &[Window],
