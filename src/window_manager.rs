@@ -184,7 +184,12 @@ impl WindowManager {
         Ok(window_manager)
     }
 
-    fn get_saved_selected_tags(
+    /**
+     *
+     * This function is deprecated for now, but will potentially be used in the future.
+     *
+     */
+    fn _get_saved_selected_tags(
         connection: &RustConnection,
         root: Window,
         tag_count: usize,

@@ -58,14 +58,11 @@ pub fn detect_monitors(
         .map_or(false, |reply| reply.state != 0);
 
     if xinerama_active {
-        let xinerama_cookie = match connection.xinerama_query_screens() {
-            Ok(cookie) => cookie,
-            Err(_) => return Ok(fallback_monitors()),
+        let Ok(xinerama_cookie) = connection.xinerama_query_screens() else {
+            return Ok(fallback_monitors());
         };
-
-        let xinerama_reply = match xinerama_cookie.reply() {
-            Ok(reply) => reply,
-            Err(_) => return Ok(fallback_monitors()),
+        let Ok(xinerama_reply) = xinerama_cookie.reply() else {
+            return Ok(fallback_monitors());
         };
 
         for screen_info in &xinerama_reply.screen_info {
