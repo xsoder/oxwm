@@ -40,56 +40,70 @@ pub fn detect_monitors(
     screen: &Screen,
     _root: Window,
 ) -> WmResult<Vec<Monitor>> {
-    let mut monitors = Vec::new();
+    let fallback_monitors = || {
+        vec![Monitor::new(
+            0,
+            0,
+            screen.width_in_pixels as u32,
+            screen.height_in_pixels as u32,
+        )]
+    };
 
-    if let Ok(cookie) = connection.xinerama_is_active() {
-        if let Ok(reply) = cookie.reply() {
-            if reply.state != 0 {
-                if let Ok(screens_cookie) = connection.xinerama_query_screens() {
-                    if let Ok(screens_reply) = screens_cookie.reply() {
-                        for screen_info in &screens_reply.screen_info {
-                            if screen_info.width == 0 || screen_info.height == 0 {
-                                continue;
-                            }
+    let mut monitors = Vec::<Monitor>::new();
 
-                            let is_unique = !monitors.iter().any(|m: &Monitor| {
-                                m.x == screen_info.x_org as i32
-                                    && m.y == screen_info.y_org as i32
-                                    && m.width == screen_info.width as u32
-                                    && m.height == screen_info.height as u32
-                            });
+    let xinerama_active = connection
+        .xinerama_is_active()
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map_or(false, |reply| reply.state != 0);
 
-                            if is_unique {
-                                monitors.push(Monitor::new(
-                                    screen_info.x_org as i32,
-                                    screen_info.y_org as i32,
-                                    screen_info.width as u32,
-                                    screen_info.height as u32,
-                                ));
-                            }
-                        }
-                    }
-                }
+    if xinerama_active {
+        let xinerama_cookie = match connection.xinerama_query_screens() {
+            Ok(cookie) => cookie,
+            Err(_) => return Ok(fallback_monitors()),
+        };
+
+        let xinerama_reply = match xinerama_cookie.reply() {
+            Ok(reply) => reply,
+            Err(_) => return Ok(fallback_monitors()),
+        };
+
+        for screen_info in &xinerama_reply.screen_info {
+            let has_valid_dimensions = screen_info.width > 0 && screen_info.height > 0;
+            if !has_valid_dimensions {
+                continue;
+            }
+
+            let x_position = screen_info.x_org as i32;
+            let y_position = screen_info.y_org as i32;
+            let width_in_pixels = screen_info.width as u32;
+            let height_in_pixels = screen_info.height as u32;
+
+            let is_duplicate_monitor = monitors.iter().any(|monitor| {
+                monitor.x == x_position
+                    && monitor.y == y_position
+                    && monitor.width == width_in_pixels
+                    && monitor.height == height_in_pixels
+            });
+
+            if !is_duplicate_monitor {
+                monitors.push(Monitor::new(
+                    x_position,
+                    y_position,
+                    width_in_pixels,
+                    height_in_pixels,
+                ));
             }
         }
     }
 
     if monitors.is_empty() {
-        monitors.push(Monitor::new(
-            0,
-            0,
-            screen.width_in_pixels as u32,
-            screen.height_in_pixels as u32,
-        ));
+        monitors = fallback_monitors();
     }
 
-    monitors.sort_by(|a, b| {
-        let y_cmp = a.y.cmp(&b.y);
-        if y_cmp == std::cmp::Ordering::Equal {
-            a.x.cmp(&b.x)
-        } else {
-            y_cmp
-        }
+    monitors.sort_by(|a, b| match a.y.cmp(&b.y) {
+        std::cmp::Ordering::Equal => a.x.cmp(&b.x),
+        other => other,
     });
 
     Ok(monitors)

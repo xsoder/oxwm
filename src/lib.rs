@@ -99,6 +99,7 @@ impl Default for Config {
                     ]),
                 ),
                 Key::new(vec![MODKEY], keycodes::Q, KeyAction::KillClient, Arg::None),
+                Key::new(vec![MODKEY], keycodes::N, KeyAction::CycleLayout, Arg::None),
                 Key::new(
                     vec![MODKEY, SHIFT],
                     keycodes::F,

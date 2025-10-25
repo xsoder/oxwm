@@ -1,3 +1,4 @@
+pub mod normie;
 pub mod tiling;
 
 use x11rb::protocol::xproto::Window;
@@ -9,6 +10,26 @@ pub struct GapConfig {
     pub outer_vertical: u32,
 }
 
+pub const TILING: &str = "tiling";
+pub const NORMIE: &str = "normie";
+pub const FLOATING: &str = "floating";
+
+pub fn layout_from_str(s: &str) -> Result<Box<dyn Layout>, String> {
+    match s.to_lowercase().as_str() {
+        TILING => Ok(Box::new(tiling::TilingLayout)),
+        NORMIE | FLOATING => Ok(Box::new(normie::NormieLayout)),
+        _ => Err(format!("Unknown layout: {}", s)),
+    }
+}
+
+pub fn next_layout(current_name: &str) -> &'static str {
+    match current_name {
+        TILING => NORMIE,
+        NORMIE => TILING,
+        _ => TILING,
+    }
+}
+
 pub trait Layout {
     fn arrange(
         &self,
@@ -17,6 +38,7 @@ pub trait Layout {
         screen_height: u32,
         gaps: &GapConfig,
     ) -> Vec<WindowGeometry>;
+    fn name(&self) -> &'static str;
 }
 
 pub struct WindowGeometry {

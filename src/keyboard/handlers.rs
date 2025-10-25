@@ -19,6 +19,8 @@ pub enum KeyAction {
     ToggleGaps,
     ToggleFullScreen,
     ToggleFloating,
+    ChangeLayout,
+    CycleLayout,
     MoveToTag,
     FocusMonitor,
     None,

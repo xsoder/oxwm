@@ -3,8 +3,8 @@ use crate::bar::Bar;
 use crate::errors::WmError;
 use crate::keyboard::{self, Arg, KeyAction, handlers};
 use crate::layout::GapConfig;
-use crate::layout::Layout;
 use crate::layout::tiling::TilingLayout;
+use crate::layout::{Layout, layout_from_str, next_layout};
 use crate::monitor::{Monitor, detect_monitors};
 use std::collections::HashSet;
 use x11rb::cursor::Handle as CursorHandle;
@@ -37,10 +37,7 @@ impl AtomCache {
             .reply()?
             .atom;
 
-        let wm_state = connection
-            .intern_atom(false, b"WM_STATE")?
-            .reply()?
-            .atom;
+        let wm_state = connection.intern_atom(false, b"WM_STATE")?.reply()?.atom;
 
         Ok(Self {
             net_current_desktop,
@@ -128,12 +125,7 @@ impl WindowManager {
             u16::from(config.modkey).into(),
         )?;
 
-        let mut monitors = detect_monitors(&connection, &screen, root)?;
-
-        let selected_tags = Self::get_saved_selected_tags(&connection, root, config.tags.len())?;
-        if !monitors.is_empty() {
-            monitors[0].selected_tags = selected_tags;
-        }
+        let monitors = detect_monitors(&connection, &screen, root)?;
 
         let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
         if display.is_null() {
@@ -308,7 +300,11 @@ impl WindowManager {
             }
         }
 
-        Ok(self.monitors.get(self.selected_monitor).map(|m| m.selected_tags).unwrap_or(tag_mask(0)))
+        Ok(self
+            .monitors
+            .get(self.selected_monitor)
+            .map(|m| m.selected_tags)
+            .unwrap_or(tag_mask(0)))
     }
 
     fn save_client_tag(&self, window: Window, tag: TagMask) -> WmResult<()> {
@@ -376,7 +372,11 @@ impl WindowManager {
     }
 
     fn toggle_floating(&mut self) -> WmResult<()> {
-        if let Some(focused) = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window) {
+        if let Some(focused) = self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.focused_window)
+        {
             if self.floating_windows.contains(&focused) {
                 self.floating_windows.remove(&focused);
                 self.apply_layout()?;
@@ -385,9 +385,10 @@ impl WindowManager {
                 let float_height = (self.screen.height_in_pixels / 2) as u32;
 
                 let border_width = self.config.border_width;
-                
-                let center_width = ((self.screen.width_in_pixels - float_width as u16)/2) as i32;
-                let center_height = ((self.screen.height_in_pixels - float_height as u16)/2) as i32;
+
+                let center_width = ((self.screen.width_in_pixels - float_width as u16) / 2) as i32;
+                let center_height =
+                    ((self.screen.height_in_pixels - float_height as u16) / 2) as i32;
 
                 self.connection.configure_window(
                     focused,
@@ -409,7 +410,11 @@ impl WindowManager {
     }
 
     fn toggle_fullscreen(&mut self) -> WmResult<()> {
-        if let Some(focused) = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window) {
+        if let Some(focused) = self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.focused_window)
+        {
             if self.fullscreen_window == Some(focused) {
                 self.fullscreen_window = None;
 
@@ -458,7 +463,14 @@ impl WindowManager {
 
                 let draw_blocks = monitor_index == self.selected_monitor;
                 bar.invalidate();
-                bar.draw(&self.connection, &self.font, self.display, monitor.selected_tags, occupied_tags, draw_blocks)?;
+                bar.draw(
+                    &self.connection,
+                    &self.font,
+                    self.display,
+                    monitor.selected_tags,
+                    occupied_tags,
+                    draw_blocks,
+                )?;
             }
         }
         Ok(())
@@ -468,7 +480,11 @@ impl WindowManager {
         match action {
             KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
             KeyAction::KillClient => {
-                if let Some(focused) = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window) {
+                if let Some(focused) = self
+                    .monitors
+                    .get(self.selected_monitor)
+                    .and_then(|m| m.focused_window)
+                {
                     match self.connection.kill_client(focused) {
                         Ok(_) => {
                             self.connection.flush()?;
@@ -481,6 +497,28 @@ impl WindowManager {
             }
             KeyAction::ToggleFullScreen => {
                 self.toggle_fullscreen()?;
+            }
+            KeyAction::ChangeLayout => {
+                if let Arg::Str(layout_name) = arg {
+                    match layout_from_str(layout_name) {
+                        Ok(layout) => {
+                            self.layout = layout;
+                            self.apply_layout()?;
+                        }
+                        Err(e) => eprintln!("Failed to change layout: {}", e),
+                    }
+                }
+            }
+            KeyAction::CycleLayout => {
+                let current_name = self.layout.name();
+                let next_name = next_layout(current_name);
+                match layout_from_str(next_name) {
+                    Ok(layout) => {
+                        self.layout = layout;
+                        self.apply_layout()?;
+                    }
+                    Err(e) => eprintln!("Failed to cycle layout: {}", e),
+                }
             }
             KeyAction::ToggleFloating => {
                 self.toggle_floating()?;
@@ -645,7 +683,11 @@ impl WindowManager {
     fn save_selected_tags(&self) -> WmResult<()> {
         let net_current_desktop = self.atoms.net_current_desktop;
 
-        let selected_tags = self.monitors.get(self.selected_monitor).map(|m| m.selected_tags).unwrap_or(tag_mask(0));
+        let selected_tags = self
+            .monitors
+            .get(self.selected_monitor)
+            .map(|m| m.selected_tags)
+            .unwrap_or(tag_mask(0));
         let desktop = selected_tags.trailing_zeros();
 
         let bytes = (desktop as u32).to_ne_bytes();
@@ -668,7 +710,11 @@ impl WindowManager {
             return Ok(());
         }
 
-        if let Some(focused) = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window) {
+        if let Some(focused) = self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.focused_window)
+        {
             let mask = tag_mask(tag_index);
             self.window_tags.insert(focused, mask);
 
@@ -689,7 +735,10 @@ impl WindowManager {
             return Ok(());
         }
 
-        let current = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window);
+        let current = self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.focused_window);
 
         let next_window = if let Some(current) = current {
             if let Some(current_index) = visible.iter().position(|&w| w == current) {
@@ -726,7 +775,11 @@ impl WindowManager {
         Ok(())
     }
 
-    fn update_focus_visuals(&self, old_focused: Option<Window>, new_focused: Window) -> WmResult<()> {
+    fn update_focus_visuals(
+        &self,
+        old_focused: Option<Window>,
+        new_focused: Window,
+    ) -> WmResult<()> {
         if let Some(old_win) = old_focused {
             if old_win != new_focused {
                 self.connection.configure_window(
@@ -894,11 +947,16 @@ impl WindowManager {
                     &ChangeWindowAttributesAux::new().event_mask(EventMask::ENTER_WINDOW),
                 )?;
 
-                let selected_tags = self.monitors.get(self.selected_monitor).map(|m| m.selected_tags).unwrap_or(tag_mask(0));
+                let selected_tags = self
+                    .monitors
+                    .get(self.selected_monitor)
+                    .map(|m| m.selected_tags)
+                    .unwrap_or(tag_mask(0));
 
                 self.windows.push(event.window);
                 self.window_tags.insert(event.window, selected_tags);
-                self.window_monitor.insert(event.window, self.selected_monitor);
+                self.window_monitor
+                    .insert(event.window, self.selected_monitor);
                 self.set_wm_state(event.window, 1)?;
                 let _ = self.save_client_tag(event.window, selected_tags);
 
@@ -929,7 +987,9 @@ impl WindowManager {
                     return Ok(None);
                 }
 
-                if let Some(monitor_index) = self.get_monitor_at_point(event.root_x as i32, event.root_y as i32) {
+                if let Some(monitor_index) =
+                    self.get_monitor_at_point(event.root_x as i32, event.root_y as i32)
+                {
                     if monitor_index != self.selected_monitor {
                         self.selected_monitor = monitor_index;
                         self.update_bar()?;
@@ -950,7 +1010,9 @@ impl WindowManager {
                 }
             }
             Event::ButtonPress(event) => {
-                let is_bar_click = self.bars.iter()
+                let is_bar_click = self
+                    .bars
+                    .iter()
                     .enumerate()
                     .find(|(_, bar)| bar.window() == event.event);
 
@@ -1029,7 +1091,11 @@ impl WindowManager {
                 .copied()
                 .collect();
 
-            let bar_height = self.bars.get(monitor_index).map(|b| b.height() as u32).unwrap_or(0);
+            let bar_height = self
+                .bars
+                .get(monitor_index)
+                .map(|b| b.height() as u32)
+                .unwrap_or(0);
             let usable_height = monitor.height.saturating_sub(bar_height);
 
             let geometries = self
@@ -1058,6 +1124,12 @@ impl WindowManager {
         Ok(())
     }
 
+    pub fn change_layout<L: Layout + 'static>(&mut self, new_layout: L) -> WmResult<()> {
+        self.layout = Box::new(new_layout);
+        self.apply_layout()?;
+        Ok(())
+    }
+
     fn remove_window(&mut self, window: Window) -> WmResult<()> {
         let initial_count = self.windows.len();
         self.windows.retain(|&w| w != window);
@@ -1073,7 +1145,10 @@ impl WindowManager {
         }
 
         if self.windows.len() < initial_count {
-            let focused = self.monitors.get(self.selected_monitor).and_then(|m| m.focused_window);
+            let focused = self
+                .monitors
+                .get(self.selected_monitor)
+                .and_then(|m| m.focused_window);
             if focused == Some(window) {
                 let visible = self.visible_windows_on_monitor(self.selected_monitor);
                 if let Some(&new_win) = visible.last() {

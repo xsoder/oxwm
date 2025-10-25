@@ -26,6 +26,8 @@
         (modifiers: [Mod4], key: Q, action: KillClient),
         (modifiers: [Mod4, Shift], key: F, action: ToggleFullScreen),
         (modifiers: [Mod4, Shift], key: Space, action: ToggleFloating),
+        (modifiers: [Mod4], key: F, action: ChangeLayout, arg: "normie"),
+        (modifiers: [Mod4], key: C, action: ChangeLayout, arg: "tiling"),
         (modifiers: [Mod4], key: A, action: ToggleGaps),
         (modifiers: [Mod4, Shift], key: Q, action: Quit),
         (modifiers: [Mod4, Shift], key: R, action: Restart),
