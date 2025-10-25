@@ -133,6 +133,30 @@ impl Default for Config {
                     Arg::Int(1),
                 ),
                 Key::new(
+                    vec![MODKEY, SHIFT],
+                    keycodes::K,
+                    KeyAction::ExchangeClient,
+                    Arg::Int(0), // UP
+                ),
+                Key::new(
+                    vec![MODKEY, SHIFT],
+                    keycodes::J,
+                    KeyAction::ExchangeClient,
+                    Arg::Int(1), // DOWN
+                ),
+                Key::new(
+                    vec![MODKEY, SHIFT],
+                    keycodes::H,
+                    KeyAction::ExchangeClient,
+                    Arg::Int(2), // LEFT
+                ),
+                Key::new(
+                    vec![MODKEY, SHIFT],
+                    keycodes::L,
+                    KeyAction::ExchangeClient,
+                    Arg::Int(3), // RIGHT
+                ),
+                Key::new(
                     vec![MODKEY],
                     keycodes::KEY_1,
                     KeyAction::ViewTag,

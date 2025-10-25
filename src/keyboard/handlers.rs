@@ -23,6 +23,8 @@ pub enum KeyAction {
     CycleLayout,
     MoveToTag,
     FocusMonitor,
+    SmartMoveWin,
+    ExchangeClient,
     None,
 }
 
