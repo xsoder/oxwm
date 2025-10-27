@@ -8,6 +8,10 @@ impl Layout for TilingLayout {
         super::TILING
     }
 
+    fn symbol(&self) -> &'static str {
+        "[]="
+    }
+
     fn arrange(
         &self,
         windows: &[Window],

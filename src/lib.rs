@@ -8,9 +8,16 @@ pub mod window_manager;
 
 pub mod prelude {
     pub use crate::ColorScheme;
+    pub use crate::LayoutSymbolOverride;
     pub use crate::bar::{BlockCommand, BlockConfig};
     pub use crate::keyboard::{Arg, KeyAction, handlers::Key, keycodes};
     pub use x11rb::protocol::xproto::KeyButMask;
+}
+
+#[derive(Clone)]
+pub struct LayoutSymbolOverride {
+    pub name: String,
+    pub symbol: String,
 }
 
 #[derive(Clone)]
@@ -34,6 +41,9 @@ pub struct Config {
 
     // Tags
     pub tags: Vec<String>,
+
+    // Layout symbol overrides
+    pub layout_symbols: Vec<LayoutSymbolOverride>,
 
     // Keybindings
     pub keybindings: Vec<crate::keyboard::handlers::Key>,
@@ -81,6 +91,7 @@ impl Default for Config {
                 .into_iter()
                 .map(String::from)
                 .collect(),
+            layout_symbols: vec![],
             keybindings: vec![
                 Key::new(
                     vec![MODKEY],
