@@ -3,6 +3,8 @@ pub mod tiling;
 
 use x11rb::protocol::xproto::Window;
 
+pub type LayoutBox = Box<dyn Layout>;
+
 pub struct GapConfig {
     pub inner_horizontal: u32,
     pub inner_vertical: u32,
@@ -14,7 +16,7 @@ pub const TILING: &str = "tiling";
 pub const NORMIE: &str = "normie";
 pub const FLOATING: &str = "floating";
 
-pub fn layout_from_str(s: &str) -> Result<Box<dyn Layout>, String> {
+pub fn layout_from_str(s: &str) -> Result<LayoutBox, String> {
     match s.to_lowercase().as_str() {
         TILING => Ok(Box::new(tiling::TilingLayout)),
         NORMIE | FLOATING => Ok(Box::new(normie::NormieLayout)),

@@ -4,7 +4,7 @@ use crate::errors::WmError;
 use crate::keyboard::{self, Arg, KeyAction, handlers};
 use crate::layout::GapConfig;
 use crate::layout::tiling::TilingLayout;
-use crate::layout::{Layout, layout_from_str, next_layout};
+use crate::layout::{Layout, LayoutBox, layout_from_str, next_layout};
 use crate::monitor::{Monitor, detect_monitors};
 use std::collections::HashSet;
 use x11rb::cursor::Handle as CursorHandle;
@@ -54,7 +54,7 @@ pub struct WindowManager {
     root: Window,
     screen: Screen,
     windows: Vec<Window>,
-    layout: Box<dyn Layout>,
+    layout: LayoutBox,
     window_tags: std::collections::HashMap<Window, TagMask>,
     window_monitor: std::collections::HashMap<Window, usize>,
     window_geometries: std::collections::HashMap<Window, (i16, i16, u16, u16)>,
