@@ -18,6 +18,10 @@
     modkey: Mod4,
 
     tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    layout_symbols: [
+        (name: "tiling", symbol: "[T]"),
+        (name: "normie", symbol: "[F]"),
+    ],
 
     keybindings: [
         (modifiers: [Mod4], key: Return, action: Spawn, arg: "st"),
@@ -28,6 +32,7 @@
         (modifiers: [Mod4, Shift], key: Space, action: ToggleFloating),
         (modifiers: [Mod4], key: F, action: ChangeLayout, arg: "normie"),
         (modifiers: [Mod4], key: C, action: ChangeLayout, arg: "tiling"),
+        (modifiers: [Mod1], key: N, action: CycleLayout),
         (modifiers: [Mod4], key: A, action: ToggleGaps),
         (modifiers: [Mod4, Shift], key: Q, action: Quit),
         (modifiers: [Mod4, Shift], key: R, action: Restart),
@@ -53,6 +58,18 @@
         (modifiers: [Mod4, Shift], key: Key7, action: MoveToTag, arg: 6),
         (modifiers: [Mod4, Shift], key: Key8, action: MoveToTag, arg: 7),
         (modifiers: [Mod4, Shift], key: Key9, action: MoveToTag, arg: 8),
+
+        // Moving Windows
+        (modifiers: [Mod4, Control], key: K, action: SmartMoveWin, arg: 0), // UP
+        (modifiers: [Mod4, Control], key: J, action: SmartMoveWin, arg: 1), // DOWN
+        (modifiers: [Mod4, Control], key: H, action: SmartMoveWin, arg: 2), // LEFT
+        (modifiers: [Mod4, Control], key: L, action: SmartMoveWin, arg: 3), // RIGHT
+
+        // Exchanging Clients
+        (modifiers: [Mod4, Shift], key: K, action: ExchangeClient, arg: 0), // UP
+        (modifiers: [Mod4, Shift], key: J, action: ExchangeClient, arg: 1), // DOWN
+        (modifiers: [Mod4, Shift], key: H, action: ExchangeClient, arg: 2), // LEFT
+        (modifiers: [Mod4, Shift], key: L, action: ExchangeClient, arg: 3), // RIGHT
     ],
     
     status_blocks: [

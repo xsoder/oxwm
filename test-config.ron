@@ -16,7 +16,6 @@
     
     terminal: "st",
     modkey: Mod1,
-
     tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
 
     // Alternative icon tags (uncomment to use):
@@ -24,6 +23,11 @@
     
     // Alternative text tags (uncomment to use):
     // tags: ["DEV", "WWW", "SYS", "DOC", "VBOX", "CHAT", "MUS", "VID", "MISC"],
+
+    layout_symbols: [
+        (name: "tiling", symbol: "[T]"),
+        (name: "normie", symbol: "[F]"),
+    ],
 
     keybindings: [
         (modifiers: [Mod1], key: Return, action: Spawn, arg: "st"),
@@ -41,6 +45,10 @@
         (modifiers: [Mod1], key: J, action: FocusStack, arg: -1),
         (modifiers: [Mod1], key: K, action: FocusStack, arg: 1),
         // Exchange client (vim-style with Mod+Shift)
+        (modifiers: [Mod1, Control], key: K, action: SmartMoveWin, arg: 0), // UP
+        (modifiers: [Mod1, Control], key: J, action: SmartMoveWin, arg: 1), // DOWN
+        (modifiers: [Mod1, Control], key: H, action: SmartMoveWin, arg: 2), // LEFT
+        (modifiers: [Mod1, Control], key: L, action: SmartMoveWin, arg: 3), // RIGHT
         (modifiers: [Mod1, Shift], key: K, action: ExchangeClient, arg: 0), // UP
         (modifiers: [Mod1, Shift], key: J, action: ExchangeClient, arg: 1), // DOWN
         (modifiers: [Mod1, Shift], key: H, action: ExchangeClient, arg: 2), // LEFT

@@ -162,6 +162,12 @@ pub fn parse_config(input: &str) -> Result<crate::Config, ConfigError> {
 }
 
 #[derive(Debug, Deserialize)]
+struct LayoutSymbolOverrideData {
+    name: String,
+    symbol: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ConfigData {
     border_width: u32,
     border_focused: u32,
@@ -178,6 +184,8 @@ struct ConfigData {
     modkey: ModKey,
 
     tags: Vec<String>,
+    #[serde(default)]
+    layout_symbols: Vec<LayoutSymbolOverrideData>,
     keybindings: Vec<KeybindingData>,
     status_blocks: Vec<StatusBlockData>,
 
@@ -307,6 +315,15 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
         });
     }
 
+    let layout_symbols = data
+        .layout_symbols
+        .into_iter()
+        .map(|l| crate::LayoutSymbolOverride {
+            name: l.name,
+            symbol: l.symbol,
+        })
+        .collect();
+
     Ok(crate::Config {
         border_width: data.border_width,
         border_focused: data.border_focused,
@@ -320,6 +337,7 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
         terminal: data.terminal,
         modkey,
         tags: data.tags,
+        layout_symbols,
         keybindings,
         status_blocks,
         scheme_normal: crate::ColorScheme {

@@ -41,6 +41,7 @@ pub trait Layout {
         gaps: &GapConfig,
     ) -> Vec<WindowGeometry>;
     fn name(&self) -> &'static str;
+    fn symbol(&self) -> &'static str;
 }
 
 pub struct WindowGeometry {

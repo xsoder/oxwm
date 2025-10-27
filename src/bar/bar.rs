@@ -171,6 +171,7 @@ impl Bar {
         current_tags: u32,
         occupied_tags: u32,
         draw_blocks: bool,
+        layout_symbol: &str,
     ) -> Result<(), X11Error> {
         if !self.needs_redraw {
             return Ok(());
@@ -245,6 +246,20 @@ impl Bar {
 
             x_position += tag_width as i16;
         }
+
+        x_position += 10;
+
+        let text_x = x_position;
+        let top_padding = 4;
+        let text_y = top_padding + font.ascent();
+
+        self.font_draw.draw_text(
+            font,
+            self.scheme_normal.foreground,
+            text_x,
+            text_y,
+            layout_symbol
+        );
 
         if draw_blocks && !self.status_text.is_empty() {
             let padding = 10;

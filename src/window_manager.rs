@@ -789,7 +789,19 @@ impl WindowManager {
         Ok(())
     }
 
+    fn get_layout_symbol(&self) -> String {
+        let layout_name = self.layout.name();
+        self.config
+            .layout_symbols
+            .iter()
+            .find(|l| l.name == layout_name)
+            .map(|l| l.symbol.clone())
+            .unwrap_or_else(|| self.layout.symbol().to_string())
+    }
+
     fn update_bar(&mut self) -> WmResult<()> {
+        let layout_symbol = self.get_layout_symbol();
+
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
             if let Some(bar) = self.bars.get_mut(monitor_index) {
                 let mut occupied_tags: TagMask = 0;
@@ -808,6 +820,7 @@ impl WindowManager {
                     monitor.selected_tags,
                     occupied_tags,
                     draw_blocks,
+                    &layout_symbol,
                 )?;
             }
         }
@@ -842,6 +855,7 @@ impl WindowManager {
                         Ok(layout) => {
                             self.layout = layout;
                             self.apply_layout()?;
+                            self.update_bar()?;
                         }
                         Err(e) => eprintln!("Failed to change layout: {}", e),
                     }
@@ -854,6 +868,7 @@ impl WindowManager {
                     Ok(layout) => {
                         self.layout = layout;
                         self.apply_layout()?;
+                        self.update_bar()?;
                     }
                     Err(e) => eprintln!("Failed to cycle layout: {}", e),
                 }

@@ -9,6 +9,10 @@ impl Layout for NormieLayout {
         super::NORMIE
     }
 
+    fn symbol(&self) -> &'static str {
+        "><>"
+    }
+
     fn arrange(
         &self,
         windows: &[Window],
