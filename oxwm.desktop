@@ -4,3 +4,4 @@ Comment=DWM but better with sane defaults
 Exec=oxwm
 Type=Application
 Keywords=wm;windowmanager;window;manager;
+Version=1.5

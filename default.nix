@@ -5,7 +5,6 @@
   xorg,
   freetype,
   fontconfig,
-  makeDesktopItem,
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "oxwm";
@@ -29,15 +28,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     fontconfig
   ];
 
-  postInstall = let
-    oxwmDesktopItem = makeDesktopItem rec {
-      name = finalAttrs.pname;
-      exec = name;
-      desktopName = name;
-      comment = finalAttrs.meta.description;
-    };
-  in ''
-    install -Dt $out/share/xsessions ${oxwmDesktopItem}/share/applications/oxwm.desktop
+  postInstall = ''
+    install oxwm.desktop -Dt $out/share/xsessions
   '';
 
   passthru.providedSessions = ["oxwm"];
