@@ -25,6 +25,7 @@ pub enum ConfigError {
     UnknownAction(String),
     UnknownBlockCommand(String),
     MissingCommandArg { command: String, field: String },
+    ValidationError(String),
 }
 
 impl std::fmt::Display for WmError {
@@ -67,6 +68,7 @@ impl std::fmt::Display for ConfigError {
             Self::MissingCommandArg { command, field } => {
                 write!(f, "{} command requires {}", command, field)
             }
+            Self::ValidationError(msg) => write!(f, "Config validation error: {}", msg),
         }
     }
 }

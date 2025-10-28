@@ -1,6 +1,6 @@
 use crate::bar::{BlockCommand, BlockConfig};
 use crate::errors::ConfigError;
-use crate::keyboard::handlers::Key;
+use crate::keyboard::handlers::{KeyBinding, KeyPress};
 use crate::keyboard::keycodes;
 use crate::keyboard::{Arg, KeyAction};
 use serde::Deserialize;
@@ -8,6 +8,7 @@ use x11rb::protocol::xproto::{KeyButMask, Keycode};
 
 #[derive(Debug, Deserialize)]
 pub enum ModKey {
+    Mod,
     Mod1,
     Mod2,
     Mod3,
@@ -20,6 +21,7 @@ pub enum ModKey {
 impl ModKey {
     fn to_keybut_mask(&self) -> KeyButMask {
         match self {
+            ModKey::Mod => panic!("ModKey::Mod should be replaced during config parsing"),
             ModKey::Mod1 => KeyButMask::MOD1,
             ModKey::Mod2 => KeyButMask::MOD2,
             ModKey::Mod3 => KeyButMask::MOD3,
@@ -196,11 +198,21 @@ struct ConfigData {
 
 #[derive(Debug, Deserialize)]
 struct KeybindingData {
-    modifiers: Vec<ModKey>,
-    key: KeyData,
+    #[serde(default)]
+    keys: Option<Vec<KeyPressData>>,  // New format
+    #[serde(default)]
+    modifiers: Option<Vec<ModKey>>,   // Old format (backwards compat)
+    #[serde(default)]
+    key: Option<KeyData>,              // Old format (backwards compat)
     action: KeyAction,
     #[serde(default)]
     arg: ArgData,
+}
+
+#[derive(Debug, Deserialize)]
+struct KeyPressData {
+    modifiers: Vec<ModKey>,
+    key: KeyData,
 }
 
 #[derive(Debug, Deserialize)]
@@ -250,17 +262,46 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
 
     let mut keybindings = Vec::new();
     for kb_data in data.keybindings {
-        let modifiers = kb_data
-            .modifiers
-            .iter()
-            .map(|m| m.to_keybut_mask())
-            .collect();
+        let keys = if let Some(keys_data) = kb_data.keys {
+            // New format: multiple keys
+            keys_data
+                .into_iter()
+                .map(|kp| {
+                    let modifiers = kp
+                        .modifiers
+                        .iter()
+                        .map(|m| match m {
+                            ModKey::Mod => modkey,
+                            _ => m.to_keybut_mask(),
+                        })
+                        .collect();
 
-        let key = kb_data.key.to_keycode();
+                    KeyPress {
+                        modifiers,
+                        key: kp.key.to_keycode(),
+                    }
+                })
+                .collect()
+        } else if let (Some(modifiers), Some(key)) = (kb_data.modifiers, kb_data.key) {
+            // Old format: single key (backwards compatibility)
+            vec![KeyPress {
+                modifiers: modifiers
+                    .iter()
+                    .map(|m| match m {
+                        ModKey::Mod => modkey,
+                        _ => m.to_keybut_mask(),
+                    })
+                    .collect(),
+                key: key.to_keycode(),
+            }]
+        } else {
+            return Err(ConfigError::ValidationError("Keybinding must have either 'keys' or 'modifiers'+'key'".to_string()));
+        };
+
         let action = kb_data.action;
         let arg = arg_data_to_arg(kb_data.arg)?;
 
-        keybindings.push(Key::new(modifiers, key, action, arg));
+        keybindings.push(KeyBinding::new(keys, action, arg));
     }
 
     let mut status_blocks = Vec::new();

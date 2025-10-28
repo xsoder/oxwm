@@ -68,6 +68,7 @@ pub struct WindowManager {
     previous_focused: Option<Window>,
     display: *mut x11::xlib::Display,
     font: crate::bar::font::Font,
+    keychord_state: keyboard::handlers::KeychordState,
 }
 
 type WmResult<T> = Result<T, WmError>;
@@ -176,6 +177,7 @@ impl WindowManager {
             previous_focused: None,
             display,
             font,
+            keychord_state: keyboard::handlers::KeychordState::Idle,
         };
 
         window_manager.scan_existing_windows()?;
@@ -799,8 +801,75 @@ impl WindowManager {
             .unwrap_or_else(|| self.layout.symbol().to_string())
     }
 
+    fn get_keychord_indicator(&self) -> Option<String> {
+        match &self.keychord_state {
+            keyboard::handlers::KeychordState::Idle => None,
+            keyboard::handlers::KeychordState::InProgress { candidates, keys_pressed } => {
+                if candidates.is_empty() {
+                    return None;
+                }
+
+                let binding = &self.config.keybindings[candidates[0]];
+                let mut indicator = String::new();
+
+                for (i, key_press) in binding.keys.iter().take(*keys_pressed).enumerate() {
+                    if i > 0 {
+                        indicator.push(' ');
+                    }
+
+                    for modifier in &key_press.modifiers {
+                        indicator.push_str(Self::format_modifier(*modifier));
+                        indicator.push('+');
+                    }
+
+                    indicator.push_str(&self.format_keycode(key_press.key));
+                }
+
+                indicator.push('-');
+                Some(indicator)
+            }
+        }
+    }
+
+    fn format_modifier(modifier: KeyButMask) -> &'static str {
+        match modifier {
+            KeyButMask::MOD1 => "Alt",
+            KeyButMask::MOD4 => "Super",
+            KeyButMask::SHIFT => "Shift",
+            KeyButMask::CONTROL => "Ctrl",
+            _ => "Mod",
+        }
+    }
+
+    fn format_keycode(&self, keycode: Keycode) -> String {
+        unsafe {
+            let keysym = x11::xlib::XKeycodeToKeysym(self.display, keycode, 0);
+            if keysym == 0 {
+                return "?".to_string();
+            }
+
+            let name_ptr = x11::xlib::XKeysymToString(keysym);
+            if name_ptr.is_null() {
+                return "?".to_string();
+            }
+
+            let c_str = std::ffi::CStr::from_ptr(name_ptr);
+            match c_str.to_str() {
+                Ok(s) => {
+                    if s.len() == 1 {
+                        s.to_lowercase()
+                    } else {
+                        s.to_string()
+                    }
+                }
+                Err(_) => "?".to_string(),
+            }
+        }
+    }
+
     fn update_bar(&mut self) -> WmResult<()> {
         let layout_symbol = self.get_layout_symbol();
+        let keychord_indicator = self.get_keychord_indicator();
 
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
             if let Some(bar) = self.bars.get_mut(monitor_index) {
@@ -821,6 +890,7 @@ impl WindowManager {
                     occupied_tags,
                     draw_blocks,
                     &layout_symbol,
+                    keychord_indicator.as_deref(),
                 )?;
             }
         }
@@ -1124,6 +1194,39 @@ impl WindowManager {
         Ok(())
     }
 
+    fn grab_next_keys(&self, candidates: &[usize], keys_pressed: usize) -> WmResult<()> {
+        let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
+
+        for &candidate_index in candidates {
+            let binding = &self.config.keybindings[candidate_index];
+            if keys_pressed < binding.keys.len() {
+                let next_key = &binding.keys[keys_pressed];
+                let modifier_mask = keyboard::handlers::modifiers_to_mask(&next_key.modifiers);
+                let key_tuple = (modifier_mask, next_key.key);
+
+                if grabbed_keys.insert(key_tuple) {
+                    self.connection.grab_key(
+                        false,
+                        self.root,
+                        modifier_mask.into(),
+                        next_key.key,
+                        GrabMode::ASYNC,
+                        GrabMode::ASYNC,
+                    )?;
+                }
+            }
+        }
+        self.connection.flush()?;
+        Ok(())
+    }
+
+    fn ungrab_chord_keys(&self) -> WmResult<()> {
+        self.connection.ungrab_key(x11rb::protocol::xproto::Grab::ANY, self.root, ModMask::ANY)?;
+        keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
+        self.connection.flush()?;
+        Ok(())
+    }
+
     pub fn set_focus(&mut self, window: Window) -> WmResult<()> {
         let old_focused = self.previous_focused;
 
@@ -1372,11 +1475,43 @@ impl WindowManager {
                 }
             }
             Event::KeyPress(event) => {
-                let (action, arg) = keyboard::handle_key_press(event, &self.config.keybindings);
-                match action {
-                    KeyAction::Quit => return Ok(Some(false)),
-                    KeyAction::Restart => return Ok(Some(true)),
-                    _ => self.handle_key_action(action, &arg)?,
+                let result = keyboard::handle_key_press(
+                    event,
+                    &self.config.keybindings,
+                    &self.keychord_state,
+                );
+
+                match result {
+                    keyboard::handlers::KeychordResult::Completed(action, arg) => {
+                        self.keychord_state = keyboard::handlers::KeychordState::Idle;
+                        self.ungrab_chord_keys()?;
+                        self.update_bar()?;
+
+                        match action {
+                            KeyAction::Quit => return Ok(Some(false)),
+                            KeyAction::Restart => return Ok(Some(true)),
+                            _ => self.handle_key_action(action, &arg)?,
+                        }
+                    }
+                    keyboard::handlers::KeychordResult::InProgress(candidates) => {
+                        let keys_pressed = match &self.keychord_state {
+                            keyboard::handlers::KeychordState::Idle => 1,
+                            keyboard::handlers::KeychordState::InProgress { keys_pressed, .. } => keys_pressed + 1,
+                        };
+
+                        self.keychord_state = keyboard::handlers::KeychordState::InProgress {
+                            candidates: candidates.clone(),
+                            keys_pressed,
+                        };
+
+                        self.grab_next_keys(&candidates, keys_pressed)?;
+                        self.update_bar()?;
+                    }
+                    keyboard::handlers::KeychordResult::Cancelled | keyboard::handlers::KeychordResult::None => {
+                        self.keychord_state = keyboard::handlers::KeychordState::Idle;
+                        self.ungrab_chord_keys()?;
+                        self.update_bar()?;
+                    }
                 }
             }
             Event::ButtonPress(event) => {

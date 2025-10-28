@@ -23,7 +23,22 @@
         (name: "normie", symbol: "[F]"),
     ],
 
+    // Keybinding Format:
+    //
+    // New format (supports keychords - multi-key sequences):
+    //   (keys: [(modifiers: [...], key: X), (modifiers: [...], key: Y)], action: ..., arg: ...)
+    //
+    // Old format (single key, backwards compatible):
+    //   (modifiers: [...], key: X, action: ..., arg: ...)
+    //
+    // Examples:
+    //   Single key:  (keys: [(modifiers: [Mod4], key: Return)], action: Spawn, arg: "st")
+    //   Keychord:    (keys: [(modifiers: [Mod4], key: Space), (modifiers: [], key: F)], action: Spawn, arg: "firefox")
+    //
+    // You can cancel any in-progress keychord by pressing Escape.
+
     keybindings: [
+        // Basic keybindings (old format for backwards compatibility)
         (modifiers: [Mod4], key: Return, action: Spawn, arg: "st"),
         (modifiers: [Mod4], key: D, action: Spawn, arg: ["sh", "-c", "dmenu_run -l 10"]),
         (modifiers: [Mod4], key: S, action: Spawn, arg: ["sh", "-c", "maim -s | xclip -selection clipboard -t image/png"]),
@@ -70,6 +85,19 @@
         (modifiers: [Mod4, Shift], key: J, action: ExchangeClient, arg: 1), // DOWN
         (modifiers: [Mod4, Shift], key: H, action: ExchangeClient, arg: 2), // LEFT
         (modifiers: [Mod4, Shift], key: L, action: ExchangeClient, arg: 3), // RIGHT
+
+        // Example keychord bindings (uncomment to use):
+        // Press Mod4+Space, then f to spawn firefox
+        // (keys: [(modifiers: [Mod4], key: Space), (modifiers: [], key: F)], action: Spawn, arg: "firefox"),
+
+        // Press Mod4+Space, then t to spawn terminal
+        // (keys: [(modifiers: [Mod4], key: Space), (modifiers: [], key: T)], action: Spawn, arg: "st"),
+
+        // Press Mod4+e, then e to spawn a text editor (same key twice)
+        // (keys: [(modifiers: [Mod4], key: E), (modifiers: [], key: E)], action: Spawn, arg: "nvim"),
+
+        // Press Mod4+x, then Shift+c to kill client (modifier on second key)
+        // (keys: [(modifiers: [Mod4], key: X), (modifiers: [Shift], key: C)], action: KillClient),
     ],
     
     status_blocks: [
