@@ -68,6 +68,10 @@ pub struct WindowManager {
     previous_focused: Option<Window>,
     display: *mut x11::xlib::Display,
     font: crate::bar::font::Font,
+    scroll_offset: i32,
+    scroll_target: i32,
+    scroll_animating: bool,
+    scroll_velocity: f32,
 }
 
 type WmResult<T> = Result<T, WmError>;
@@ -176,6 +180,10 @@ impl WindowManager {
             previous_focused: None,
             display,
             font,
+            scroll_offset: 0,
+            scroll_target: 0,
+            scroll_animating: false,
+            scroll_velocity: 0.0,
         };
 
         window_manager.scan_existing_windows()?;
@@ -283,6 +291,67 @@ impl WindowManager {
         Ok(())
     }
 
+    fn scroll_by(&mut self, delta: i32) -> WmResult<()> {
+    if self.layout.name() != crate::layout::HORIZONTAL_SCROLL {
+        return Ok(());
+    }
+    let new_target = self.scroll_target + delta;
+    self.scroll_to(new_target)?;
+    Ok(())
+}
+
+    fn scroll_to(&mut self, target: i32) -> WmResult<()> {
+        if self.layout.name() != crate::layout::HORIZONTAL_SCROLL {
+            return Ok(());
+        }
+
+        let gaps = if self.gaps_enabled {
+            crate::layout::GapConfig {
+                inner_horizontal: self.config.gap_inner_horizontal,
+                inner_vertical: self.config.gap_inner_vertical,
+                outer_horizontal: self.config.gap_outer_horizontal,
+                outer_vertical: self.config.gap_outer_vertical,
+            }
+        } else {
+            crate::layout::GapConfig {
+                inner_horizontal: 0,
+                inner_vertical: 0,
+                outer_horizontal: 0,
+                outer_vertical: 0,
+            }
+        };
+
+        let monitor = &self.monitors[self.selected_monitor];
+        let visible = self.visible_windows_on_monitor(self.selected_monitor);
+
+        let max_offset = 800 * visible.len() as i32;
+
+        self.scroll_target = target.max(0).min(max_offset);
+        self.scroll_animating = true;
+
+        Ok(())
+    }
+
+    fn update_scroll_animation(&mut self) -> WmResult<bool> {
+        if !self.scroll_animating {
+            return Ok(false);
+        }
+
+        let diff = self.scroll_target - self.scroll_offset;
+
+        if diff.abs() < 2 {
+            self.scroll_offset = self.scroll_target;
+            self.scroll_animating = false;
+            return Ok(true);
+        }
+
+        let ease_factor = 0.2;
+        let delta = (diff as f32 * ease_factor) as i32;
+        self.scroll_offset += delta;
+
+        Ok(true)
+    }
+
     fn get_saved_tag(&self, window: Window, net_client_info: Atom) -> WmResult<TagMask> {
         match self
             .connection
@@ -372,6 +441,10 @@ impl WindowManager {
 
             if self.bars.iter().any(|bar| bar.needs_redraw()) {
                 self.update_bar()?;
+            }
+
+            if self.update_scroll_animation()? {
+                self.apply_layout()?;
             }
 
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -872,6 +945,17 @@ impl WindowManager {
                     }
                     Err(e) => eprintln!("Failed to cycle layout: {}", e),
                 }
+            }
+            KeyAction::ScrollLeft => {
+                let amount = -800; // TODO: make this settable from the user side
+                self.scroll_by(amount)?;
+            }
+            KeyAction::ScrollRight => {
+                let amount = 800;
+                self.scroll_by(amount)?;
+            }
+            KeyAction::ScrollToWindow => {
+                // TODO
             }
             KeyAction::ToggleFloating => {
                 self.toggle_floating()?;
@@ -1480,8 +1564,12 @@ impl WindowManager {
                 let adjusted_width = geometry.width.saturating_sub(2 * border_width);
                 let adjusted_height = geometry.height.saturating_sub(2 * border_width);
 
-                let adjusted_x = geometry.x_coordinate + monitor.x;
                 let adjusted_y = geometry.y_coordinate + monitor.y + bar_height as i32;
+                let adjusted_x = if self.layout.name() == crate::layout::HORIZONTAL_SCROLL {
+                    geometry.x_coordinate + monitor.x - self.scroll_offset
+                } else {
+                    geometry.x_coordinate + monitor.x
+                };
 
                 self.connection.configure_window(
                     *window,

@@ -25,6 +25,9 @@ pub enum KeyAction {
     FocusMonitor,
     SmartMoveWin,
     ExchangeClient,
+    ScrollLeft,
+    ScrollRight,
+    ScrollToWindow,
     None,
 }
 

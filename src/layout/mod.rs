@@ -1,5 +1,6 @@
 pub mod normie;
 pub mod tiling;
+pub mod horizontal_scroll;
 
 use x11rb::protocol::xproto::Window;
 
@@ -15,11 +16,13 @@ pub struct GapConfig {
 pub const TILING: &str = "tiling";
 pub const NORMIE: &str = "normie";
 pub const FLOATING: &str = "floating";
+pub const HORIZONTAL_SCROLL: &str = "horizontal_scroll";
 
 pub fn layout_from_str(s: &str) -> Result<LayoutBox, String> {
     match s.to_lowercase().as_str() {
         TILING => Ok(Box::new(tiling::TilingLayout)),
         NORMIE | FLOATING => Ok(Box::new(normie::NormieLayout)),
+        HORIZONTAL_SCROLL => Ok(Box::new(horizontal_scroll::HorizontalScrollLayout::new(800))),
         _ => Err(format!("Unknown layout: {}", s)),
     }
 }
@@ -27,7 +30,8 @@ pub fn layout_from_str(s: &str) -> Result<LayoutBox, String> {
 pub fn next_layout(current_name: &str) -> &'static str {
     match current_name {
         TILING => NORMIE,
-        NORMIE => TILING,
+        NORMIE => HORIZONTAL_SCROLL,
+        HORIZONTAL_SCROLL => TILING,
         _ => TILING,
     }
 }

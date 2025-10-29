@@ -32,7 +32,7 @@
 
     // Alternative icon tags (uncomment to use):
     // tags: ["", "󰊯", "", "", "󰙯", "󱇤", "", "󱘶", "󰧮"],
-    
+
     // Alternative text tags (uncomment to use):
     // tags: ["DEV", "WWW", "SYS", "DOC", "VBOX", "CHAT", "MUS", "VID", "MISC"],
 
@@ -42,6 +42,16 @@
     ],
 
     keybindings: [
+    // Swith to horizontal scroll layout
+    (modifiers: [Mod4], key: H, action: ChangeLayout, arg: "horizontal_scroll"),
+
+    // Scroll with arrows
+    (modifiers: [Mod4], key: Left, action: ScrollLeft),
+    (modifiers: [Mod4], key:  Right, action: ScrollRight),
+
+    // Or vim-style
+    (modifiers: [Mod4, Control], key: H, action: ScrollLeft),
+    (modifiers: [Mod4, Control], key: L, action: ScrollRight),
         (modifiers: [Mod1], key: Return, action: Spawn, arg: $terminal),
         (modifiers: [Mod1], key: D, action: Spawn, arg: ["sh", "-c", "dmenu_run -l 10"]),
         (modifiers: [Mod1], key: S, action: Spawn, arg: ["sh", "-c", "maim -s | xclip -selection clipboard -t image/png"]),
@@ -84,7 +94,7 @@
         (modifiers: [Mod1, Shift], key: Key8, action: MoveToTag, arg: 7),
         (modifiers: [Mod1, Shift], key: Key9, action: MoveToTag, arg: 8),
     ],
-    
+
     status_blocks: [
         // Battery block (shows charging/discharging status)
         (
@@ -99,7 +109,7 @@
             color: $color_green,
             underline: true,
         ),
-        
+
         // Separator
         (
             format: " │  ",
@@ -108,7 +118,7 @@
             color: $color_lavender,
             underline: false,
         ),
-        
+
         // RAM usage
         (
             format: "󰍛 {used}/{total} GB",
@@ -117,7 +127,7 @@
             color: $color_light_blue,
             underline: true,
         ),
-        
+
         // Separator
         (
             format: " │  ",
@@ -126,7 +136,7 @@
             color: $color_lavender,
             underline: false,
         ),
-        
+
         // Kernel version
         (
             format: " {}",
@@ -136,7 +146,7 @@
             color: $color_red,
             underline: true,
         ),
-        
+
         // Separator
         (
             format: " │  ",
@@ -145,7 +155,7 @@
             color: $color_lavender,
             underline: false,
         ),
-        
+
         // Date and time
         (
             format: "󰸘 {}",
@@ -156,7 +166,7 @@
             underline: true,
         ),
     ],
-    
+
     scheme_normal: (foreground: $color_fg, background: $color_bg, underline: 0x444444),
     scheme_occupied: (foreground: $color_cyan, background: $color_bg, underline: $color_cyan),
     scheme_selected: (foreground: $color_cyan, background: $color_bg, underline: $color_purple),
