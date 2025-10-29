@@ -12,24 +12,53 @@ pub struct GapConfig {
     pub outer_vertical: u32,
 }
 
-pub const TILING: &str = "tiling";
-pub const NORMIE: &str = "normie";
-pub const FLOATING: &str = "floating";
+pub enum LayoutType {
+    Tiling,
+    Normie,
+}
 
-pub fn layout_from_str(s: &str) -> Result<LayoutBox, String> {
-    match s.to_lowercase().as_str() {
-        TILING => Ok(Box::new(tiling::TilingLayout)),
-        NORMIE | FLOATING => Ok(Box::new(normie::NormieLayout)),
-        _ => Err(format!("Unknown layout: {}", s)),
+impl LayoutType {
+    pub fn new(&self) -> LayoutBox {
+        match self {
+            Self::Tiling => Box::new(tiling::TilingLayout),
+            Self::Normie => Box::new(normie::NormieLayout),
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Tiling => Self::Normie,
+            Self::Normie => Self::Tiling,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Tiling => "tiling",
+            Self::Normie => "normie",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Result<Self, String> {
+        match s.to_lowercase().as_str() {
+            "tiling" => Ok(Self::Tiling),
+            "normie" | "floating" => Ok(Self::Normie),
+            _ => Err(format!("Invalid Layout Type: {}", s)),
+        }
     }
 }
 
+pub fn layout_from_str(s: &str) -> Result<LayoutBox, String> {
+    let layout_type = LayoutType::from_str(s)?;
+    Ok(layout_type.new())
+}
+
 pub fn next_layout(current_name: &str) -> &'static str {
-    match current_name {
-        TILING => NORMIE,
-        NORMIE => TILING,
-        _ => TILING,
-    }
+    LayoutType::from_str(current_name)
+        .ok()
+        .map(|layout_type| layout_type.next())
+        .unwrap_or(LayoutType::Tiling)
+        .as_str()
 }
 
 pub trait Layout {

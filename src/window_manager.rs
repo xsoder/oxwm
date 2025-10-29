@@ -4,7 +4,7 @@ use crate::errors::WmError;
 use crate::keyboard::{self, Arg, KeyAction, handlers};
 use crate::layout::GapConfig;
 use crate::layout::tiling::TilingLayout;
-use crate::layout::{Layout, LayoutBox, layout_from_str, next_layout};
+use crate::layout::{Layout, LayoutBox, LayoutType, layout_from_str, next_layout};
 use crate::monitor::{Monitor, detect_monitors};
 use std::collections::HashSet;
 use x11rb::cursor::Handle as CursorHandle;
@@ -1422,7 +1422,7 @@ impl WindowManager {
             return Ok(());
         }
 
-        if self.layout.name() == crate::layout::NORMIE {
+        if self.layout.name() == LayoutType::Normie.as_str() {
             return Ok(());
         }
 
