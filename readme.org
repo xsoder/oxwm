@@ -154,7 +154,7 @@ startx
 If using a display manager (LightDM, GDM, SDDM), OXWM should appear in the session list after installation.
 
 * Configuration
-OXWM was inspired by dwm, but ditched the suckless philosophy. This philosophy quite literally discourages users from using the software for the sake of 'elitism'. I find that quite nonsensical, so I went ahead and created this project to be user friendly. The configuration is done by editing =~/.config/oxwm/config.ron= and the binary can be reloaded with a hotkey (Super+Shift+R by efault).
+OXWM was inspired by dwm, but ditched the suckless philosophy. This philosophy quite literally discourages users from using the software for the sake of 'elitism'. I find that quite nonsensical, so I went ahead and created this project to be user friendly. The configuration is done by editing =~/.config/oxwm/config.ron= and the binary can be reloaded with a hotkey (Super+Shift+R by default).
 
 Edit =~/.config/oxwm/config.ron= to customize:
 - Keybindings
