@@ -199,11 +199,11 @@ struct ConfigData {
 #[derive(Debug, Deserialize)]
 struct KeybindingData {
     #[serde(default)]
-    keys: Option<Vec<KeyPressData>>,  // New format
+    keys: Option<Vec<KeyPressData>>,
     #[serde(default)]
-    modifiers: Option<Vec<ModKey>>,   // Old format (backwards compat)
+    modifiers: Option<Vec<ModKey>>,
     #[serde(default)]
-    key: Option<KeyData>,              // Old format (backwards compat)
+    key: Option<KeyData>,
     action: KeyAction,
     #[serde(default)]
     arg: ArgData,
@@ -263,7 +263,6 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
     let mut keybindings = Vec::new();
     for kb_data in data.keybindings {
         let keys = if let Some(keys_data) = kb_data.keys {
-            // New format: multiple keys
             keys_data
                 .into_iter()
                 .map(|kp| {
@@ -283,7 +282,6 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
                 })
                 .collect()
         } else if let (Some(modifiers), Some(key)) = (kb_data.modifiers, kb_data.key) {
-            // Old format: single key (backwards compatibility)
             vec![KeyPress {
                 modifiers: modifiers
                     .iter()
@@ -295,7 +293,9 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
                 key: key.to_keycode(),
             }]
         } else {
-            return Err(ConfigError::ValidationError("Keybinding must have either 'keys' or 'modifiers'+'key'".to_string()));
+            return Err(ConfigError::ValidationError(
+                "Keybinding must have either 'keys' or 'modifiers'+'key'".to_string(),
+            ));
         };
 
         let action = kb_data.action;

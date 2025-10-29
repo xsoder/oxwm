@@ -259,13 +259,11 @@ impl Bar {
             self.scheme_normal.foreground,
             text_x,
             text_y,
-            layout_symbol
+            layout_symbol,
         );
 
-        // Update x_position after layout symbol
         x_position += font.text_width(layout_symbol) as i16;
 
-        // Draw keychord indicator if present
         if let Some(indicator) = keychord_indicator {
             x_position += 10;
 

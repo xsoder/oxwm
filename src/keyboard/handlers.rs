@@ -45,14 +45,12 @@ impl Arg {
     }
 }
 
-// Individual key press in a sequence
 #[derive(Clone, Debug)]
 pub struct KeyPress {
     pub(crate) modifiers: Vec<KeyButMask>,
     pub(crate) key: Keycode,
 }
 
-// Keybinding that can be a single key or a chord (sequence of keys)
 #[derive(Clone)]
 pub struct KeyBinding {
     pub(crate) keys: Vec<KeyPress>,
@@ -65,7 +63,6 @@ impl KeyBinding {
         Self { keys, func, arg }
     }
 
-    // Helper for backwards compatibility with single-key bindings
     pub fn single_key(modifiers: Vec<KeyButMask>, key: Keycode, func: KeyAction, arg: Arg) -> Self {
         Self {
             keys: vec![KeyPress { modifiers, key }],
@@ -75,16 +72,13 @@ impl KeyBinding {
     }
 }
 
-// For backwards compatibility during migration
 pub type Key = KeyBinding;
 
 #[derive(Debug, Clone)]
 pub enum KeychordState {
     Idle,
     InProgress {
-        // Indices of keybindings that could still match
         candidates: Vec<usize>,
-        // How many keys have been pressed in the sequence
         keys_pressed: usize,
     },
 }
@@ -155,19 +149,15 @@ pub fn handle_key_press(
     }
 
     match keychord_state {
-        KeychordState::Idle => {
-            handle_first_key(event, keybindings)
-        }
-        KeychordState::InProgress { candidates, keys_pressed } => {
-            handle_next_key(event, keybindings, candidates, *keys_pressed)
-        }
+        KeychordState::Idle => handle_first_key(event, keybindings),
+        KeychordState::InProgress {
+            candidates,
+            keys_pressed,
+        } => handle_next_key(event, keybindings, candidates, *keys_pressed),
     }
 }
 
-fn handle_first_key(
-    event: KeyPressEvent,
-    keybindings: &[KeyBinding],
-) -> KeychordResult {
+fn handle_first_key(event: KeyPressEvent, keybindings: &[KeyBinding]) -> KeychordResult {
     let mut candidates = Vec::new();
 
     for (keybinding_index, keybinding) in keybindings.iter().enumerate() {
@@ -180,10 +170,7 @@ fn handle_first_key(
 
         if event.detail == first_key.key && event.state == modifier_mask.into() {
             if keybinding.keys.len() == 1 {
-                return KeychordResult::Completed(
-                    keybinding.func,
-                    keybinding.arg.clone(),
-                );
+                return KeychordResult::Completed(keybinding.func, keybinding.arg.clone());
             } else {
                 candidates.push(keybinding_index);
             }
@@ -224,10 +211,7 @@ fn handle_next_key(
 
         if event.detail == next_key.key && modifiers_match {
             if keys_pressed + 1 == keybinding.keys.len() {
-                return KeychordResult::Completed(
-                    keybinding.func,
-                    keybinding.arg.clone(),
-                );
+                return KeychordResult::Completed(keybinding.func, keybinding.arg.clone());
             } else {
                 new_candidates.push(candidate_index);
             }
