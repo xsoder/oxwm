@@ -25,6 +25,9 @@ pub enum ConfigError {
     UnknownAction(String),
     UnknownBlockCommand(String),
     MissingCommandArg { command: String, field: String },
+    InvalidVariableName(String),
+    InvalidDefine(String),
+    UndefinedVariable(String),
 }
 
 impl std::fmt::Display for WmError {
@@ -66,6 +69,15 @@ impl std::fmt::Display for ConfigError {
             Self::UnknownBlockCommand(cmd) => write!(f, "Unknown block command: {}", cmd),
             Self::MissingCommandArg { command, field } => {
                 write!(f, "{} command requires {}", command, field)
+            }
+            Self::InvalidVariableName(name) => {
+                write!(f, "Invalid variable name '{}': must start with $", name)
+            }
+            Self::InvalidDefine(line) => {
+                write!(f, "Invalid #DEFINE syntax: '{}'. Expected: #DEFINE $var_name = value", line)
+            }
+            Self::UndefinedVariable(var) => {
+                write!(f, "Undefined variable '{}': define it with #DEFINE before use", var)
             }
         }
     }

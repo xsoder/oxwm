@@ -2,19 +2,31 @@
 // OXWM Configuration File
 // Edit this file and reload with Mod+Shift+R (no compilation needed!)
 
+#DEFINE $terminal = "alacritty"
+#DEFINE $color_blue = 0x6dade3
+#DEFINE $color_grey = 0xbbbbbb
+#DEFINE $color_green = 0x9ece6a
+#DEFINE $color_red = 0xf7768e
+#DEFINE $color_cyan = 0x0db9d7
+#DEFINE $color_purple = 0xad8ee6
+#DEFINE $color_lavender = 0xa9b1d6
+#DEFINE $color_bg = 0x1a1b26
+#DEFINE $color_fg = 0xbbbbbb
+#DEFINE $color_light_blue = 0x7aa2f7
+
 (
     border_width: 2,
-    border_focused: 0x6dade3,
-    border_unfocused: 0xbbbbbb,
+    border_focused: $color_blue,
+    border_unfocused: $color_grey,
     font: "JetBrainsMono Nerd Font:style=Bold:size=12",
-    
+
     gaps_enabled: true,
     gap_inner_horizontal: 5,
     gap_inner_vertical: 5,
     gap_outer_horizontal: 5,
     gap_outer_vertical: 5,
-    
-    terminal: "st",
+
+    terminal: $terminal,
     modkey: Mod1,
     tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
 
@@ -30,7 +42,7 @@
     ],
 
     keybindings: [
-        (modifiers: [Mod1], key: Return, action: Spawn, arg: "st"),
+        (modifiers: [Mod1], key: Return, action: Spawn, arg: $terminal),
         (modifiers: [Mod1], key: D, action: Spawn, arg: ["sh", "-c", "dmenu_run -l 10"]),
         (modifiers: [Mod1], key: S, action: Spawn, arg: ["sh", "-c", "maim -s | xclip -selection clipboard -t image/png"]),
         (modifiers: [Mod1], key: Q, action: KillClient),
@@ -84,7 +96,7 @@
                 full: "󰁹 Bat: {}%",
             ),
             interval_secs: 30,
-            color: 0x9ece6a,
+            color: $color_green,
             underline: true,
         ),
         
@@ -93,7 +105,7 @@
             format: " │  ",
             command: "Static",
             interval_secs: 18446744073709551615,
-            color: 0xa9b1d6,
+            color: $color_lavender,
             underline: false,
         ),
         
@@ -102,7 +114,7 @@
             format: "󰍛 {used}/{total} GB",
             command: "Ram",
             interval_secs: 5,
-            color: 0x7aa2f7,
+            color: $color_light_blue,
             underline: true,
         ),
         
@@ -111,7 +123,7 @@
             format: " │  ",
             command: "Static",
             interval_secs: 18446744073709551615,
-            color: 0xa9b1d6,
+            color: $color_lavender,
             underline: false,
         ),
         
@@ -121,7 +133,7 @@
             command: "Shell",
             command_arg: "uname -r",
             interval_secs: 18446744073709551615,
-            color: 0xf7768e,
+            color: $color_red,
             underline: true,
         ),
         
@@ -130,7 +142,7 @@
             format: " │  ",
             command: "Static",
             interval_secs: 18446744073709551615,
-            color: 0xa9b1d6,
+            color: $color_lavender,
             underline: false,
         ),
         
@@ -140,13 +152,13 @@
             command: "DateTime",
             command_arg: "%a, %b %d - %-I:%M %P",
             interval_secs: 1,
-            color: 0x0db9d7,
+            color: $color_cyan,
             underline: true,
         ),
     ],
     
-    scheme_normal: (foreground: 0xbbbbbb, background: 0x1a1b26, underline: 0x444444),
-    scheme_occupied: (foreground: 0x0db9d7, background: 0x1a1b26, underline: 0x0db9d7),
-    scheme_selected: (foreground: 0x0db9d7, background: 0x1a1b26, underline: 0xad8ee6),
+    scheme_normal: (foreground: $color_fg, background: $color_bg, underline: 0x444444),
+    scheme_occupied: (foreground: $color_cyan, background: $color_bg, underline: $color_cyan),
+    scheme_selected: (foreground: $color_cyan, background: $color_bg, underline: $color_purple),
 )
 

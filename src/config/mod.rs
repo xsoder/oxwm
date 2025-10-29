@@ -4,6 +4,7 @@ use crate::keyboard::handlers::Key;
 use crate::keyboard::keycodes;
 use crate::keyboard::{Arg, KeyAction};
 use serde::Deserialize;
+use std::collections::HashMap;
 use x11rb::protocol::xproto::{KeyButMask, Keycode};
 
 #[derive(Debug, Deserialize)]
@@ -156,8 +157,57 @@ impl KeyData {
     }
 }
 
+fn preprocess_variables(input: &str) -> Result<String, ConfigError> {
+    let mut variables: HashMap<String, String> = HashMap::new();
+    let mut result = String::new();
+
+    for line in input.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("#DEFINE") {
+            let rest = trimmed.strip_prefix("#DEFINE").unwrap().trim();
+
+            if let Some(eq_pos) = rest.find('=') {
+                let var_name = rest[..eq_pos].trim();
+                let value = rest[eq_pos + 1..].trim().trim_end_matches(',');
+
+                if !var_name.starts_with('$') {
+                    return Err(ConfigError::InvalidVariableName(var_name.to_string()));
+                }
+
+                variables.insert(var_name.to_string(), value.to_string());
+            } else {
+                return Err(ConfigError::InvalidDefine(trimmed.to_string()));
+            }
+
+            result.push('\n');
+        } else {
+            let mut processed_line = line.to_string();
+            for (var_name, value) in &variables {
+                processed_line = processed_line.replace(var_name, value);
+            }
+            result.push_str(&processed_line);
+            result.push('\n');
+        }
+    }
+
+    for line in result.lines() {
+        if let Some(var_start) = line.find('$') {
+            let rest = &line[var_start..];
+            let var_end = rest[1..]
+                .find(|c: char| !c.is_alphanumeric() && c != '_')
+                .unwrap_or(rest.len() - 1)
+                + 1;
+            let undefined_var = &rest[..var_end];
+            return Err(ConfigError::UndefinedVariable(undefined_var.to_string()));
+        }
+    }
+    Ok(result)
+}
+
 pub fn parse_config(input: &str) -> Result<crate::Config, ConfigError> {
-    let config_data: ConfigData = ron::from_str(input)?;
+    let preprocessed = preprocess_variables(input)?;
+    let config_data: ConfigData = ron::from_str(&preprocessed)?;
     config_data_to_config(config_data)
 }
 
