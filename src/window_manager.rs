@@ -842,29 +842,9 @@ impl WindowManager {
     }
 
     fn format_keycode(&self, keycode: Keycode) -> String {
-        unsafe {
-            let keysym = x11::xlib::XKeycodeToKeysym(self.display, keycode, 0);
-            if keysym == 0 {
-                return "?".to_string();
-            }
-
-            let name_ptr = x11::xlib::XKeysymToString(keysym);
-            if name_ptr.is_null() {
-                return "?".to_string();
-            }
-
-            let c_str = std::ffi::CStr::from_ptr(name_ptr);
-            match c_str.to_str() {
-                Ok(s) => {
-                    if s.len() == 1 {
-                        s.to_lowercase()
-                    } else {
-                        s.to_string()
-                    }
-                }
-                Err(_) => "?".to_string(),
-            }
-        }
+        crate::config::KeyData::from_keycode(keycode)
+            .unwrap_or("?")
+            .to_string()
     }
 
     fn update_bar(&mut self) -> WmResult<()> {
