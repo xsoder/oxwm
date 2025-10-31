@@ -172,6 +172,7 @@ impl Bar {
         occupied_tags: u32,
         draw_blocks: bool,
         layout_symbol: &str,
+        keychord_indicator: Option<&str>,
     ) -> Result<(), X11Error> {
         if !self.needs_redraw {
             return Ok(());
@@ -258,8 +259,25 @@ impl Bar {
             self.scheme_normal.foreground,
             text_x,
             text_y,
-            layout_symbol
+            layout_symbol,
         );
+
+        x_position += font.text_width(layout_symbol) as i16;
+
+        if let Some(indicator) = keychord_indicator {
+            x_position += 10;
+
+            let text_x = x_position;
+            let text_y = top_padding + font.ascent();
+
+            self.font_draw.draw_text(
+                font,
+                self.scheme_selected.foreground,
+                text_x,
+                text_y,
+                indicator,
+            );
+        }
 
         if draw_blocks && !self.status_text.is_empty() {
             let padding = 10;

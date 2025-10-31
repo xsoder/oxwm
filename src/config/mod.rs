@@ -1,6 +1,6 @@
 use crate::bar::{BlockCommand, BlockConfig};
 use crate::errors::ConfigError;
-use crate::keyboard::handlers::Key;
+use crate::keyboard::handlers::{KeyBinding, KeyPress};
 use crate::keyboard::keycodes;
 use crate::keyboard::{Arg, KeyAction};
 use serde::Deserialize;
@@ -9,6 +9,7 @@ use x11rb::protocol::xproto::{KeyButMask, Keycode};
 
 #[derive(Debug, Deserialize)]
 pub enum ModKey {
+    Mod,
     Mod1,
     Mod2,
     Mod3,
@@ -21,6 +22,7 @@ pub enum ModKey {
 impl ModKey {
     fn to_keybut_mask(&self) -> KeyButMask {
         match self {
+            ModKey::Mod => panic!("ModKey::Mod should be replaced during config parsing"),
             ModKey::Mod1 => KeyButMask::MOD1,
             ModKey::Mod2 => KeyButMask::MOD2,
             ModKey::Mod3 => KeyButMask::MOD3,
@@ -155,6 +157,91 @@ impl KeyData {
             KeyData::Slash => keycodes::SLASH,
         }
     }
+
+    // Adding this reverse lookup for now so converting to KeySyms is no longer
+    // an 'unsafe' call to a C FFI (Sorry Bugsy...)
+    // This will set us up in the future to move away from hardcoded keycodes,
+    // and directly convert keysyms to keydata at runtime for international
+    // keyboard support.
+    pub fn from_keycode(keycode: Keycode) -> Option<&'static str> {
+        match keycode {
+            keycodes::RETURN => Some("Return"),
+            keycodes::Q => Some("q"),
+            keycodes::ESCAPE => Some("Esc"),
+            keycodes::SPACE => Some("Space"),
+            keycodes::TAB => Some("Tab"),
+            keycodes::BACKSPACE => Some("Backspace"),
+            keycodes::DELETE => Some("Del"),
+            keycodes::F1 => Some("F1"),
+            keycodes::F2 => Some("F2"),
+            keycodes::F3 => Some("F3"),
+            keycodes::F4 => Some("F4"),
+            keycodes::F5 => Some("F5"),
+            keycodes::F6 => Some("F6"),
+            keycodes::F7 => Some("F7"),
+            keycodes::F8 => Some("F8"),
+            keycodes::F9 => Some("F9"),
+            keycodes::F10 => Some("F10"),
+            keycodes::F11 => Some("F11"),
+            keycodes::F12 => Some("F12"),
+            keycodes::A => Some("a"),
+            keycodes::B => Some("b"),
+            keycodes::C => Some("c"),
+            keycodes::D => Some("d"),
+            keycodes::E => Some("e"),
+            keycodes::F => Some("f"),
+            keycodes::G => Some("g"),
+            keycodes::H => Some("h"),
+            keycodes::I => Some("i"),
+            keycodes::J => Some("j"),
+            keycodes::K => Some("k"),
+            keycodes::L => Some("l"),
+            keycodes::M => Some("m"),
+            keycodes::N => Some("n"),
+            keycodes::O => Some("o"),
+            keycodes::P => Some("p"),
+            keycodes::R => Some("r"),
+            keycodes::S => Some("s"),
+            keycodes::T => Some("t"),
+            keycodes::U => Some("u"),
+            keycodes::V => Some("v"),
+            keycodes::W => Some("w"),
+            keycodes::X => Some("x"),
+            keycodes::Y => Some("y"),
+            keycodes::Z => Some("z"),
+            keycodes::KEY_0 => Some("0"),
+            keycodes::KEY_1 => Some("1"),
+            keycodes::KEY_2 => Some("2"),
+            keycodes::KEY_3 => Some("3"),
+            keycodes::KEY_4 => Some("4"),
+            keycodes::KEY_5 => Some("5"),
+            keycodes::KEY_6 => Some("6"),
+            keycodes::KEY_7 => Some("7"),
+            keycodes::KEY_8 => Some("8"),
+            keycodes::KEY_9 => Some("9"),
+            keycodes::LEFT => Some("Left"),
+            keycodes::RIGHT => Some("Right"),
+            keycodes::UP => Some("Up"),
+            keycodes::DOWN => Some("Down"),
+            keycodes::HOME => Some("Home"),
+            keycodes::END => Some("End"),
+            keycodes::PAGE_UP => Some("PgUp"),
+            keycodes::PAGE_DOWN => Some("PgDn"),
+            keycodes::INSERT => Some("Ins"),
+            keycodes::MINUS => Some("-"),
+            keycodes::EQUAL => Some("="),
+            keycodes::LEFT_BRACKET => Some("["),
+            keycodes::RIGHT_BRACKET => Some("]"),
+            keycodes::SEMICOLON => Some(";"),
+            keycodes::APOSTROPHE => Some("'"),
+            keycodes::GRAVE => Some("`"),
+            keycodes::BACKSLASH => Some("\\"),
+            keycodes::COMMA => Some(","),
+            keycodes::PERIOD => Some("."),
+            keycodes::SLASH => Some("/"),
+            _ => None,
+        }
+    }
 }
 
 fn preprocess_variables(input: &str) -> Result<String, ConfigError> {
@@ -246,11 +333,21 @@ struct ConfigData {
 
 #[derive(Debug, Deserialize)]
 struct KeybindingData {
-    modifiers: Vec<ModKey>,
-    key: KeyData,
+    #[serde(default)]
+    keys: Option<Vec<KeyPressData>>,
+    #[serde(default)]
+    modifiers: Option<Vec<ModKey>>,
+    #[serde(default)]
+    key: Option<KeyData>,
     action: KeyAction,
     #[serde(default)]
     arg: ArgData,
+}
+
+#[derive(Debug, Deserialize)]
+struct KeyPressData {
+    modifiers: Vec<ModKey>,
+    key: KeyData,
 }
 
 #[derive(Debug, Deserialize)]
@@ -300,17 +397,46 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
 
     let mut keybindings = Vec::new();
     for kb_data in data.keybindings {
-        let modifiers = kb_data
-            .modifiers
-            .iter()
-            .map(|m| m.to_keybut_mask())
-            .collect();
+        let keys = if let Some(keys_data) = kb_data.keys {
+            keys_data
+                .into_iter()
+                .map(|kp| {
+                    let modifiers = kp
+                        .modifiers
+                        .iter()
+                        .map(|m| match m {
+                            ModKey::Mod => modkey,
+                            _ => m.to_keybut_mask(),
+                        })
+                        .collect();
 
-        let key = kb_data.key.to_keycode();
+                    KeyPress {
+                        modifiers,
+                        key: kp.key.to_keycode(),
+                    }
+                })
+                .collect()
+        } else if let (Some(modifiers), Some(key)) = (kb_data.modifiers, kb_data.key) {
+            vec![KeyPress {
+                modifiers: modifiers
+                    .iter()
+                    .map(|m| match m {
+                        ModKey::Mod => modkey,
+                        _ => m.to_keybut_mask(),
+                    })
+                    .collect(),
+                key: key.to_keycode(),
+            }]
+        } else {
+            return Err(ConfigError::ValidationError(
+                "Keybinding must have either 'keys' or 'modifiers'+'key'".to_string(),
+            ));
+        };
+
         let action = kb_data.action;
         let arg = arg_data_to_arg(kb_data.arg)?;
 
-        keybindings.push(Key::new(modifiers, key, action, arg));
+        keybindings.push(KeyBinding::new(keys, action, arg));
     }
 
     let mut status_blocks = Vec::new();
