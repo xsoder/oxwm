@@ -5,7 +5,7 @@ pub struct TilingLayout;
 
 impl Layout for TilingLayout {
     fn name(&self) -> &'static str {
-        super::TILING
+        super::LayoutType::Tiling.as_str()
     }
 
     fn symbol(&self) -> &'static str {

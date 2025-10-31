@@ -6,7 +6,7 @@ pub struct NormieLayout;
 // This layout should return a no-op similar to DWM.C's "null" mode.
 impl Layout for NormieLayout {
     fn name(&self) -> &'static str {
-        super::NORMIE
+        super::LayoutType::Normie.as_str()
     }
 
     fn symbol(&self) -> &'static str {
