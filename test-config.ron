@@ -42,6 +42,7 @@
     ],
 
     keybindings: [
+        (keys: [(modifiers: [Mod1], key: Space), (modifiers: [], key: T)], action: Spawn, arg: "st"),
         (modifiers: [Mod1], key: Return, action: Spawn, arg: $terminal),
         (modifiers: [Mod1], key: D, action: Spawn, arg: ["sh", "-c", "dmenu_run -l 10"]),
         (modifiers: [Mod1], key: S, action: Spawn, arg: ["sh", "-c", "maim -s | xclip -selection clipboard -t image/png"]),
