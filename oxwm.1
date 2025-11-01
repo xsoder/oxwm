@@ -1,0 +1,193 @@
+.TH OXWM 1 "2025-10-30" "oxwm 0.4.0" "User Commands"
+.SH NAME
+oxwm \- a dynamic tiling window manager for X11 written in Rust
+.SH SYNOPSIS
+.B oxwm
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B oxwm
+is a lightweight, dynamic tiling window manager for X11 inspired by dwm but ditching the suckless philosophy. Configuration is done via a runtime-loadable config file in RON format, allowing instant hot-reload without recompilation.
+.PP
+Features include tag-based workspaces, configurable gaps, a modular status bar, keychord support, and persistent window state across restarts.
+.SH OPTIONS
+.TP
+.B \-\-init
+Create default config file at
+.IR ~/.config/oxwm/config.ron
+.TP
+.B \-\-config \fIPATH\fR
+Use a custom config file at the specified path
+.TP
+.B \-\-version
+Print version information and exit
+.TP
+.B \-\-help
+Print help message and exit
+.SH CONFIGURATION
+.B oxwm
+reads its configuration from
+.IR ~/.config/oxwm/config.ron .
+If no config exists on first launch, a default template will be created automatically.
+.PP
+The config file uses RON (Rusty Object Notation) format and supports:
+.IP \(bu 2
+Keybindings (including multi-key keychords)
+.IP \(bu 2
+Colors and appearance
+.IP \(bu 2
+Status bar blocks (battery, RAM, datetime, shell commands)
+.IP \(bu 2
+Gaps and borders
+.IP \(bu 2
+Terminal and application settings
+.IP \(bu 2
+Variable definitions with #DEFINE
+.PP
+After editing the config, reload with
+.B Mod+Shift+R
+\(en no compilation required.
+.SH DEFAULT KEYBINDINGS
+The default modifier key is
+.B Super
+(Mod4). All bindings are customizable in config.ron.
+.SS Window Management
+.TP
+.B Super+Return
+Spawn terminal (default: st)
+.TP
+.B Super+Q
+Kill focused window
+.TP
+.B Super+J, Super+K
+Cycle focus down/up through windows
+.TP
+.B Super+Shift+Space
+Toggle floating mode for focused window
+.TP
+.B Super+Shift+F
+Toggle fullscreen for focused window
+.TP
+.B Super+Control+H/J/K/L
+Move floating window left/down/up/right
+.TP
+.B Super+Shift+H/J/K/L
+Exchange focused window with neighbor in direction
+.SS Layouts
+.TP
+.B Super+F
+Switch to floating layout
+.TP
+.B Super+C
+Switch to tiling layout
+.TP
+.B Super+A
+Toggle gaps on/off
+.TP
+.B Alt+N
+Cycle through available layouts
+.SS Tags (Workspaces)
+.TP
+.B Super+1..9
+View tag 1-9
+.TP
+.B Super+Shift+1..9
+Move focused window to tag 1-9
+.SS Monitors
+.TP
+.B Super+Comma
+Focus previous monitor
+.TP
+.B Super+Period
+Focus next monitor
+.SS Launchers
+.TP
+.B Super+D
+Launch dmenu
+.TP
+.B Super+S
+Take screenshot with maim (selection to clipboard)
+.SS Window Manager
+.TP
+.B Super+Shift+Q
+Quit oxwm
+.TP
+.B Super+Shift+R
+Hot reload oxwm (reload config without restarting X)
+.SS Keychord Example
+.TP
+.B Super+Space, T
+Spawn terminal (example keychord: two-key sequence)
+.PP
+Press
+.B Escape
+to cancel any in-progress keychord sequence.
+.SH KEYCHORDS
+.B oxwm
+supports multi-key sequences called keychords. These allow binding complex commands to sequences like "Super+a then f".
+.PP
+Example keychord in config.ron:
+.PP
+.EX
+    (keys: [
+        (modifiers: [Mod4], key: A),
+        (modifiers: [], key: F),
+    ], action: ToggleFloating),
+.EE
+.PP
+This binds "Super+a followed by f" to toggle floating mode.
+.SH FILES
+.TP
+.I ~/.config/oxwm/config.ron
+Main configuration file
+.TP
+.I /usr/share/xsessions/oxwm.desktop
+X session desktop entry (if installed via package manager)
+.SH ENVIRONMENT
+.TP
+.B DISPLAY
+X11 display to connect to (standard X11 variable)
+.SH EXAMPLES
+.TP
+Start oxwm normally:
+.EX
+    oxwm
+.EE
+.TP
+Initialize config file:
+.EX
+    oxwm --init
+.EE
+.TP
+Use custom config:
+.EX
+    oxwm --config ~/my-oxwm-config.ron
+.EE
+.TP
+Test in Xephyr (nested X server):
+.EX
+    Xephyr -screen 1280x800 :1 &
+    DISPLAY=:1 oxwm
+.EE
+.SH TESTING
+Test oxwm without affecting your current session using Xephyr:
+.PP
+.EX
+    # Start nested X server
+    Xephyr -screen 1280x800 :1 &
+
+    # Run oxwm in it
+    DISPLAY=:1 oxwm
+.EE
+.SH BUGS
+Report bugs at: https://github.com/tonybanters/oxwm/issues
+.SH SEE ALSO
+.BR X (7),
+.BR dwm (1),
+.BR dmenu (1),
+.BR xrandr (1)
+.SH AUTHORS
+Written by Tony (tonybtw).
+.PP
+Inspired by dwm but designed to be user-friendly and eliminate arbitrary elitism.
+.SH LICENSE
+GPL v3 - see https://www.gnu.org/licenses/gpl-3.0.en.html

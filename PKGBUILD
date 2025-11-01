@@ -34,4 +34,5 @@ package() {
     install -Dm755 "target/release/$_pkgname" "$pkgdir/usr/bin/$_pkgname"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 oxwm.desktop "$pkgdir/usr/share/xsessions/oxwm.desktop"
+    install -Dm644 oxwm.1 "$pkgdir/usr/share/man/man1/oxwm.1"
 }
