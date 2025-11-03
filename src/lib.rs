@@ -10,7 +10,7 @@ pub mod prelude {
     pub use crate::ColorScheme;
     pub use crate::LayoutSymbolOverride;
     pub use crate::bar::{BlockCommand, BlockConfig};
-    pub use crate::keyboard::{Arg, KeyAction, handlers::KeyBinding, keycodes};
+    pub use crate::keyboard::{Arg, KeyAction, handlers::KeyBinding, keysyms};
     pub use x11rb::protocol::xproto::KeyButMask;
 }
 
@@ -67,7 +67,7 @@ pub struct ColorScheme {
 impl Default for Config {
     fn default() -> Self {
         use crate::keyboard::handlers::KeyBinding;
-        use crate::keyboard::{Arg, KeyAction, keycodes};
+        use crate::keyboard::{Arg, KeyAction, keysyms};
         use x11rb::protocol::xproto::KeyButMask;
 
         const MODKEY: KeyButMask = KeyButMask::MOD4;
@@ -95,13 +95,13 @@ impl Default for Config {
             keybindings: vec![
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::RETURN,
+                    keysyms::XK_RETURN,
                     KeyAction::Spawn,
                     Arg::Str(TERMINAL.to_string()),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::D,
+                    keysyms::XK_D,
                     KeyAction::Spawn,
                     Arg::Array(vec![
                         "sh".to_string(),
@@ -109,169 +109,169 @@ impl Default for Config {
                         "dmenu_run -l 10".to_string(),
                     ]),
                 ),
-                KeyBinding::single_key(vec![MODKEY], keycodes::Q, KeyAction::KillClient, Arg::None),
-                KeyBinding::single_key(vec![MODKEY], keycodes::N, KeyAction::CycleLayout, Arg::None),
+                KeyBinding::single_key(vec![MODKEY], keysyms::XK_Q, KeyAction::KillClient, Arg::None),
+                KeyBinding::single_key(vec![MODKEY], keysyms::XK_N, KeyAction::CycleLayout, Arg::None),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::F,
+                    keysyms::XK_F,
                     KeyAction::ToggleFullScreen,
                     Arg::None,
                 ),
-                KeyBinding::single_key(vec![MODKEY], keycodes::A, KeyAction::ToggleGaps, Arg::None),
-                KeyBinding::single_key(vec![MODKEY, SHIFT], keycodes::Q, KeyAction::Quit, Arg::None),
+                KeyBinding::single_key(vec![MODKEY], keysyms::XK_A, KeyAction::ToggleGaps, Arg::None),
+                KeyBinding::single_key(vec![MODKEY, SHIFT], keysyms::XK_Q, KeyAction::Quit, Arg::None),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::R,
+                    keysyms::XK_R,
                     KeyAction::Restart,
                     Arg::None,
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::F,
+                    keysyms::XK_F,
                     KeyAction::ToggleFloating,
                     Arg::None,
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::J,
+                    keysyms::XK_J,
                     KeyAction::FocusStack,
                     Arg::Int(-1),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::K,
+                    keysyms::XK_K,
                     KeyAction::FocusStack,
                     Arg::Int(1),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::K,
+                    keysyms::XK_K,
                     KeyAction::ExchangeClient,
                     Arg::Int(0), // UP
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::J,
+                    keysyms::XK_J,
                     KeyAction::ExchangeClient,
                     Arg::Int(1), // DOWN
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::H,
+                    keysyms::XK_H,
                     KeyAction::ExchangeClient,
                     Arg::Int(2), // LEFT
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::L,
+                    keysyms::XK_L,
                     KeyAction::ExchangeClient,
                     Arg::Int(3), // RIGHT
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_1,
+                    keysyms::XK_1,
                     KeyAction::ViewTag,
                     Arg::Int(0),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_2,
+                    keysyms::XK_2,
                     KeyAction::ViewTag,
                     Arg::Int(1),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_3,
+                    keysyms::XK_3,
                     KeyAction::ViewTag,
                     Arg::Int(2),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_4,
+                    keysyms::XK_4,
                     KeyAction::ViewTag,
                     Arg::Int(3),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_5,
+                    keysyms::XK_5,
                     KeyAction::ViewTag,
                     Arg::Int(4),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_6,
+                    keysyms::XK_6,
                     KeyAction::ViewTag,
                     Arg::Int(5),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_7,
+                    keysyms::XK_7,
                     KeyAction::ViewTag,
                     Arg::Int(6),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_8,
+                    keysyms::XK_8,
                     KeyAction::ViewTag,
                     Arg::Int(7),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
-                    keycodes::KEY_9,
+                    keysyms::XK_9,
                     KeyAction::ViewTag,
                     Arg::Int(8),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_1,
+                    keysyms::XK_1,
                     KeyAction::MoveToTag,
                     Arg::Int(0),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_2,
+                    keysyms::XK_2,
                     KeyAction::MoveToTag,
                     Arg::Int(1),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_3,
+                    keysyms::XK_3,
                     KeyAction::MoveToTag,
                     Arg::Int(2),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_4,
+                    keysyms::XK_4,
                     KeyAction::MoveToTag,
                     Arg::Int(3),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_5,
+                    keysyms::XK_5,
                     KeyAction::MoveToTag,
                     Arg::Int(4),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_6,
+                    keysyms::XK_6,
                     KeyAction::MoveToTag,
                     Arg::Int(5),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_7,
+                    keysyms::XK_7,
                     KeyAction::MoveToTag,
                     Arg::Int(6),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_8,
+                    keysyms::XK_8,
                     KeyAction::MoveToTag,
                     Arg::Int(7),
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY, SHIFT],
-                    keycodes::KEY_9,
+                    keysyms::XK_9,
                     KeyAction::MoveToTag,
                     Arg::Int(8),
                 ),
