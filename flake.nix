@@ -23,6 +23,7 @@
           pkgs.cargo
           pkgs.alacritty
           pkgs.just
+          pkgs.xorg.xorgserver
           pkgs.xorg.libX11
           pkgs.xorg.libXft
           pkgs.xorg.libXrender
