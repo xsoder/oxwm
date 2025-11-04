@@ -59,7 +59,6 @@ pub struct WindowManager {
     window_monitor: std::collections::HashMap<Window, usize>,
     window_geometries: std::collections::HashMap<Window, (i16, i16, u16, u16)>,
     gaps_enabled: bool,
-    fullscreen_enabled: bool,
     floating_windows: HashSet<Window>,
     bars: Vec<Bar>,
     monitors: Vec<Monitor>,
@@ -168,7 +167,6 @@ impl WindowManager {
             window_monitor: std::collections::HashMap::new(),
             window_geometries: std::collections::HashMap::new(),
             gaps_enabled,
-            fullscreen_enabled: false,
             floating_windows: HashSet::new(),
             bars,
             monitors,
@@ -757,19 +755,19 @@ impl WindowManager {
     }
 
     fn toggle_fullscreen(&mut self) -> WmResult<()> {
-        self.fullscreen_enabled = !self.fullscreen_enabled;
+        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+            monitor.fullscreen_enabled = !monitor.fullscreen_enabled;
 
-        if self.fullscreen_enabled {
-            for bar in &self.bars {
-                self.connection.unmap_window(bar.window())?;
+            if let Some(bar) = self.bars.get(self.selected_monitor) {
+                if monitor.fullscreen_enabled {
+                    self.connection.unmap_window(bar.window())?;
+                } else {
+                    self.connection.map_window(bar.window())?;
+                }
             }
-        } else {
-            for bar in &self.bars {
-                self.connection.map_window(bar.window())?;
-            }
+
+            self.apply_layout()?;
         }
-
-        self.apply_layout()?;
         Ok(())
     }
 
@@ -1606,25 +1604,25 @@ impl WindowManager {
             return Ok(());
         }
 
-        let border_width = if self.fullscreen_enabled { 0 } else { self.config.border_width };
-
-        let gaps = if self.gaps_enabled && !self.fullscreen_enabled {
-            GapConfig {
-                inner_horizontal: self.config.gap_inner_horizontal,
-                inner_vertical: self.config.gap_inner_vertical,
-                outer_horizontal: self.config.gap_outer_horizontal,
-                outer_vertical: self.config.gap_outer_vertical,
-            }
-        } else {
-            GapConfig {
-                inner_horizontal: 0,
-                inner_vertical: 0,
-                outer_horizontal: 0,
-                outer_vertical: 0,
-            }
-        };
-
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
+            let border_width = if monitor.fullscreen_enabled { 0 } else { self.config.border_width };
+
+            let gaps = if self.gaps_enabled && !monitor.fullscreen_enabled {
+                GapConfig {
+                    inner_horizontal: self.config.gap_inner_horizontal,
+                    inner_vertical: self.config.gap_inner_vertical,
+                    outer_horizontal: self.config.gap_outer_horizontal,
+                    outer_vertical: self.config.gap_outer_vertical,
+                }
+            } else {
+                GapConfig {
+                    inner_horizontal: 0,
+                    inner_vertical: 0,
+                    outer_horizontal: 0,
+                    outer_vertical: 0,
+                }
+            };
+
             let visible: Vec<Window> = self
                 .windows
                 .iter()
@@ -1645,7 +1643,7 @@ impl WindowManager {
                 .copied()
                 .collect();
 
-            let bar_height = if self.fullscreen_enabled {
+            let bar_height = if monitor.fullscreen_enabled {
                 0
             } else {
                 self.bars
