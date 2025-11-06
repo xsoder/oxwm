@@ -2,7 +2,7 @@
 // OXWM Configuration File
 // Edit this file and reload with Mod+Shift+R (no compilation needed!)
 
-#DEFINE $terminal = "alacritty"
+#DEFINE $terminal = "st"
 #DEFINE $color_blue = 0x6dade3
 #DEFINE $color_grey = 0xbbbbbb
 #DEFINE $color_green = 0x9ece6a

@@ -59,7 +59,6 @@ pub struct WindowManager {
     window_monitor: std::collections::HashMap<Window, usize>,
     window_geometries: std::collections::HashMap<Window, (i16, i16, u16, u16)>,
     gaps_enabled: bool,
-    fullscreen_window: Option<Window>,
     floating_windows: HashSet<Window>,
     bars: Vec<Bar>,
     monitors: Vec<Monitor>,
@@ -168,7 +167,6 @@ impl WindowManager {
             window_monitor: std::collections::HashMap::new(),
             window_geometries: std::collections::HashMap::new(),
             gaps_enabled,
-            fullscreen_window: None,
             floating_windows: HashSet::new(),
             bars,
             monitors,
@@ -388,6 +386,17 @@ impl WindowManager {
         {
             if self.floating_windows.contains(&focused) {
                 self.floating_windows.remove(&focused);
+
+                let selected_tags = self
+                    .monitors
+                    .get(self.selected_monitor)
+                    .map(|m| m.selected_tags)
+                    .unwrap_or(tag_mask(0));
+
+                self.window_tags.insert(focused, selected_tags);
+                self.window_monitor.insert(focused, self.selected_monitor);
+                let _ = self.save_client_tag(focused, selected_tags);
+
                 self.apply_layout()?;
             } else {
                 let float_width = (self.screen.width_in_pixels / 2) as u32;
@@ -427,10 +436,6 @@ impl WindowManager {
             Some(win) => win,
             None => return Ok(()),
         };
-
-        if self.fullscreen_window == Some(focused) {
-            return Ok(());
-        }
 
         if !self.floating_windows.contains(&focused) {
             let float_width = (self.screen.width_in_pixels / 2) as u32;
@@ -690,7 +695,7 @@ impl WindowManager {
             None => return Ok(()),
         };
 
-        if self.fullscreen_window == Some(focused) || self.floating_windows.contains(&focused) {
+        if self.floating_windows.contains(&focused) {
             return Ok(());
         }
 
@@ -750,43 +755,18 @@ impl WindowManager {
     }
 
     fn toggle_fullscreen(&mut self) -> WmResult<()> {
-        if let Some(focused) = self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|m| m.focused_window)
-        {
-            if self.fullscreen_window == Some(focused) {
-                self.fullscreen_window = None;
+        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+            monitor.fullscreen_enabled = !monitor.fullscreen_enabled;
 
-                for bar in &self.bars {
+            if let Some(bar) = self.bars.get(self.selected_monitor) {
+                if monitor.fullscreen_enabled {
+                    self.connection.unmap_window(bar.window())?;
+                } else {
                     self.connection.map_window(bar.window())?;
                 }
-
-                self.apply_layout()?;
-            } else {
-                self.fullscreen_window = Some(focused);
-
-                if let Some(bar) = self.bars.get(self.selected_monitor) {
-                    self.connection.unmap_window(bar.window())?;
-                }
-
-                let monitor = &self.monitors[self.selected_monitor];
-                let screen_width = monitor.width;
-                let screen_height = monitor.height;
-
-                self.connection.configure_window(
-                    focused,
-                    &ConfigureWindowAux::new()
-                        .x(monitor.x)
-                        .y(monitor.y)
-                        .width(screen_width)
-                        .height(screen_height)
-                        .border_width(0)
-                        .stack_mode(StackMode::ABOVE),
-                )?;
-
-                self.connection.flush()?;
             }
+
+            self.apply_layout()?;
         }
         Ok(())
     }
@@ -822,7 +802,7 @@ impl WindowManager {
                         indicator.push('+');
                     }
 
-                    indicator.push_str(&self.format_keycode(key_press.key));
+                    indicator.push_str(&self.format_keysym(key_press.keysym));
                 }
 
                 indicator.push('-');
@@ -841,10 +821,58 @@ impl WindowManager {
         }
     }
 
-    fn format_keycode(&self, keycode: Keycode) -> String {
-        crate::config::KeyData::from_keycode(keycode)
-            .unwrap_or("?")
-            .to_string()
+    fn format_keysym(&self, keysym: keyboard::keysyms::Keysym) -> String {
+        use keyboard::keysyms::*;
+
+        match keysym {
+            XK_RETURN => "Return",
+            XK_ESCAPE => "Esc",
+            XK_SPACE => "Space",
+            XK_TAB => "Tab",
+            XK_BACKSPACE => "Backspace",
+            XK_DELETE => "Del",
+            XK_F1 => "F1",
+            XK_F2 => "F2",
+            XK_F3 => "F3",
+            XK_F4 => "F4",
+            XK_F5 => "F5",
+            XK_F6 => "F6",
+            XK_F7 => "F7",
+            XK_F8 => "F8",
+            XK_F9 => "F9",
+            XK_F10 => "F10",
+            XK_F11 => "F11",
+            XK_F12 => "F12",
+            XK_A..=XK_Z | XK_0..=XK_9 => {
+                return char::from_u32(keysym).unwrap_or('?').to_string();
+            }
+            XK_LEFT => "Left",
+            XK_RIGHT => "Right",
+            XK_UP => "Up",
+            XK_DOWN => "Down",
+            XK_HOME => "Home",
+            XK_END => "End",
+            XK_PAGE_UP => "PgUp",
+            XK_PAGE_DOWN => "PgDn",
+            XK_INSERT => "Ins",
+            XK_MINUS => "-",
+            XK_EQUAL => "=",
+            XK_LEFT_BRACKET => "[",
+            XK_RIGHT_BRACKET => "]",
+            XK_SEMICOLON => ";",
+            XK_APOSTROPHE => "'",
+            XK_GRAVE => "`",
+            XK_BACKSLASH => "\\",
+            XK_COMMA => ",",
+            XK_PERIOD => ".",
+            XK_SLASH => "/",
+            XF86_AUDIO_RAISE_VOLUME => "Vol+",
+            XF86_AUDIO_LOWER_VOLUME => "Vol-",
+            XF86_AUDIO_MUTE => "Mute",
+            XF86_MON_BRIGHTNESS_UP => "Bri+",
+            XF86_MON_BRIGHTNESS_DOWN => "Bri-",
+            _ => "?",
+        }.to_string()
     }
 
     fn update_bar(&mut self) -> WmResult<()> {
@@ -1070,13 +1098,6 @@ impl WindowManager {
             return Ok(());
         }
 
-        if self.fullscreen_window.is_some() {
-            self.fullscreen_window = None;
-            for bar in &self.bars {
-                self.connection.map_window(bar.window())?;
-            }
-        }
-
         if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
             monitor.selected_tags = tag_mask(tag_index);
         }
@@ -1175,6 +1196,32 @@ impl WindowManager {
     }
 
     fn grab_next_keys(&self, candidates: &[usize], keys_pressed: usize) -> WmResult<()> {
+        use std::collections::HashMap;
+        use x11rb::protocol::xproto::Keycode;
+
+        let setup = self.connection.setup();
+        let min_keycode = setup.min_keycode;
+        let max_keycode = setup.max_keycode;
+
+        let keyboard_mapping = self.connection.get_keyboard_mapping(
+            min_keycode,
+            max_keycode - min_keycode + 1,
+        )?.reply()?;
+
+        let mut keysym_to_keycode: HashMap<keyboard::keysyms::Keysym, Vec<Keycode>> = HashMap::new();
+        let keysyms_per_keycode = keyboard_mapping.keysyms_per_keycode;
+
+        for keycode in min_keycode..=max_keycode {
+            let index = (keycode - min_keycode) as usize * keysyms_per_keycode as usize;
+            for i in 0..keysyms_per_keycode as usize {
+                if let Some(&keysym) = keyboard_mapping.keysyms.get(index + i) {
+                    if keysym != 0 {
+                        keysym_to_keycode.entry(keysym).or_insert_with(Vec::new).push(keycode);
+                    }
+                }
+            }
+        }
+
         let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
 
         for &candidate_index in candidates {
@@ -1182,20 +1229,39 @@ impl WindowManager {
             if keys_pressed < binding.keys.len() {
                 let next_key = &binding.keys[keys_pressed];
                 let modifier_mask = keyboard::handlers::modifiers_to_mask(&next_key.modifiers);
-                let key_tuple = (modifier_mask, next_key.key);
 
-                if grabbed_keys.insert(key_tuple) {
-                    self.connection.grab_key(
-                        false,
-                        self.root,
-                        modifier_mask.into(),
-                        next_key.key,
-                        GrabMode::ASYNC,
-                        GrabMode::ASYNC,
-                    )?;
+                if let Some(keycodes) = keysym_to_keycode.get(&next_key.keysym) {
+                    if let Some(&keycode) = keycodes.first() {
+                        let key_tuple = (modifier_mask, keycode);
+
+                        if grabbed_keys.insert(key_tuple) {
+                            self.connection.grab_key(
+                                false,
+                                self.root,
+                                modifier_mask.into(),
+                                keycode,
+                                GrabMode::ASYNC,
+                                GrabMode::ASYNC,
+                            )?;
+                        }
+                    }
                 }
             }
         }
+
+        if let Some(keycodes) = keysym_to_keycode.get(&keyboard::keysyms::XK_ESCAPE) {
+            if let Some(&keycode) = keycodes.first() {
+                self.connection.grab_key(
+                    false,
+                    self.root,
+                    ModMask::from(0u16),
+                    keycode,
+                    GrabMode::ASYNC,
+                    GrabMode::ASYNC,
+                )?;
+            }
+        }
+
         self.connection.flush()?;
         Ok(())
     }
@@ -1459,7 +1525,8 @@ impl WindowManager {
                     event,
                     &self.config.keybindings,
                     &self.keychord_state,
-                );
+                    &self.connection,
+                )?;
 
                 match result {
                     keyboard::handlers::KeychordResult::Completed(action, arg) => {
@@ -1533,33 +1600,29 @@ impl WindowManager {
     }
 
     fn apply_layout(&self) -> WmResult<()> {
-        if self.fullscreen_window.is_some() {
-            return Ok(());
-        }
-
         if self.layout.name() == LayoutType::Normie.as_str() {
             return Ok(());
         }
 
-        let border_width = self.config.border_width;
-
-        let gaps = if self.gaps_enabled {
-            GapConfig {
-                inner_horizontal: self.config.gap_inner_horizontal,
-                inner_vertical: self.config.gap_inner_vertical,
-                outer_horizontal: self.config.gap_outer_horizontal,
-                outer_vertical: self.config.gap_outer_vertical,
-            }
-        } else {
-            GapConfig {
-                inner_horizontal: 0,
-                inner_vertical: 0,
-                outer_horizontal: 0,
-                outer_vertical: 0,
-            }
-        };
-
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
+            let border_width = if monitor.fullscreen_enabled { 0 } else { self.config.border_width };
+
+            let gaps = if self.gaps_enabled && !monitor.fullscreen_enabled {
+                GapConfig {
+                    inner_horizontal: self.config.gap_inner_horizontal,
+                    inner_vertical: self.config.gap_inner_vertical,
+                    outer_horizontal: self.config.gap_outer_horizontal,
+                    outer_vertical: self.config.gap_outer_vertical,
+                }
+            } else {
+                GapConfig {
+                    inner_horizontal: 0,
+                    inner_vertical: 0,
+                    outer_horizontal: 0,
+                    outer_vertical: 0,
+                }
+            };
+
             let visible: Vec<Window> = self
                 .windows
                 .iter()
@@ -1580,11 +1643,14 @@ impl WindowManager {
                 .copied()
                 .collect();
 
-            let bar_height = self
-                .bars
-                .get(monitor_index)
-                .map(|b| b.height() as u32)
-                .unwrap_or(0);
+            let bar_height = if monitor.fullscreen_enabled {
+                0
+            } else {
+                self.bars
+                    .get(monitor_index)
+                    .map(|b| b.height() as u32)
+                    .unwrap_or(0)
+            };
             let usable_height = monitor.height.saturating_sub(bar_height);
 
             let geometries = self
@@ -1626,13 +1692,6 @@ impl WindowManager {
         self.window_monitor.remove(&window);
         self.window_geometries.remove(&window);
         self.floating_windows.remove(&window);
-
-        if self.fullscreen_window == Some(window) {
-            self.fullscreen_window = None;
-            for bar in &self.bars {
-                self.connection.map_window(bar.window())?;
-            }
-        }
 
         if self.windows.len() < initial_count {
             let focused = self

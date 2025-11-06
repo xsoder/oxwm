@@ -19,17 +19,17 @@ test-clean:
 	pkill Xephyr || true
 	rm -rf ~/.config/oxwm
 	Xephyr -screen 1280x800 :1 & sleep 1
-	DISPLAY=:1 cargo run --release -- --config test-config.ron
+	DISPLAY=:1 cargo run --release -- --config resources/test-config.ron
 
 test:
 	pkill Xephyr || true
 	Xephyr -screen 1280x800 :1 & sleep 1
-	DISPLAY=:1 cargo run --release -- --config test-config.ron
+	DISPLAY=:1 cargo run --release -- --config resources/test-config.ron
 
 test-multimon:
 	pkill Xephyr || true
 	Xephyr +xinerama -screen 640x480 -screen 640x480 :1 & sleep 1
-	DISPLAY=:1 cargo run --release -- --config test-config.ron
+	DISPLAY=:1 cargo run --release -- --config resources/test-config.ron
 
 init:
     cargo run --release -- --init

@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-use std::io;
-use std::io::ErrorKind;
+use std::collections::HashMap;
+use std::io::{ErrorKind, Result};
 use std::process::Command;
 
 use serde::Deserialize;
@@ -8,7 +7,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use crate::errors::X11Error;
-use crate::keyboard::keycodes;
+use crate::keyboard::keysyms::{self, Keysym};
 
 #[derive(Debug, Copy, Clone, Deserialize)]
 pub enum KeyAction {
@@ -48,7 +47,7 @@ impl Arg {
 #[derive(Clone, Debug)]
 pub struct KeyPress {
     pub(crate) modifiers: Vec<KeyButMask>,
-    pub(crate) key: Keycode,
+    pub(crate) keysym: Keysym,
 }
 
 #[derive(Clone)]
@@ -63,9 +62,14 @@ impl KeyBinding {
         Self { keys, func, arg }
     }
 
-    pub fn single_key(modifiers: Vec<KeyButMask>, key: Keycode, func: KeyAction, arg: Arg) -> Self {
+    pub fn single_key(
+        modifiers: Vec<KeyButMask>,
+        keysym: Keysym,
+        func: KeyAction,
+        arg: Arg,
+    ) -> Self {
         Self {
-            keys: vec![KeyPress { modifiers, key }],
+            keys: vec![KeyPress { modifiers, keysym }],
             func,
             arg,
         }
@@ -96,11 +100,48 @@ pub fn modifiers_to_mask(modifiers: &[KeyButMask]) -> u16 {
         .fold(0u16, |acc, &modifier| acc | u16::from(modifier))
 }
 
+fn build_keysym_maps(
+    connection: &impl Connection,
+) -> std::result::Result<(HashMap<Keysym, Vec<Keycode>>, HashMap<Keycode, Keysym>), X11Error> {
+    let setup = connection.setup();
+    let min_keycode = setup.min_keycode;
+    let max_keycode = setup.max_keycode;
+
+    let keyboard_mapping = connection
+        .get_keyboard_mapping(min_keycode, max_keycode - min_keycode + 1)?
+        .reply()?;
+
+    let mut keysym_to_keycode: HashMap<Keysym, Vec<Keycode>> = HashMap::new();
+    let mut keycode_to_keysym: HashMap<Keycode, Keysym> = HashMap::new();
+    let keysyms_per_keycode = keyboard_mapping.keysyms_per_keycode;
+
+    for keycode in min_keycode..=max_keycode {
+        let index = (keycode - min_keycode) as usize * keysyms_per_keycode as usize;
+
+        for i in 0..keysyms_per_keycode as usize {
+            if let Some(&keysym) = keyboard_mapping.keysyms.get(index + i) {
+                if keysym != 0 {
+                    keysym_to_keycode
+                        .entry(keysym)
+                        .or_insert_with(Vec::new)
+                        .push(keycode);
+                    keycode_to_keysym.entry(keycode).or_insert(keysym);
+                }
+            }
+        }
+    }
+
+    Ok((keysym_to_keycode, keycode_to_keysym))
+}
+
 pub fn setup_keybinds(
     connection: &impl Connection,
     root: Window,
     keybindings: &[KeyBinding],
-) -> Result<(), X11Error> {
+) -> std::result::Result<(), X11Error> {
+    use std::collections::HashSet;
+
+    let (keysym_to_keycode, _) = build_keysym_maps(connection)?;
     let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
 
     for keybinding in keybindings {
@@ -110,28 +151,24 @@ pub fn setup_keybinds(
 
         let first_key = &keybinding.keys[0];
         let modifier_mask = modifiers_to_mask(&first_key.modifiers);
-        let key_tuple = (modifier_mask, first_key.key);
 
-        if grabbed_keys.insert(key_tuple) {
-            connection.grab_key(
-                false,
-                root,
-                modifier_mask.into(),
-                first_key.key,
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-            )?;
+        if let Some(keycodes) = keysym_to_keycode.get(&first_key.keysym) {
+            if let Some(&keycode) = keycodes.first() {
+                let key_tuple = (modifier_mask, keycode);
+
+                if grabbed_keys.insert(key_tuple) {
+                    connection.grab_key(
+                        false,
+                        root,
+                        modifier_mask.into(),
+                        keycode,
+                        GrabMode::ASYNC,
+                        GrabMode::ASYNC,
+                    )?;
+                }
+            }
         }
     }
-
-    connection.grab_key(
-        false,
-        root,
-        ModMask::from(0u16),
-        keycodes::ESCAPE,
-        GrabMode::ASYNC,
-        GrabMode::ASYNC,
-    )?;
 
     Ok(())
 }
@@ -140,24 +177,32 @@ pub fn handle_key_press(
     event: KeyPressEvent,
     keybindings: &[KeyBinding],
     keychord_state: &KeychordState,
-) -> KeychordResult {
-    if event.detail == keycodes::ESCAPE {
-        return match keychord_state {
+    connection: &impl Connection,
+) -> std::result::Result<KeychordResult, X11Error> {
+    let (_, keycode_to_keysym) = build_keysym_maps(connection)?;
+    let event_keysym = keycode_to_keysym.get(&event.detail).copied().unwrap_or(0);
+
+    if event_keysym == keysyms::XK_ESCAPE {
+        return Ok(match keychord_state {
             KeychordState::InProgress { .. } => KeychordResult::Cancelled,
             KeychordState::Idle => KeychordResult::None,
-        };
+        });
     }
 
-    match keychord_state {
-        KeychordState::Idle => handle_first_key(event, keybindings),
+    Ok(match keychord_state {
+        KeychordState::Idle => handle_first_key(event, event_keysym, keybindings),
         KeychordState::InProgress {
             candidates,
             keys_pressed,
-        } => handle_next_key(event, keybindings, candidates, *keys_pressed),
-    }
+        } => handle_next_key(event, event_keysym, keybindings, candidates, *keys_pressed),
+    })
 }
 
-fn handle_first_key(event: KeyPressEvent, keybindings: &[KeyBinding]) -> KeychordResult {
+fn handle_first_key(
+    event: KeyPressEvent,
+    event_keysym: Keysym,
+    keybindings: &[KeyBinding],
+) -> KeychordResult {
     let mut candidates = Vec::new();
 
     for (keybinding_index, keybinding) in keybindings.iter().enumerate() {
@@ -168,7 +213,7 @@ fn handle_first_key(event: KeyPressEvent, keybindings: &[KeyBinding]) -> Keychor
         let first_key = &keybinding.keys[0];
         let modifier_mask = modifiers_to_mask(&first_key.modifiers);
 
-        if event.detail == first_key.key && event.state == modifier_mask.into() {
+        if event_keysym == first_key.keysym && event.state == modifier_mask.into() {
             if keybinding.keys.len() == 1 {
                 return KeychordResult::Completed(keybinding.func, keybinding.arg.clone());
             } else {
@@ -186,6 +231,7 @@ fn handle_first_key(event: KeyPressEvent, keybindings: &[KeyBinding]) -> Keychor
 
 fn handle_next_key(
     event: KeyPressEvent,
+    event_keysym: Keysym,
     keybindings: &[KeyBinding],
     candidates: &[usize],
     keys_pressed: usize,
@@ -209,7 +255,7 @@ fn handle_next_key(
             (event_state & required_mask) == required_mask
         };
 
-        if event.detail == next_key.key && modifiers_match {
+        if event_keysym == next_key.keysym && modifiers_match {
             if keys_pressed + 1 == keybinding.keys.len() {
                 return KeychordResult::Completed(keybinding.func, keybinding.arg.clone());
             } else {
@@ -225,7 +271,7 @@ fn handle_next_key(
     }
 }
 
-pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> io::Result<()> {
+pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> Result<()> {
     if let KeyAction::Spawn = action {
         match arg {
             Arg::Str(command) => match Command::new(command.as_str()).spawn() {
