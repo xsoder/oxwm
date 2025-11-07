@@ -268,6 +268,7 @@ impl WindowManager {
 
                 if has_wm_class {
                     let tag = self.get_saved_tag(window, net_client_info)?;
+                    self.connection.map_window(window)?;
                     self.windows.push(window);
                     self.window_tags.insert(window, tag);
                     self.window_monitor.insert(window, self.selected_monitor);
@@ -784,7 +785,10 @@ impl WindowManager {
     fn get_keychord_indicator(&self) -> Option<String> {
         match &self.keychord_state {
             keyboard::handlers::KeychordState::Idle => None,
-            keyboard::handlers::KeychordState::InProgress { candidates, keys_pressed } => {
+            keyboard::handlers::KeychordState::InProgress {
+                candidates,
+                keys_pressed,
+            } => {
                 if candidates.is_empty() {
                     return None;
                 }
@@ -872,7 +876,8 @@ impl WindowManager {
             XF86_MON_BRIGHTNESS_UP => "Bri+",
             XF86_MON_BRIGHTNESS_DOWN => "Bri-",
             _ => "?",
-        }.to_string()
+        }
+        .to_string()
     }
 
     fn update_bar(&mut self) -> WmResult<()> {
@@ -1081,12 +1086,18 @@ impl WindowManager {
             .position(|mon| mon.contains_point(x, y))
     }
 
+    // Dwm's g-loaded approach to handling the spam alternating crash.
     fn update_window_visibility(&self) -> WmResult<()> {
         for &window in &self.windows {
-            if self.is_window_visible(window) {
-                self.connection.map_window(window)?;
-            } else {
-                self.connection.unmap_window(window)?;
+            if !self.is_window_visible(window) {
+                if let Ok(geom) = self.connection.get_geometry(window)?.reply() {
+                    self.connection.configure_window(
+                        window,
+                        &ConfigureWindowAux::new()
+                            .x(-(geom.width as i32 * 2))
+                            .y(geom.y as i32),
+                    )?;
+                }
             }
         }
         self.connection.flush()?;
@@ -1103,7 +1114,6 @@ impl WindowManager {
         }
 
         self.save_selected_tags()?;
-
         self.update_window_visibility()?;
         self.apply_layout()?;
         self.update_bar()?;
@@ -1203,12 +1213,13 @@ impl WindowManager {
         let min_keycode = setup.min_keycode;
         let max_keycode = setup.max_keycode;
 
-        let keyboard_mapping = self.connection.get_keyboard_mapping(
-            min_keycode,
-            max_keycode - min_keycode + 1,
-        )?.reply()?;
+        let keyboard_mapping = self
+            .connection
+            .get_keyboard_mapping(min_keycode, max_keycode - min_keycode + 1)?
+            .reply()?;
 
-        let mut keysym_to_keycode: HashMap<keyboard::keysyms::Keysym, Vec<Keycode>> = HashMap::new();
+        let mut keysym_to_keycode: HashMap<keyboard::keysyms::Keysym, Vec<Keycode>> =
+            HashMap::new();
         let keysyms_per_keycode = keyboard_mapping.keysyms_per_keycode;
 
         for keycode in min_keycode..=max_keycode {
@@ -1216,7 +1227,10 @@ impl WindowManager {
             for i in 0..keysyms_per_keycode as usize {
                 if let Some(&keysym) = keyboard_mapping.keysyms.get(index + i) {
                     if keysym != 0 {
-                        keysym_to_keycode.entry(keysym).or_insert_with(Vec::new).push(keycode);
+                        keysym_to_keycode
+                            .entry(keysym)
+                            .or_insert_with(Vec::new)
+                            .push(keycode);
                     }
                 }
             }
@@ -1267,7 +1281,8 @@ impl WindowManager {
     }
 
     fn ungrab_chord_keys(&self) -> WmResult<()> {
-        self.connection.ungrab_key(x11rb::protocol::xproto::Grab::ANY, self.root, ModMask::ANY)?;
+        self.connection
+            .ungrab_key(x11rb::protocol::xproto::Grab::ANY, self.root, ModMask::ANY)?;
         keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
         self.connection.flush()?;
         Ok(())
@@ -1543,7 +1558,9 @@ impl WindowManager {
                     keyboard::handlers::KeychordResult::InProgress(candidates) => {
                         let keys_pressed = match &self.keychord_state {
                             keyboard::handlers::KeychordState::Idle => 1,
-                            keyboard::handlers::KeychordState::InProgress { keys_pressed, .. } => keys_pressed + 1,
+                            keyboard::handlers::KeychordState::InProgress {
+                                keys_pressed, ..
+                            } => keys_pressed + 1,
                         };
 
                         self.keychord_state = keyboard::handlers::KeychordState::InProgress {
@@ -1554,7 +1571,8 @@ impl WindowManager {
                         self.grab_next_keys(&candidates, keys_pressed)?;
                         self.update_bar()?;
                     }
-                    keyboard::handlers::KeychordResult::Cancelled | keyboard::handlers::KeychordResult::None => {
+                    keyboard::handlers::KeychordResult::Cancelled
+                    | keyboard::handlers::KeychordResult::None => {
                         self.keychord_state = keyboard::handlers::KeychordState::Idle;
                         self.ungrab_chord_keys()?;
                         self.update_bar()?;
@@ -1605,7 +1623,11 @@ impl WindowManager {
         }
 
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
-            let border_width = if monitor.fullscreen_enabled { 0 } else { self.config.border_width };
+            let border_width = if monitor.fullscreen_enabled {
+                0
+            } else {
+                self.config.border_width
+            };
 
             let gaps = if self.gaps_enabled && !monitor.fullscreen_enabled {
                 GapConfig {
