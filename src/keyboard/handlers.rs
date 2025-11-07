@@ -14,6 +14,8 @@ pub enum KeyAction {
     Spawn,
     KillClient,
     FocusStack,
+    FocusDirection,
+    SwapDirection,
     Quit,
     Restart,
     Recompile,

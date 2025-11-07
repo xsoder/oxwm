@@ -55,17 +55,16 @@
         (modifiers: [Mod1], key: A, action: ToggleGaps),
         (modifiers: [Mod1, Shift], key: Q, action: Quit),
         (modifiers: [Mod1, Shift], key: R, action: Restart),
-        (modifiers: [Mod1], key: J, action: FocusStack, arg: -1),
-        (modifiers: [Mod1], key: K, action: FocusStack, arg: 1),
-        // Exchange client (vim-style with Mod+Shift)
-        (modifiers: [Mod1, Control], key: K, action: SmartMoveWin, arg: 0), // UP
-        (modifiers: [Mod1, Control], key: J, action: SmartMoveWin, arg: 1), // DOWN
-        (modifiers: [Mod1, Control], key: H, action: SmartMoveWin, arg: 2), // LEFT
-        (modifiers: [Mod1, Control], key: L, action: SmartMoveWin, arg: 3), // RIGHT
-        (modifiers: [Mod1, Shift], key: K, action: ExchangeClient, arg: 0), // UP
-        (modifiers: [Mod1, Shift], key: J, action: ExchangeClient, arg: 1), // DOWN
-        (modifiers: [Mod1, Shift], key: H, action: ExchangeClient, arg: 2), // LEFT
-        (modifiers: [Mod1, Shift], key: L, action: ExchangeClient, arg: 3), // RIGHT
+        // (modifiers: [Mod1], key: J, action: FocusStack, arg: -1),
+        // (modifiers: [Mod1], key: K, action: FocusStack, arg: 1),
+        (modifiers: [Mod1], key: H, action: FocusDirection, arg: 2),
+        (modifiers: [Mod1], key: J, action: FocusDirection, arg: 1),
+        (modifiers: [Mod1], key: K, action: FocusDirection, arg: 0),
+        (modifiers: [Mod1], key: L, action: FocusDirection, arg: 3),
+        (modifiers: [Mod1, Shift], key: H, action: SwapDirection, arg: 2),
+        (modifiers: [Mod1, Shift], key: J, action: SwapDirection, arg: 1),
+        (modifiers: [Mod1, Shift], key: K, action: SwapDirection, arg: 0),
+        (modifiers: [Mod1, Shift], key: L, action: SwapDirection, arg: 3),
         (modifiers: [Mod1], key: Key1, action: ViewTag, arg: 0),
         (modifiers: [Mod1], key: Key2, action: ViewTag, arg: 1),
         (modifiers: [Mod1], key: Key3, action: ViewTag, arg: 2),

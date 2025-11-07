@@ -66,8 +66,10 @@
         (modifiers: [$modkey], key: A, action: ToggleGaps),
         (modifiers: [$modkey, Shift], key: Q, action: Quit),
         (modifiers: [$modkey, Shift], key: R, action: Restart),
-        (modifiers: [$modkey], key: J, action: FocusStack, arg: -1),
-        (modifiers: [$modkey], key: K, action: FocusStack, arg: 1),
+        (modifiers: [$modkey], key: H, action: FocusDirection, arg: 2),
+        (modifiers: [$modkey], key: J, action: FocusDirection, arg: 1),
+        (modifiers: [$modkey], key: K, action: FocusDirection, arg: 0),
+        (modifiers: [$modkey], key: L, action: FocusDirection, arg: 3),
         (modifiers: [$modkey], key: Comma, action: FocusMonitor, arg: -1),
         (modifiers: [$modkey], key: Period, action: FocusMonitor, arg: 1),
         (modifiers: [$modkey], key: Key1, action: ViewTag, arg: 0),
@@ -89,17 +91,10 @@
         (modifiers: [$modkey, Shift], key: Key8, action: MoveToTag, arg: 7),
         (modifiers: [$modkey, Shift], key: Key9, action: MoveToTag, arg: 8),
 
-        // Moving Windows
-        (modifiers: [$modkey, Control], key: K, action: SmartMoveWin, arg: 0), // UP
-        (modifiers: [$modkey, Control], key: J, action: SmartMoveWin, arg: 1), // DOWN
-        (modifiers: [$modkey, Control], key: H, action: SmartMoveWin, arg: 2), // LEFT
-        (modifiers: [$modkey, Control], key: L, action: SmartMoveWin, arg: 3), // RIGHT
-
-        // Exchanging Clients
-        (modifiers: [$modkey, Shift], key: K, action: ExchangeClient, arg: 0), // UP
-        (modifiers: [$modkey, Shift], key: J, action: ExchangeClient, arg: 1), // DOWN
-        (modifiers: [$modkey, Shift], key: H, action: ExchangeClient, arg: 2), // LEFT
-        (modifiers: [$modkey, Shift], key: L, action: ExchangeClient, arg: 3), // RIGHT
+        (modifiers: [$modkey, Shift], key: H, action: SwapDirection, arg: 2),
+        (modifiers: [$modkey, Shift], key: J, action: SwapDirection, arg: 1),
+        (modifiers: [$modkey, Shift], key: K, action: SwapDirection, arg: 0),
+        (modifiers: [$modkey, Shift], key: L, action: SwapDirection, arg: 3),
 
         // Example keychord bindings (uncomment to use):
         // KEYCHORDS
