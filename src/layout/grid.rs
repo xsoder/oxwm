@@ -24,7 +24,6 @@ impl Layout for GridLayout {
             return Vec::new();
         }
 
-        // Single window takes full screen
         if window_count == 1 {
             let x = gaps.outer_horizontal as i32;
             let y = gaps.outer_vertical as i32;
@@ -39,16 +38,13 @@ impl Layout for GridLayout {
             }];
         }
 
-        // Calculate grid dimensions using "favor rows" approach
-        // cols = ceil(sqrt(n))
-        // rows = ceil(n / cols)
         let cols = (window_count as f64).sqrt().ceil() as usize;
         let rows = (window_count as f64 / cols as f64).ceil() as usize;
 
         let mut geometries = Vec::new();
 
-        // Calculate dimensions with gaps
-        let total_horizontal_gaps = gaps.outer_horizontal * 2 + gaps.inner_horizontal * (cols as u32 - 1);
+        let total_horizontal_gaps =
+            gaps.outer_horizontal * 2 + gaps.inner_horizontal * (cols as u32 - 1);
         let total_vertical_gaps = gaps.outer_vertical * 2 + gaps.inner_vertical * (rows as u32 - 1);
 
         let cell_width = screen_width.saturating_sub(total_horizontal_gaps) / cols as u32;
@@ -58,21 +54,22 @@ impl Layout for GridLayout {
             let row = index / cols;
             let col = index % cols;
 
-            // Check if this is the last row
             let is_last_row = row == rows - 1;
             let windows_in_last_row = window_count - (rows - 1) * cols;
 
             let (x, y, width, height) = if is_last_row && windows_in_last_row < cols {
-                // Last row with fewer windows - make them wider
                 let last_row_col = index % cols;
-                let last_row_cell_width = screen_width.saturating_sub(total_horizontal_gaps.saturating_sub(gaps.inner_horizontal * (cols as u32 - windows_in_last_row as u32))) / windows_in_last_row as u32;
+                let last_row_cell_width =
+                    screen_width.saturating_sub(total_horizontal_gaps.saturating_sub(
+                        gaps.inner_horizontal * (cols as u32 - windows_in_last_row as u32),
+                    )) / windows_in_last_row as u32;
 
-                let x = gaps.outer_horizontal + last_row_col as u32 * (last_row_cell_width + gaps.inner_horizontal);
+                let x = gaps.outer_horizontal
+                    + last_row_col as u32 * (last_row_cell_width + gaps.inner_horizontal);
                 let y = gaps.outer_vertical + row as u32 * (cell_height + gaps.inner_vertical);
 
                 (x as i32, y as i32, last_row_cell_width, cell_height)
             } else {
-                // Normal grid cell
                 let x = gaps.outer_horizontal + col as u32 * (cell_width + gaps.inner_horizontal);
                 let y = gaps.outer_vertical + row as u32 * (cell_height + gaps.inner_vertical);
 
