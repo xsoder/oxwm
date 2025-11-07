@@ -977,6 +977,16 @@ impl WindowManager {
                     self.cycle_focus(*direction)?;
                 }
             }
+            KeyAction::FocusDirection => {
+                if let Arg::Int(direction) = arg {
+                    self.focus_direction(*direction)?;
+                }
+            }
+            KeyAction::SwapDirection => {
+                if let Arg::Int(direction) = arg {
+                    self.swap_direction(*direction)?;
+                }
+            }
             KeyAction::Quit | KeyAction::Restart => {
                 // Handled in handle_event
             }
@@ -1202,6 +1212,148 @@ impl WindowManager {
         };
 
         self.set_focus(next_window)?;
+        Ok(())
+    }
+
+    pub fn focus_direction(&mut self, direction: i32) -> WmResult<()> {
+        let focused = match self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.focused_window)
+        {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let visible = self.visible_windows();
+        if visible.len() < 2 {
+            return Ok(());
+        }
+
+        let focused_geom = match self.connection.get_geometry(focused)?.reply() {
+            Ok(geom) => geom,
+            Err(_) => return Ok(()),
+        };
+
+        let focused_center_x = focused_geom.x + (focused_geom.width as i16 / 2);
+        let focused_center_y = focused_geom.y + (focused_geom.height as i16 / 2);
+
+        let mut candidates = Vec::new();
+
+        for &window in &visible {
+            if window == focused {
+                continue;
+            }
+
+            let geom = match self.connection.get_geometry(window)?.reply() {
+                Ok(g) => g,
+                Err(_) => continue,
+            };
+
+            let center_x = geom.x + (geom.width as i16 / 2);
+            let center_y = geom.y + (geom.height as i16 / 2);
+
+            let is_valid_direction = match direction {
+                0 => center_y < focused_center_y,
+                1 => center_y > focused_center_y,
+                2 => center_x < focused_center_x,
+                3 => center_x > focused_center_x,
+                _ => false,
+            };
+
+            if is_valid_direction {
+                let dx = (center_x - focused_center_x) as i32;
+                let dy = (center_y - focused_center_y) as i32;
+                let distance = dx * dx + dy * dy;
+                candidates.push((window, distance));
+            }
+        }
+
+        if let Some(&(closest_window, _)) = candidates.iter().min_by_key(|&(_, dist)| dist) {
+            self.set_focus(closest_window)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn swap_direction(&mut self, direction: i32) -> WmResult<()> {
+        let focused = match self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.focused_window)
+        {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let visible = self.visible_windows();
+        if visible.len() < 2 {
+            return Ok(());
+        }
+
+        let focused_geom = match self.connection.get_geometry(focused)?.reply() {
+            Ok(geom) => geom,
+            Err(_) => return Ok(()),
+        };
+
+        let focused_center_x = focused_geom.x + (focused_geom.width as i16 / 2);
+        let focused_center_y = focused_geom.y + (focused_geom.height as i16 / 2);
+
+        let mut candidates = Vec::new();
+
+        for &window in &visible {
+            if window == focused {
+                continue;
+            }
+
+            let geom = match self.connection.get_geometry(window)?.reply() {
+                Ok(g) => g,
+                Err(_) => continue,
+            };
+
+            let center_x = geom.x + (geom.width as i16 / 2);
+            let center_y = geom.y + (geom.height as i16 / 2);
+
+            let is_valid_direction = match direction {
+                0 => center_y < focused_center_y,
+                1 => center_y > focused_center_y,
+                2 => center_x < focused_center_x,
+                3 => center_x > focused_center_x,
+                _ => false,
+            };
+
+            if is_valid_direction {
+                let dx = (center_x - focused_center_x) as i32;
+                let dy = (center_y - focused_center_y) as i32;
+                let distance = dx * dx + dy * dy;
+                candidates.push((window, distance));
+            }
+        }
+
+        if let Some(&(target_window, _)) = candidates.iter().min_by_key(|&(_, dist)| dist) {
+            let focused_pos = self.windows.iter().position(|&w| w == focused);
+            let target_pos = self.windows.iter().position(|&w| w == target_window);
+
+            if let (Some(f_pos), Some(t_pos)) = (focused_pos, target_pos) {
+                self.windows.swap(f_pos, t_pos);
+                self.apply_layout()?;
+                self.set_focus(focused)?;
+
+                if let Ok(geometry) = self.connection.get_geometry(focused)?.reply() {
+                    self.connection.warp_pointer(
+                        x11rb::NONE,
+                        focused,
+                        0,
+                        0,
+                        0,
+                        0,
+                        geometry.width as i16 / 2,
+                        geometry.height as i16 / 2,
+                    )?;
+                }
+            }
+        }
+
         Ok(())
     }
 

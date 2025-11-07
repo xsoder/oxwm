@@ -1,3 +1,4 @@
+pub mod grid;
 pub mod normie;
 pub mod tiling;
 
@@ -15,6 +16,7 @@ pub struct GapConfig {
 pub enum LayoutType {
     Tiling,
     Normie,
+    Grid,
 }
 
 impl LayoutType {
@@ -22,13 +24,15 @@ impl LayoutType {
         match self {
             Self::Tiling => Box::new(tiling::TilingLayout),
             Self::Normie => Box::new(normie::NormieLayout),
+            Self::Grid => Box::new(grid::GridLayout),
         }
     }
 
     pub fn next(&self) -> Self {
         match self {
             Self::Tiling => Self::Normie,
-            Self::Normie => Self::Tiling,
+            Self::Normie => Self::Grid,
+            Self::Grid => Self::Tiling,
         }
     }
 
@@ -36,6 +40,7 @@ impl LayoutType {
         match self {
             Self::Tiling => "tiling",
             Self::Normie => "normie",
+            Self::Grid => "grid",
         }
     }
 
@@ -43,6 +48,7 @@ impl LayoutType {
         match s.to_lowercase().as_str() {
             "tiling" => Ok(Self::Tiling),
             "normie" | "floating" => Ok(Self::Normie),
+            "grid" => Ok(Self::Grid),
             _ => Err(format!("Invalid Layout Type: {}", s)),
         }
     }
