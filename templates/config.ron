@@ -113,5 +113,15 @@
     scheme_normal: (foreground: $color_fg, background: $color_bg, underline: 0x444444),
     scheme_occupied: (foreground: $color_cyan, background: $color_bg, underline: $color_cyan),
     scheme_selected: (foreground: $color_cyan, background: $color_bg, underline: $color_purple),
+
+    // Autostart commands - these are executed when the window manager starts
+    // Commands are run in a shell, so you can use shell syntax (pipes, &&, etc.)
+    // Example: ["picom", "nitrogen --restore", "~/.config/polybar/launch.sh"]
+    autostart: [
+        // Uncomment and add your autostart commands here:
+        // "picom -b",
+        // "nitrogen --restore &",
+        // "dunst &",
+    ],
 )
 

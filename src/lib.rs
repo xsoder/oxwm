@@ -55,6 +55,9 @@ pub struct Config {
     pub scheme_normal: ColorScheme,
     pub scheme_occupied: ColorScheme,
     pub scheme_selected: ColorScheme,
+
+    // Autostart commands
+    pub autostart: Vec<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -298,6 +301,7 @@ impl Default for Config {
                 background: 0x1a1b26,
                 underline: 0xad8ee6,
             },
+            autostart: vec![],
         }
     }
 }

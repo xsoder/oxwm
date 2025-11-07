@@ -1,9 +1,12 @@
+use std::io;
+
 #[derive(Debug)]
 pub enum WmError {
     X11(X11Error),
-    Io(std::io::Error),
+    Io(io::Error),
     Anyhow(anyhow::Error),
     Config(ConfigError),
+    Autostart(String, io::Error),
 }
 
 #[derive(Debug)]
@@ -38,6 +41,7 @@ impl std::fmt::Display for WmError {
             Self::Io(error) => write!(f, "{}", error),
             Self::Anyhow(error) => write!(f, "{}", error),
             Self::Config(error) => write!(f, "{}", error),
+            Self::Autostart(command, error) => write!(f, "Failed to spawn autostart command '{}': {}", command, error),
         }
     }
 }
@@ -101,8 +105,8 @@ impl<T: Into<X11Error>> From<T> for WmError {
     }
 }
 
-impl From<std::io::Error> for WmError {
-    fn from(value: std::io::Error) -> Self {
+impl From<io::Error> for WmError {
+    fn from(value: io::Error) -> Self {
         Self::Io(value)
     }
 }
