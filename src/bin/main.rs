@@ -50,27 +50,46 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
     let config_path = if let Some(path) = custom_path {
         path
     } else {
-        let default_path = get_config_path().join("config.ron");
-        if !default_path.exists() {
-            println!("No config found at {:?}", default_path);
-            println!("Creating default config...");
+        // Try to find config.lua first, then config.ron
+        let config_dir = get_config_path();
+        let lua_path = config_dir.join("config.lua");
+        let ron_path = config_dir.join("config.ron");
+
+        if lua_path.exists() {
+            lua_path
+        } else if ron_path.exists() {
+            ron_path
+        } else {
+            println!("No config found at {:?}", config_dir);
+            println!("Creating default Lua config...");
             init_config()?;
+            config_dir.join("config.lua")
         }
-        default_path
     };
 
     let config_str =
         std::fs::read_to_string(&config_path).with_context(|| "Failed to read config file")?;
 
-    oxwm::config::parse_config(&config_str).with_context(|| "Failed to parse config")
+    // Determine config format based on file extension
+    let is_lua = config_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s == "lua")
+        .unwrap_or(false);
+
+    if is_lua {
+        oxwm::config::parse_lua_config(&config_str).with_context(|| "Failed to parse Lua config")
+    } else {
+        oxwm::config::parse_config(&config_str).with_context(|| "Failed to parse RON config")
+    }
 }
 
 fn init_config() -> Result<()> {
     let config_dir = get_config_path();
     std::fs::create_dir_all(&config_dir)?;
 
-    let config_template = include_str!("../../templates/config.ron");
-    let config_path = config_dir.join("config.ron");
+    let config_template = include_str!("../../templates/config.lua");
+    let config_path = config_dir.join("config.lua");
 
     std::fs::write(&config_path, config_template)?;
 
@@ -92,12 +111,12 @@ fn print_help() {
     println!("USAGE:");
     println!("    oxwm [OPTIONS]\n");
     println!("OPTIONS:");
-    println!("    --init              Create default config in ~/.config/oxwm/config.ron");
-    println!("    --config <PATH>     Use custom config file");
+    println!("    --init              Create default config in ~/.config/oxwm/config.lua");
+    println!("    --config <PATH>     Use custom config file (.lua or .ron)");
     println!("    --version           Print version information");
     println!("    --help              Print this help message\n");
     println!("CONFIG:");
-    println!("    Location: ~/.config/oxwm/config.ron");
+    println!("    Location: ~/.config/oxwm/config.lua (or config.ron for legacy)");
     println!("    Edit the config file and use Mod+Shift+R to reload");
     println!("    No compilation needed - instant hot-reload!\n");
     println!("FIRST RUN:");

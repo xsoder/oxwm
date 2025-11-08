@@ -23,6 +23,7 @@ pub enum X11Error {
 #[derive(Debug)]
 pub enum ConfigError {
     ParseError(ron::error::SpannedError),
+    LuaError(String),
     InvalidModkey(String),
     UnknownKey(String),
     UnknownAction(String),
@@ -68,6 +69,7 @@ impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ParseError(err) => write!(f, "Failed to parse RON config: {}", err),
+            Self::LuaError(msg) => write!(f, "Lua config error: {}", msg),
             Self::InvalidModkey(key) => write!(f, "Invalid modkey: {}", key),
             Self::UnknownKey(key) => write!(f, "Unknown key: {}", key),
             Self::UnknownAction(action) => write!(f, "Unknown action: {}", action),

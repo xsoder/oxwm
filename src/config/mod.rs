@@ -1,3 +1,5 @@
+mod lua;
+
 use crate::bar::{BlockCommand, BlockConfig};
 use crate::errors::ConfigError;
 use crate::keyboard::handlers::{KeyBinding, KeyPress};
@@ -7,6 +9,8 @@ use crate::keyboard::keysyms::Keysym;
 use serde::Deserialize;
 use std::collections::HashMap;
 use x11rb::protocol::xproto::KeyButMask;
+
+pub use lua::parse_lua_config;
 
 #[derive(Debug, Deserialize)]
 pub enum ModKey {
