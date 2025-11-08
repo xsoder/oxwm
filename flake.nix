@@ -12,7 +12,10 @@
     forAllSystems = fn: nixpkgs.lib.genAttrs systems (system: fn nixpkgs.legacyPackages.${system});
   in {
     packages = forAllSystems (pkgs: rec {
-      default = pkgs.callPackage ./default.nix {};
+      default = pkgs.callPackage ./default.nix {
+        # use git rev for non tagged releases
+        gitRev = self.rev or self.dirtyRev or null;
+      };
       oxwm = default;
     });
 
