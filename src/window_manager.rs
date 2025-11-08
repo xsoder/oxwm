@@ -1846,7 +1846,8 @@ impl WindowManager {
                         .x(adjusted_x)
                         .y(adjusted_y)
                         .width(adjusted_width)
-                        .height(adjusted_height),
+                        .height(adjusted_height)
+                        .border_width(border_width),
                 )?;
             }
         }
