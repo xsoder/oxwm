@@ -19,6 +19,11 @@ fn main() -> Result<()> {
             init_config()?;
             return Ok(());
         }
+        Some("--migrate") => {
+            let path = args.get(2).map(PathBuf::from);
+            migrate_config(path)?;
+            return Ok(());
+        }
         Some("--config") => {
             if let Some(path) = args.get(2) {
                 custom_config_path = Some(PathBuf::from(path));
@@ -106,12 +111,50 @@ fn get_config_path() -> PathBuf {
         .join("oxwm")
 }
 
+fn migrate_config(custom_path: Option<PathBuf>) -> Result<()> {
+    let ron_path = if let Some(path) = custom_path {
+        path
+    } else {
+        // Default to ~/.config/oxwm/config.ron
+        get_config_path().join("config.ron")
+    };
+
+    if !ron_path.exists() {
+        eprintln!("Error: RON config file not found at {:?}", ron_path);
+        eprintln!("Please specify a path: oxwm --migrate <path/to/config.ron>");
+        std::process::exit(1);
+    }
+
+    println!("Migrating RON config to Lua...");
+    println!("  Reading: {:?}", ron_path);
+
+    let ron_content = std::fs::read_to_string(&ron_path)
+        .with_context(|| format!("Failed to read RON config from {:?}", ron_path))?;
+
+    let lua_content = oxwm::config::migrate::ron_to_lua(&ron_content)
+        .map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
+
+    // Determine output path (same directory, .lua extension)
+    let lua_path = ron_path.with_extension("lua");
+
+    std::fs::write(&lua_path, lua_content)
+        .with_context(|| format!("Failed to write Lua config to {:?}", lua_path))?;
+
+    println!("✓ Migration complete!");
+    println!("  Output: {:?}", lua_path);
+    println!("\nYour old config.ron is still intact.");
+    println!("Review the new config.lua and then you can delete config.ron if everything looks good.");
+
+    Ok(())
+}
+
 fn print_help() {
     println!("OXWM - A dynamic window manager written in Rust\n");
     println!("USAGE:");
     println!("    oxwm [OPTIONS]\n");
     println!("OPTIONS:");
     println!("    --init              Create default config in ~/.config/oxwm/config.lua");
+    println!("    --migrate [PATH]    Convert RON config to Lua (default: ~/.config/oxwm/config.ron)");
     println!("    --config <PATH>     Use custom config file (.lua or .ron)");
     println!("    --version           Print version information");
     println!("    --help              Print this help message\n");
@@ -119,6 +162,9 @@ fn print_help() {
     println!("    Location: ~/.config/oxwm/config.lua (or config.ron for legacy)");
     println!("    Edit the config file and use Mod+Shift+R to reload");
     println!("    No compilation needed - instant hot-reload!\n");
+    println!("MIGRATION:");
+    println!("    To migrate from RON to Lua: oxwm --migrate");
+    println!("    Or specify a custom path: oxwm --migrate /path/to/config.ron\n");
     println!("FIRST RUN:");
     println!("    Run 'oxwm --init' to create a config file");
     println!("    Or just start oxwm and it will create one automatically\n");

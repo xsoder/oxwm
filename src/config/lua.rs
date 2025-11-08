@@ -10,18 +10,9 @@ use x11rb::protocol::xproto::KeyButMask;
 pub fn parse_lua_config(input: &str) -> Result<crate::Config, ConfigError> {
     let lua = Lua::new();
 
-    // Execute the config file
-    lua.load(input)
-        .exec()
+    let config: Table = lua.load(input)
+        .eval()
         .map_err(|e| ConfigError::LuaError(format!("Failed to execute Lua config: {}", e)))?;
-
-    // Get the config table from global scope
-    let globals = lua.globals();
-    let config: Table = globals
-        .get("config")
-        .map_err(|e| ConfigError::LuaError(format!("Config table not found: {}", e)))?;
-
-    // Parse each config section
     let border_width: u32 = get_table_field(&config, "border_width")?;
     let border_focused: u32 = parse_color(&config, "border_focused")?;
     let border_unfocused: u32 = parse_color(&config, "border_unfocused")?;
@@ -527,7 +518,7 @@ mod tests {
     #[test]
     fn test_parse_minimal_lua_config() {
         let config_str = r#"
-config = {
+return {
     border_width = 2,
     border_focused = 0x6dade3,
     border_unfocused = 0xbbbbbb,

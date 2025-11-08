@@ -1,4 +1,5 @@
 mod lua;
+pub mod migrate;
 
 use crate::bar::{BlockCommand, BlockConfig};
 use crate::errors::ConfigError;
