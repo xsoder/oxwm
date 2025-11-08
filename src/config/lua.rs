@@ -10,7 +10,8 @@ use x11rb::protocol::xproto::KeyButMask;
 pub fn parse_lua_config(input: &str) -> Result<crate::Config, ConfigError> {
     let lua = Lua::new();
 
-    let config: Table = lua.load(input)
+    let config: Table = lua
+        .load(input)
         .eval()
         .map_err(|e| ConfigError::LuaError(format!("Failed to execute Lua config: {}", e)))?;
     let border_width: u32 = get_table_field(&config, "border_width")?;
@@ -71,9 +72,9 @@ where
 }
 
 fn parse_color(table: &Table, field: &str) -> Result<u32, ConfigError> {
-    let value: Value = table
-        .get(field)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to get color field '{}': {}", field, e)))?;
+    let value: Value = table.get(field).map_err(|e| {
+        ConfigError::LuaError(format!("Failed to get color field '{}': {}", field, e))
+    })?;
 
     match value {
         Value::String(s) => {
@@ -127,9 +128,10 @@ fn parse_tags(config: &Table) -> Result<Vec<String>, ConfigError> {
     let tags_table: Table = get_table_field(config, "tags")?;
     let mut tags = Vec::new();
 
-    for i in 1..=tags_table.len().map_err(|e| {
-        ConfigError::LuaError(format!("Failed to get tags length: {}", e))
-    })? {
+    for i in 1..=tags_table
+        .len()
+        .map_err(|e| ConfigError::LuaError(format!("Failed to get tags length: {}", e)))?
+    {
         let tag: String = tags_table.get(i).map_err(|e| {
             ConfigError::LuaError(format!("Failed to get tag at index {}: {}", i, e))
         })?;
@@ -150,7 +152,10 @@ fn parse_layout_symbols(config: &Table) -> Result<Vec<LayoutSymbolOverride>, Con
                 ConfigError::LuaError(format!("Failed to get layout_symbols length: {}", e))
             })? {
                 let entry: Table = layout_symbols_table.get(i).map_err(|e| {
-                    ConfigError::LuaError(format!("Failed to get layout_symbol at index {}: {}", i, e))
+                    ConfigError::LuaError(format!(
+                        "Failed to get layout_symbol at index {}: {}",
+                        i, e
+                    ))
                 })?;
 
                 let name: String = get_table_field(&entry, "name")?;
@@ -161,20 +166,18 @@ fn parse_layout_symbols(config: &Table) -> Result<Vec<LayoutSymbolOverride>, Con
 
             Ok(layout_symbols)
         }
-        Err(_) => Ok(Vec::new()), // layout_symbols is optional
+        Err(_) => Ok(Vec::new()),
     }
 }
 
-fn parse_keybindings(
-    config: &Table,
-    modkey: KeyButMask,
-) -> Result<Vec<KeyBinding>, ConfigError> {
+fn parse_keybindings(config: &Table, modkey: KeyButMask) -> Result<Vec<KeyBinding>, ConfigError> {
     let keybindings_table: Table = get_table_field(config, "keybindings")?;
     let mut keybindings = Vec::new();
 
-    for i in 1..=keybindings_table.len().map_err(|e| {
-        ConfigError::LuaError(format!("Failed to get keybindings length: {}", e))
-    })? {
+    for i in 1..=keybindings_table
+        .len()
+        .map_err(|e| ConfigError::LuaError(format!("Failed to get keybindings length: {}", e)))?
+    {
         let kb_table: Table = keybindings_table.get(i).map_err(|e| {
             ConfigError::LuaError(format!("Failed to get keybinding at index {}: {}", i, e))
         })?;
@@ -189,19 +192,15 @@ fn parse_keybindings(
     Ok(keybindings)
 }
 
-fn parse_keypress_list(
-    kb_table: &Table,
-    modkey: KeyButMask,
-) -> Result<Vec<KeyPress>, ConfigError> {
-    // Check if 'keys' field exists (for keychords)
+fn parse_keypress_list(kb_table: &Table, modkey: KeyButMask) -> Result<Vec<KeyPress>, ConfigError> {
     let keys_result: Result<Table, _> = kb_table.get("keys");
 
     if let Ok(keys_table) = keys_result {
-        // Parse keychord
         let mut keys = Vec::new();
-        for i in 1..=keys_table.len().map_err(|e| {
-            ConfigError::LuaError(format!("Failed to get keys length: {}", e))
-        })? {
+        for i in 1..=keys_table
+            .len()
+            .map_err(|e| ConfigError::LuaError(format!("Failed to get keys length: {}", e)))?
+        {
             let key_entry: Table = keys_table.get(i).map_err(|e| {
                 ConfigError::LuaError(format!("Failed to get key at index {}: {}", i, e))
             })?;
@@ -213,7 +212,6 @@ fn parse_keypress_list(
         }
         Ok(keys)
     } else {
-        // Parse single key (old format)
         let modifiers = parse_modifiers(kb_table, "modifiers", modkey)?;
         let keysym = parse_keysym(kb_table, "key")?;
 
@@ -229,9 +227,10 @@ fn parse_modifiers(
     let mods_table: Table = get_table_field(table, field)?;
     let mut modifiers = Vec::new();
 
-    for i in 1..=mods_table.len().map_err(|e| {
-        ConfigError::LuaError(format!("Failed to get modifiers length: {}", e))
-    })? {
+    for i in 1..=mods_table
+        .len()
+        .map_err(|e| ConfigError::LuaError(format!("Failed to get modifiers length: {}", e)))?
+    {
         let mod_str: String = mods_table.get(i).map_err(|e| {
             ConfigError::LuaError(format!("Failed to get modifier at index {}: {}", i, e))
         })?;
@@ -387,12 +386,14 @@ fn parse_arg(kb_table: &Table) -> Result<Arg, ConfigError> {
         Ok(Value::Number(n)) => Ok(Arg::Int(n as i32)),
         Ok(Value::Table(t)) => {
             let mut arr = Vec::new();
-            for i in 1..=t
-                .len()
-                .map_err(|e| ConfigError::LuaError(format!("Failed to get arg array length: {}", e)))?
-            {
+            for i in 1..=t.len().map_err(|e| {
+                ConfigError::LuaError(format!("Failed to get arg array length: {}", e))
+            })? {
                 let item: String = t.get(i).map_err(|e| {
-                    ConfigError::LuaError(format!("Failed to get arg array item at index {}: {}", i, e))
+                    ConfigError::LuaError(format!(
+                        "Failed to get arg array item at index {}: {}",
+                        i, e
+                    ))
                 })?;
                 arr.push(item);
             }
@@ -408,9 +409,10 @@ fn parse_status_blocks(config: &Table) -> Result<Vec<BlockConfig>, ConfigError> 
     let blocks_table: Table = get_table_field(config, "status_blocks")?;
     let mut blocks = Vec::new();
 
-    for i in 1..=blocks_table.len().map_err(|e| {
-        ConfigError::LuaError(format!("Failed to get status_blocks length: {}", e))
-    })? {
+    for i in 1..=blocks_table
+        .len()
+        .map_err(|e| ConfigError::LuaError(format!("Failed to get status_blocks length: {}", e)))?
+    {
         let block_table: Table = blocks_table.get(i).map_err(|e| {
             ConfigError::LuaError(format!("Failed to get status_block at index {}: {}", i, e))
         })?;
@@ -418,7 +420,6 @@ fn parse_status_blocks(config: &Table) -> Result<Vec<BlockConfig>, ConfigError> 
         let format: String = get_table_field(&block_table, "format")?;
         let command_str: String = get_table_field(&block_table, "command")?;
 
-        // Parse interval_secs - handle both integer and number types
         let interval_secs: u64 = {
             let value: Value = block_table.get("interval_secs").map_err(|e| {
                 ConfigError::LuaError(format!("Failed to get interval_secs: {}", e))
@@ -426,7 +427,11 @@ fn parse_status_blocks(config: &Table) -> Result<Vec<BlockConfig>, ConfigError> 
             match value {
                 Value::Integer(i) => i as u64,
                 Value::Number(n) => n as u64,
-                _ => return Err(ConfigError::LuaError("interval_secs must be a number".to_string())),
+                _ => {
+                    return Err(ConfigError::LuaError(
+                        "interval_secs must be a number".to_string(),
+                    ));
+                }
             }
         };
 
@@ -500,14 +505,17 @@ fn parse_autostart(config: &Table) -> Result<Vec<String>, ConfigError> {
                 ConfigError::LuaError(format!("Failed to get autostart length: {}", e))
             })? {
                 let cmd: String = autostart_table.get(i).map_err(|e| {
-                    ConfigError::LuaError(format!("Failed to get autostart command at index {}: {}", i, e))
+                    ConfigError::LuaError(format!(
+                        "Failed to get autostart command at index {}: {}",
+                        i, e
+                    ))
                 })?;
                 autostart.push(cmd);
             }
 
             Ok(autostart)
         }
-        Err(_) => Ok(Vec::new()), // autostart is optional
+        Err(_) => Ok(Vec::new()),
     }
 }
 
