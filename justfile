@@ -2,13 +2,13 @@ build:
     cargo build --release
 
 install: build
-    cp target/release/oxwm ~/.local/bin/oxwm
-    chmod +x ~/.local/bin/oxwm
-    @echo "✓ oxwm installed to ~/.local/bin/oxwm"
+    cp target/release/oxwm /usr/bin/oxwm
+    chmod +x /usr/bin/oxwm
+    @echo "✓ oxwm installed to /usr/bin/oxwm"
     @echo "  Run 'oxwm --init' to create your config"
 
 uninstall:
-    rm -f ~/.local/bin/oxwm
+    rm -f /usr/bin/oxwm
     @echo "✓ oxwm uninstalled"
     @echo "  Your config at ~/.config/oxwm/config.ron is preserved"
 

@@ -256,6 +256,9 @@ struct ConfigData {
     scheme_normal: ColorSchemeData,
     scheme_occupied: ColorSchemeData,
     scheme_selected: ColorSchemeData,
+
+    #[serde(default)]
+    autostart: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -458,6 +461,7 @@ fn config_data_to_config(data: ConfigData) -> Result<crate::Config, ConfigError>
             background: data.scheme_selected.background,
             underline: data.scheme_selected.underline,
         },
+        autostart: data.autostart,
     })
 }
 

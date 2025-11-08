@@ -7,6 +7,7 @@ use crate::layout::tiling::TilingLayout;
 use crate::layout::{Layout, LayoutBox, LayoutType, layout_from_str, next_layout};
 use crate::monitor::{Monitor, detect_monitors};
 use std::collections::HashSet;
+use std::process::Command;
 use x11rb::cursor::Handle as CursorHandle;
 
 use x11rb::connection::Connection;
@@ -180,6 +181,7 @@ impl WindowManager {
 
         window_manager.scan_existing_windows()?;
         window_manager.update_bar()?;
+        window_manager.run_autostart_commands()?;
 
         Ok(window_manager)
     }
@@ -1844,7 +1846,8 @@ impl WindowManager {
                         .x(adjusted_x)
                         .y(adjusted_y)
                         .width(adjusted_width)
-                        .height(adjusted_height),
+                        .height(adjusted_height)
+                        .border_width(border_width),
                 )?;
             }
         }
@@ -1883,6 +1886,18 @@ impl WindowManager {
 
             self.apply_layout()?;
             self.update_bar()?;
+        }
+        Ok(())
+    }
+
+    fn run_autostart_commands(&self) -> Result<(), WmError> {
+        for command in &self.config.autostart {
+            Command::new("sh")
+                .arg("-c")
+                .arg(command)
+                .spawn()
+                .map_err(|e| WmError::Autostart(command.clone(), e))?;
+            eprintln!("[autostart] Spawned: {}", command);
         }
         Ok(())
     }
