@@ -54,6 +54,7 @@ return {
         { modifiers = { "Mod4" }, key = "D", action = "Spawn", arg = { "sh", "-c", "dmenu_run -l 10" } },
         { modifiers = { "Mod4" }, key = "S", action = "Spawn", arg = { "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" } },
         { modifiers = { "Mod4" }, key = "Q", action = "KillClient" },
+        { modifiers = { "Mod4", "Shift" }, key = "Slash", action = "ShowKeybindOverlay" },
         { modifiers = { "Mod4", "Shift" }, key = "F", action = "ToggleFullScreen" },
         { modifiers = { "Mod4", "Shift" }, key = "Space", action = "ToggleFloating" },
         { modifiers = { "Mod4" }, key = "F", action = "ChangeLayout", arg = "normie" },

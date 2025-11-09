@@ -7,8 +7,20 @@ use crate::{ColorScheme, LayoutSymbolOverride};
 use mlua::{Lua, Table, Value};
 use x11rb::protocol::xproto::KeyButMask;
 
-pub fn parse_lua_config(input: &str) -> Result<crate::Config, ConfigError> {
+pub fn parse_lua_config(
+    input: &str,
+    config_dir: Option<&std::path::Path>,
+) -> Result<crate::Config, ConfigError> {
     let lua = Lua::new();
+
+    if let Some(dir) = config_dir {
+        if let Some(dir_str) = dir.to_str() {
+            let setup_code = format!("package.path = '{}/?.lua;' .. package.path", dir_str);
+            lua.load(&setup_code)
+                .exec()
+                .map_err(|e| ConfigError::LuaError(format!("Failed to set package.path: {}", e)))?;
+        }
+    }
 
     let config: Table = lua
         .load(input)
@@ -364,6 +376,7 @@ fn string_to_key_action(s: &str) -> Result<KeyAction, ConfigError> {
         "FocusMonitor" => KeyAction::FocusMonitor,
         "SmartMoveWin" => KeyAction::SmartMoveWin,
         "ExchangeClient" => KeyAction::ExchangeClient,
+        "ShowKeybindOverlay" => KeyAction::ShowKeybindOverlay,
         "None" => KeyAction::None,
         _ => return Err(ConfigError::UnknownAction(s.to_string())),
     };
@@ -560,7 +573,7 @@ return {
 }
 "#;
 
-        let config = parse_lua_config(config_str).expect("Failed to parse config");
+        let config = parse_lua_config(config_str, None).expect("Failed to parse config");
 
         assert_eq!(config.border_width, 2);
         assert_eq!(config.border_focused, 0x6dade3);

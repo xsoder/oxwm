@@ -55,7 +55,6 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
     let config_path = if let Some(path) = custom_path {
         path
     } else {
-        // Try to find config.lua first, then config.ron
         let config_dir = get_config_path();
         let lua_path = config_dir.join("config.lua");
         let ron_path = config_dir.join("config.ron");
@@ -75,7 +74,6 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
     let config_str =
         std::fs::read_to_string(&config_path).with_context(|| "Failed to read config file")?;
 
-    // Determine config format based on file extension
     let is_lua = config_path
         .extension()
         .and_then(|s| s.to_str())
@@ -83,7 +81,9 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
         .unwrap_or(false);
 
     if is_lua {
-        oxwm::config::parse_lua_config(&config_str).with_context(|| "Failed to parse Lua config")
+        let config_dir = config_path.parent();
+        oxwm::config::parse_lua_config(&config_str, config_dir)
+            .with_context(|| "Failed to parse Lua config")
     } else {
         oxwm::config::parse_config(&config_str).with_context(|| "Failed to parse RON config")
     }
@@ -115,7 +115,6 @@ fn migrate_config(custom_path: Option<PathBuf>) -> Result<()> {
     let ron_path = if let Some(path) = custom_path {
         path
     } else {
-        // Default to ~/.config/oxwm/config.ron
         get_config_path().join("config.ron")
     };
 
@@ -132,9 +131,8 @@ fn migrate_config(custom_path: Option<PathBuf>) -> Result<()> {
         .with_context(|| format!("Failed to read RON config from {:?}", ron_path))?;
 
     let lua_content = oxwm::config::migrate::ron_to_lua(&ron_content)
-        .map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
+        .with_context(|| "Failed to migrate RON config to Lua")?;
 
-    // Determine output path (same directory, .lua extension)
     let lua_path = ron_path.with_extension("lua");
 
     std::fs::write(&lua_path, lua_content)
@@ -143,7 +141,9 @@ fn migrate_config(custom_path: Option<PathBuf>) -> Result<()> {
     println!("✓ Migration complete!");
     println!("  Output: {:?}", lua_path);
     println!("\nYour old config.ron is still intact.");
-    println!("Review the new config.lua and then you can delete config.ron if everything looks good.");
+    println!(
+        "Review the new config.lua and then you can delete config.ron if everything looks good."
+    );
 
     Ok(())
 }
@@ -154,7 +154,9 @@ fn print_help() {
     println!("    oxwm [OPTIONS]\n");
     println!("OPTIONS:");
     println!("    --init              Create default config in ~/.config/oxwm/config.lua");
-    println!("    --migrate [PATH]    Convert RON config to Lua (default: ~/.config/oxwm/config.ron)");
+    println!(
+        "    --migrate [PATH]    Convert RON config to Lua (default: ~/.config/oxwm/config.ron)"
+    );
     println!("    --config <PATH>     Use custom config file (.lua or .ron)");
     println!("    --version           Print version information");
     println!("    --help              Print this help message\n");

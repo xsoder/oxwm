@@ -1,5 +1,5 @@
 use super::Block;
-use anyhow::Result;
+use crate::errors::BlockError;
 use std::fs;
 use std::time::Duration;
 
@@ -30,22 +30,22 @@ impl Battery {
         }
     }
 
-    fn read_file(&self, filename: &str) -> Result<String> {
+    fn read_file(&self, filename: &str) -> Result<String, BlockError> {
         let path = format!("{}/{}", self.battery_path, filename);
         Ok(fs::read_to_string(path)?.trim().to_string())
     }
 
-    fn get_capacity(&self) -> Result<u32> {
+    fn get_capacity(&self) -> Result<u32, BlockError> {
         Ok(self.read_file("capacity")?.parse()?)
     }
 
-    fn get_status(&self) -> Result<String> {
+    fn get_status(&self) -> Result<String, BlockError> {
         self.read_file("status")
     }
 }
 
 impl Block for Battery {
-    fn content(&mut self) -> Result<String> {
+    fn content(&mut self) -> Result<String, BlockError> {
         let capacity = self.get_capacity()?;
         let status = self.get_status()?;
 

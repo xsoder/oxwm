@@ -6,6 +6,7 @@ use crate::layout::GapConfig;
 use crate::layout::tiling::TilingLayout;
 use crate::layout::{Layout, LayoutBox, LayoutType, layout_from_str, next_layout};
 use crate::monitor::{Monitor, detect_monitors};
+use crate::overlay::{ErrorOverlay, KeybindOverlay, Overlay};
 use std::collections::HashSet;
 use std::process::Command;
 use x11rb::cursor::Handle as CursorHandle;
@@ -69,6 +70,9 @@ pub struct WindowManager {
     display: *mut x11::xlib::Display,
     font: crate::bar::font::Font,
     keychord_state: keyboard::handlers::KeychordState,
+    error_message: Option<String>,
+    overlay: ErrorOverlay,
+    keybind_overlay: KeybindOverlay,
 }
 
 type WmResult<T> = Result<T, WmError>;
@@ -156,6 +160,18 @@ impl WindowManager {
 
         let atoms = AtomCache::new(&connection)?;
 
+        let overlay = ErrorOverlay::new(
+            &connection,
+            &screen,
+            screen_number,
+            display,
+            &font,
+            screen.width_in_pixels,
+        )?;
+
+        let keybind_overlay =
+            KeybindOverlay::new(&connection, &screen, screen_number, display, config.modkey)?;
+
         let mut window_manager = Self {
             config,
             connection,
@@ -177,6 +193,9 @@ impl WindowManager {
             display,
             font,
             keychord_state: keyboard::handlers::KeychordState::Idle,
+            error_message: None,
+            overlay,
+            keybind_overlay,
         };
 
         window_manager.scan_existing_windows()?;
@@ -223,6 +242,48 @@ impl WindowManager {
             }
         }
         Ok(tag_mask(0))
+    }
+
+    fn try_reload_config(&mut self) -> Result<(), String> {
+        let config_dir = if let Some(xdg_config) = std::env::var_os("XDG_CONFIG_HOME") {
+            std::path::PathBuf::from(xdg_config).join("oxwm")
+        } else if let Some(home) = std::env::var_os("HOME") {
+            std::path::PathBuf::from(home).join(".config").join("oxwm")
+        } else {
+            return Err("Could not find config directory".to_string());
+        };
+
+        let lua_path = config_dir.join("config.lua");
+        let ron_path = config_dir.join("config.ron");
+
+        let config_path = if lua_path.exists() {
+            lua_path
+        } else if ron_path.exists() {
+            ron_path
+        } else {
+            return Err("No config file found".to_string());
+        };
+
+        let config_str = std::fs::read_to_string(&config_path)
+            .map_err(|e| format!("Failed to read config: {}", e))?;
+
+        let is_lua = config_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s == "lua")
+            .unwrap_or(false);
+
+        let new_config = if is_lua {
+            let config_dir = config_path.parent();
+            crate::config::parse_lua_config(&config_str, config_dir)
+                .map_err(|e| format!("Config error: {}", e))?
+        } else {
+            crate::config::parse_config(&config_str).map_err(|e| format!("Config error: {}", e))?
+        };
+
+        self.config = new_config;
+        self.error_message = None;
+        Ok(())
     }
 
     fn scan_existing_windows(&mut self) -> WmResult<()> {
@@ -375,6 +436,10 @@ impl WindowManager {
 
             if self.bars.iter().any(|bar| bar.needs_redraw()) {
                 self.update_bar()?;
+            }
+
+            if self.overlay.is_visible() && self.overlay.should_auto_dismiss() {
+                let _ = self.overlay.hide(&self.connection);
             }
 
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -808,7 +873,7 @@ impl WindowManager {
                         indicator.push('+');
                     }
 
-                    indicator.push_str(&self.format_keysym(key_press.keysym));
+                    indicator.push_str(&keyboard::keysyms::format_keysym(key_press.keysym));
                 }
 
                 indicator.push('-');
@@ -827,60 +892,6 @@ impl WindowManager {
         }
     }
 
-    fn format_keysym(&self, keysym: keyboard::keysyms::Keysym) -> String {
-        use keyboard::keysyms::*;
-
-        match keysym {
-            XK_RETURN => "Return",
-            XK_ESCAPE => "Esc",
-            XK_SPACE => "Space",
-            XK_TAB => "Tab",
-            XK_BACKSPACE => "Backspace",
-            XK_DELETE => "Del",
-            XK_F1 => "F1",
-            XK_F2 => "F2",
-            XK_F3 => "F3",
-            XK_F4 => "F4",
-            XK_F5 => "F5",
-            XK_F6 => "F6",
-            XK_F7 => "F7",
-            XK_F8 => "F8",
-            XK_F9 => "F9",
-            XK_F10 => "F10",
-            XK_F11 => "F11",
-            XK_F12 => "F12",
-            XK_A..=XK_Z | XK_0..=XK_9 => {
-                return char::from_u32(keysym).unwrap_or('?').to_string();
-            }
-            XK_LEFT => "Left",
-            XK_RIGHT => "Right",
-            XK_UP => "Up",
-            XK_DOWN => "Down",
-            XK_HOME => "Home",
-            XK_END => "End",
-            XK_PAGE_UP => "PgUp",
-            XK_PAGE_DOWN => "PgDn",
-            XK_INSERT => "Ins",
-            XK_MINUS => "-",
-            XK_EQUAL => "=",
-            XK_LEFT_BRACKET => "[",
-            XK_RIGHT_BRACKET => "]",
-            XK_SEMICOLON => ";",
-            XK_APOSTROPHE => "'",
-            XK_GRAVE => "`",
-            XK_BACKSLASH => "\\",
-            XK_COMMA => ",",
-            XK_PERIOD => ".",
-            XK_SLASH => "/",
-            XF86_AUDIO_RAISE_VOLUME => "Vol+",
-            XF86_AUDIO_LOWER_VOLUME => "Vol-",
-            XF86_AUDIO_MUTE => "Mute",
-            XF86_MON_BRIGHTNESS_UP => "Bri+",
-            XF86_MON_BRIGHTNESS_DOWN => "Bri-",
-            _ => "?",
-        }
-        .to_string()
-    }
 
     fn update_bar(&mut self) -> WmResult<()> {
         let layout_symbol = self.get_layout_symbol();
@@ -1019,6 +1030,16 @@ impl WindowManager {
                 if let Arg::Int(direction) = arg {
                     self.focus_monitor(*direction)?;
                 }
+            }
+            KeyAction::ShowKeybindOverlay => {
+                let monitor = &self.monitors[self.selected_monitor];
+                self.keybind_overlay.toggle(
+                    &self.connection,
+                    &self.font,
+                    &self.config.keybindings,
+                    monitor.width as u16,
+                    monitor.height as u16,
+                )?;
             }
             KeyAction::None => {}
         }
@@ -1610,6 +1631,60 @@ impl WindowManager {
 
     fn handle_event(&mut self, event: Event) -> WmResult<Option<bool>> {
         match event {
+            Event::KeyPress(ref e) if e.event == self.overlay.window() => {
+                if self.overlay.is_visible() {
+                    let _ = self.overlay.hide(&self.connection);
+                }
+                return Ok(None);
+            }
+            Event::ButtonPress(ref e) if e.event == self.overlay.window() => {
+                if self.overlay.is_visible() {
+                    let _ = self.overlay.hide(&self.connection);
+                }
+                return Ok(None);
+            }
+            Event::Expose(ref e) if e.window == self.overlay.window() => {
+                if self.overlay.is_visible() {
+                    let _ = self.overlay.draw(&self.connection, &self.font);
+                }
+                return Ok(None);
+            }
+            Event::KeyPress(ref e) if e.event == self.keybind_overlay.window() => {
+                if self.keybind_overlay.is_visible()
+                    && !self.keybind_overlay.should_suppress_input()
+                {
+                    use crate::keyboard::keysyms;
+                    let keyboard_mapping = self
+                        .connection
+                        .get_keyboard_mapping(
+                            self.connection.setup().min_keycode,
+                            self.connection.setup().max_keycode
+                                - self.connection.setup().min_keycode
+                                + 1,
+                        )?
+                        .reply()?;
+
+                    let min_keycode = self.connection.setup().min_keycode;
+                    let keysyms_per_keycode = keyboard_mapping.keysyms_per_keycode;
+                    let index = (e.detail - min_keycode) as usize * keysyms_per_keycode as usize;
+
+                    if let Some(&keysym) = keyboard_mapping.keysyms.get(index) {
+                        if keysym == keysyms::XK_ESCAPE || keysym == keysyms::XK_Q {
+                            let _ = self.keybind_overlay.hide(&self.connection);
+                        }
+                    }
+                }
+                return Ok(None);
+            }
+            Event::ButtonPress(ref e) if e.event == self.keybind_overlay.window() => {
+                return Ok(None);
+            }
+            Event::Expose(ref e) if e.window == self.keybind_overlay.window() => {
+                if self.keybind_overlay.is_visible() {
+                    let _ = self.keybind_overlay.draw(&self.connection, &self.font);
+                }
+                return Ok(None);
+            }
             Event::MapRequest(event) => {
                 let attrs = match self.connection.get_window_attributes(event.window)?.reply() {
                     Ok(attrs) => attrs,
@@ -1705,7 +1780,27 @@ impl WindowManager {
 
                         match action {
                             KeyAction::Quit => return Ok(Some(false)),
-                            KeyAction::Restart => return Ok(Some(true)),
+                            KeyAction::Restart => match self.try_reload_config() {
+                                Ok(()) => {
+                                    self.gaps_enabled = self.config.gaps_enabled;
+                                    self.error_message = None;
+                                    let _ = self.overlay.hide(&self.connection);
+                                    self.apply_layout()?;
+                                    self.update_bar()?;
+                                }
+                                Err(err) => {
+                                    self.error_message = Some(err.clone());
+                                    let screen_width = self.screen.width_in_pixels;
+                                    let screen_height = self.screen.height_in_pixels;
+                                    let _ = self.overlay.show_error(
+                                        &self.connection,
+                                        &self.font,
+                                        &err,
+                                        screen_width,
+                                        screen_height,
+                                    );
+                                }
+                            },
                             _ => self.handle_key_action(action, &arg)?,
                         }
                     }

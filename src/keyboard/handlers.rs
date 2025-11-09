@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::*;
 use crate::errors::X11Error;
 use crate::keyboard::keysyms::{self, Keysym};
 
-#[derive(Debug, Copy, Clone, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize, PartialEq)]
 pub enum KeyAction {
     Spawn,
     KillClient,
@@ -29,6 +29,7 @@ pub enum KeyAction {
     FocusMonitor,
     SmartMoveWin,
     ExchangeClient,
+    ShowKeybindOverlay,
     None,
 }
 

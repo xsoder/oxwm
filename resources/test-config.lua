@@ -61,6 +61,7 @@ return {
         { modifiers = { "Mod1" }, key = "D", action = "Spawn", arg = { "sh", "-c", "dmenu_run -l 10" } },
         { modifiers = { "Mod1" }, key = "S", action = "Spawn", arg = { "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" } },
         { modifiers = { "Mod1" }, key = "Q", action = "KillClient" },
+        { modifiers = { "Mod1", "Shift" }, key = "Slash", action = "ShowKeybindOverlay" },
         { modifiers = { "Mod1", "Shift" }, key = "F", action = "ToggleFullScreen" },
         { modifiers = { "Mod1", "Shift" }, key = "Space", action = "ToggleFloating" },
         { modifiers = { "Mod1" }, key = "F", action = "ChangeLayout", arg = "normie" },

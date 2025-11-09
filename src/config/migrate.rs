@@ -1,6 +1,7 @@
+use crate::errors::ConfigError;
 use std::collections::HashMap;
 
-pub fn ron_to_lua(ron_content: &str) -> Result<String, String> {
+pub fn ron_to_lua(ron_content: &str) -> Result<String, ConfigError> {
     let mut lua_output = String::new();
     let defines = extract_defines(ron_content);
 

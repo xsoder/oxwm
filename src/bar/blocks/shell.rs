@@ -1,5 +1,5 @@
 use super::Block;
-use anyhow::Result;
+use crate::errors::BlockError;
 use std::process::Command;
 use std::time::Duration;
 
@@ -22,8 +22,19 @@ impl ShellBlock {
 }
 
 impl Block for ShellBlock {
-    fn content(&mut self) -> Result<String> {
-        let output = Command::new("sh").arg("-c").arg(&self.command).output()?;
+    fn content(&mut self) -> Result<String, BlockError> {
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg(&self.command)
+            .output()
+            .map_err(|e| BlockError::CommandFailed(format!("Failed to execute command: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(BlockError::CommandFailed(format!(
+                "Command exited with status: {}",
+                output.status
+            )));
+        }
 
         let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(self.format.replace("{}", &result))

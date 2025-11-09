@@ -1,5 +1,5 @@
 use super::Block;
-use anyhow::Result;
+use crate::errors::BlockError;
 use std::fs;
 use std::time::Duration;
 
@@ -18,7 +18,7 @@ impl Ram {
         }
     }
 
-    fn get_memory_info(&self) -> Result<(u64, u64, f32)> {
+    fn get_memory_info(&self) -> Result<(u64, u64, f32), BlockError> {
         let meminfo = fs::read_to_string("/proc/meminfo")?;
         let mut total: u64 = 0;
         let mut available: u64 = 0;
@@ -51,7 +51,7 @@ impl Ram {
 }
 
 impl Block for Ram {
-    fn content(&mut self) -> Result<String> {
+    fn content(&mut self) -> Result<String, BlockError> {
         let (used, total, percentage) = self.get_memory_info()?;
 
         let used_gb = used as f32 / 1024.0 / 1024.0;
