@@ -4,8 +4,8 @@ use std::io;
 pub enum WmError {
     X11(X11Error),
     Io(io::Error),
-    Anyhow(anyhow::Error),
     Config(ConfigError),
+    Block(BlockError),
     Autostart(String, io::Error),
 }
 
@@ -23,6 +23,7 @@ pub enum X11Error {
 #[derive(Debug)]
 pub enum ConfigError {
     ParseError(ron::error::SpannedError),
+    LuaError(String),
     InvalidModkey(String),
     UnknownKey(String),
     UnknownAction(String),
@@ -32,6 +33,16 @@ pub enum ConfigError {
     InvalidVariableName(String),
     InvalidDefine(String),
     UndefinedVariable(String),
+    MigrationError(String),
+}
+
+#[derive(Debug)]
+pub enum BlockError {
+    Io(io::Error),
+    ParseInt(std::num::ParseIntError),
+    MissingFile(String),
+    InvalidData(String),
+    CommandFailed(String),
 }
 
 impl std::fmt::Display for WmError {
@@ -39,8 +50,8 @@ impl std::fmt::Display for WmError {
         match self {
             Self::X11(error) => write!(f, "{}", error),
             Self::Io(error) => write!(f, "{}", error),
-            Self::Anyhow(error) => write!(f, "{}", error),
             Self::Config(error) => write!(f, "{}", error),
+            Self::Block(error) => write!(f, "{}", error),
             Self::Autostart(command, error) => write!(f, "Failed to spawn autostart command '{}': {}", command, error),
         }
     }
@@ -68,6 +79,7 @@ impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ParseError(err) => write!(f, "Failed to parse RON config: {}", err),
+            Self::LuaError(msg) => write!(f, "Lua config error: {}", msg),
             Self::InvalidModkey(key) => write!(f, "Invalid modkey: {}", key),
             Self::UnknownKey(key) => write!(f, "Unknown key: {}", key),
             Self::UnknownAction(action) => write!(f, "Unknown action: {}", action),
@@ -93,11 +105,26 @@ impl std::fmt::Display for ConfigError {
                     var
                 )
             }
+            Self::MigrationError(msg) => write!(f, "Migration error: {}", msg),
         }
     }
 }
 
 impl std::error::Error for ConfigError {}
+
+impl std::fmt::Display for BlockError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(err) => write!(f, "Block I/O error: {}", err),
+            Self::ParseInt(err) => write!(f, "Block parse error: {}", err),
+            Self::MissingFile(path) => write!(f, "Block missing file: {}", path),
+            Self::InvalidData(msg) => write!(f, "Block invalid data: {}", msg),
+            Self::CommandFailed(msg) => write!(f, "Block command failed: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for BlockError {}
 
 impl<T: Into<X11Error>> From<T> for WmError {
     fn from(value: T) -> Self {
@@ -111,15 +138,27 @@ impl From<io::Error> for WmError {
     }
 }
 
-impl From<anyhow::Error> for WmError {
-    fn from(value: anyhow::Error) -> Self {
-        Self::Anyhow(value)
-    }
-}
-
 impl From<ConfigError> for WmError {
     fn from(value: ConfigError) -> Self {
         Self::Config(value)
+    }
+}
+
+impl From<BlockError> for WmError {
+    fn from(value: BlockError) -> Self {
+        Self::Block(value)
+    }
+}
+
+impl From<io::Error> for BlockError {
+    fn from(value: io::Error) -> Self {
+        BlockError::Io(value)
+    }
+}
+
+impl From<std::num::ParseIntError> for BlockError {
+    fn from(value: std::num::ParseIntError) -> Self {
+        BlockError::ParseInt(value)
     }
 }
 

@@ -79,7 +79,7 @@ Add this to your =configuration.nix=:
 *** Initialize your config
 After rebuilding your system with =sudo nixos-rebuild switch=, log in via your display manager.
 
-On first launch, your initial config file will be automatically created and placed in =~/.config/oxwm/config.ron=. Edit it and reload with =Mod+Shift+R=.
+On first launch, your initial config file will be automatically created and placed in =~/.config/oxwm/config.lua=. Edit it and reload with =Mod+Shift+R=.
 
 *** Advanced: Using a specific oxwm version
 If you want to pin or customize the oxwm package:
@@ -154,22 +154,33 @@ startx
 If using a display manager (LightDM, GDM, SDDM), OXWM should appear in the session list after installation.
 
 * Configuration
-OXWM was inspired by dwm, but ditched the suckless philosophy. This philosophy quite literally discourages users from using the software for the sake of 'elitism'. I find that quite nonsensical, so I went ahead and created this project to be user friendly. The configuration is done by editing =~/.config/oxwm/config.ron= and the binary can be reloaded with a hotkey (Super+Shift+R by default).
+OXWM was inspired by dwm, but ditched the suckless philosophy. This philosophy quite literally discourages users from using the software for the sake of 'elitism'. I find that quite nonsensical, so I went ahead and created this project to be user friendly. The configuration is done by editing =~/.config/oxwm/config.lua= and the binary can be reloaded with a hotkey (Super+Shift+R by default).
 
-Edit =~/.config/oxwm/config.ron= to customize:
+Edit =~/.config/oxwm/config.lua= to customize:
 - Keybindings
 - Colors and appearance
 - Status bar blocks
 - Gaps and borders
 - Terminal and applications
 
-After making changes, reload OXWM with =Mod+Shift+R= 
+After making changes, reload OXWM with =Mod+Shift+R=
+
+** Migrating from RON
+If you have an old RON config (=config.ron=), use the migration tool to automatically convert it:
+
+#+begin_src sh
+oxwm --migrate
+# Or specify a path:
+oxwm --migrate ~/.config/oxwm/config.ron
+#+end_src
+
+This will convert your =config.ron= to =config.lua=, preserving all your settings. Your old config will remain intact for backup. 
 
 * Contributing
 When contributing to OXWM:
 
-1. Never commit your personal =~/.config/oxwm/config.ron=
-2. Only modify =templates/config.ron= if adding new configuration options
+1. Never commit your personal =~/.config/oxwm/config.lua=
+2. Only modify =templates/config.lua= if adding new configuration options
 3. Test your changes with =just test= using Xephyr/Xwayland
 4. Document any new features or keybindings
 

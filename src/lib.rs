@@ -4,6 +4,7 @@ pub mod errors;
 pub mod keyboard;
 pub mod layout;
 pub mod monitor;
+pub mod overlay;
 pub mod window_manager;
 
 pub mod prelude {

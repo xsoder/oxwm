@@ -82,3 +82,61 @@ pub const XF86_AUDIO_LOWER_VOLUME: Keysym = 0x1008ff11;
 pub const XF86_AUDIO_MUTE: Keysym = 0x1008ff12;
 pub const XF86_MON_BRIGHTNESS_UP: Keysym = 0x1008ff02;
 pub const XF86_MON_BRIGHTNESS_DOWN: Keysym = 0x1008ff03;
+
+pub fn format_keysym(keysym: Keysym) -> String {
+    match keysym {
+        XK_RETURN => "Return".to_string(),
+        XK_ESCAPE => "Esc".to_string(),
+        XK_SPACE => "Space".to_string(),
+        XK_TAB => "Tab".to_string(),
+        XK_BACKSPACE => "Backspace".to_string(),
+        XK_DELETE => "Del".to_string(),
+        XK_LEFT => "Left".to_string(),
+        XK_RIGHT => "Right".to_string(),
+        XK_UP => "Up".to_string(),
+        XK_DOWN => "Down".to_string(),
+        XK_HOME => "Home".to_string(),
+        XK_END => "End".to_string(),
+        XK_PAGE_UP => "PgUp".to_string(),
+        XK_PAGE_DOWN => "PgDn".to_string(),
+        XK_INSERT => "Ins".to_string(),
+        XK_F1 => "F1".to_string(),
+        XK_F2 => "F2".to_string(),
+        XK_F3 => "F3".to_string(),
+        XK_F4 => "F4".to_string(),
+        XK_F5 => "F5".to_string(),
+        XK_F6 => "F6".to_string(),
+        XK_F7 => "F7".to_string(),
+        XK_F8 => "F8".to_string(),
+        XK_F9 => "F9".to_string(),
+        XK_F10 => "F10".to_string(),
+        XK_F11 => "F11".to_string(),
+        XK_F12 => "F12".to_string(),
+        XK_SLASH => "/".to_string(),
+        XK_COMMA => ",".to_string(),
+        XK_PERIOD => ".".to_string(),
+        XK_MINUS => "-".to_string(),
+        XK_EQUAL => "=".to_string(),
+        XK_GRAVE => "`".to_string(),
+        XK_LEFT_BRACKET => "[".to_string(),
+        XK_RIGHT_BRACKET => "]".to_string(),
+        XK_SEMICOLON => ";".to_string(),
+        XK_APOSTROPHE => "'".to_string(),
+        XK_BACKSLASH => "\\".to_string(),
+        XK_PRINT => "Print".to_string(),
+        XF86_AUDIO_RAISE_VOLUME => "Vol+".to_string(),
+        XF86_AUDIO_LOWER_VOLUME => "Vol-".to_string(),
+        XF86_AUDIO_MUTE => "Mute".to_string(),
+        XF86_MON_BRIGHTNESS_UP => "Bright+".to_string(),
+        XF86_MON_BRIGHTNESS_DOWN => "Bright-".to_string(),
+        XK_A..=XK_Z => {
+            let ch = (keysym - XK_A + b'A' as u32) as u8 as char;
+            ch.to_string()
+        }
+        XK_0..=XK_9 => {
+            let ch = (keysym - XK_0 + b'0' as u32) as u8 as char;
+            ch.to_string()
+        }
+        _ => format!("0x{:x}", keysym),
+    }
+}

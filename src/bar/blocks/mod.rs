@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::errors::BlockError;
 use std::time::Duration;
 
 mod battery;
@@ -12,7 +12,7 @@ use ram::Ram;
 use shell::ShellBlock;
 
 pub trait Block {
-    fn content(&mut self) -> Result<String>;
+    fn content(&mut self) -> Result<String, BlockError>;
     fn interval(&self) -> Duration;
     fn color(&self) -> u32;
 }
@@ -89,7 +89,7 @@ impl StaticBlock {
 }
 
 impl Block for StaticBlock {
-    fn content(&mut self) -> Result<String> {
+    fn content(&mut self) -> Result<String, BlockError> {
         Ok(self.text.clone())
     }
 

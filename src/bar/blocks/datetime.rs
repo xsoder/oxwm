@@ -1,5 +1,5 @@
 use super::Block;
-use anyhow::Result;
+use crate::errors::BlockError;
 use chrono::Local;
 use std::time::Duration;
 
@@ -22,7 +22,7 @@ impl DateTime {
 }
 
 impl Block for DateTime {
-    fn content(&mut self) -> Result<String> {
+    fn content(&mut self) -> Result<String, BlockError> {
         let now = Local::now();
         let time_str = now.format(&self.time_format).to_string();
         Ok(self.format_template.replace("{}", &time_str))
