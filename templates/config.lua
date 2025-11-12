@@ -1,10 +1,10 @@
--- OXWM Configuration File (Lua)
--- Migrated from config.ron
--- Edit this file and reload with Mod+Shift+R (no compilation needed!)
+---@meta
+---OXWM Configuration File (Lua)
+---Using the new functional API
+---Edit this file and reload with Mod+Shift+R (no compilation needed!)
 
-local terminal = "st"
-local modkey = "Mod4"
-local secondary_modkey = "Mod1"
+---Load type definitions for LSP
+---@module 'oxwm'
 
 -- Color palette
 local colors = {
@@ -20,145 +20,111 @@ local colors = {
     purple = "#ad8ee6",
 }
 
--- Main configuration table
-return {
-    -- Appearance
-    border_width = 2,
-    border_focused = colors.blue,
-    border_unfocused = colors.grey,
-    font = "monospace:style=Bold:size=10",
+-- Basic settings
+oxwm.set_terminal("st")
+oxwm.set_modkey("Mod4")
+oxwm.set_tags({ "1", "2", "3", "4", "5", "6", "7", "8", "9" })
 
-    -- Window gaps
-    gaps_enabled = true,
-    gap_inner_horizontal = 5,
-    gap_inner_vertical = 5,
-    gap_outer_horizontal = 5,
-    gap_outer_vertical = 5,
+-- Layout symbol overrides
+oxwm.set_layout_symbol("tiling", "[T]")
+oxwm.set_layout_symbol("normie", "[F]")
 
-    -- Basics
-    modkey = "Mod4",
-    terminal = "st",
+-- Border configuration
+oxwm.border.set_width(2)
+oxwm.border.set_focused_color(colors.blue)
+oxwm.border.set_unfocused_color(colors.grey)
 
-    -- Workspace tags
-    tags = { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
+-- Gap configuration
+oxwm.gaps.set_enabled(true)
+oxwm.gaps.set_inner(5, 5) -- horizontal, vertical
+oxwm.gaps.set_outer(5, 5) -- horizontal, vertical
 
-    -- Layout symbol overrides
-    layout_symbols = {
-        { name = "tiling", symbol = "[T]" },
-        { name = "normie", symbol = "[F]" },
-    },
+-- Bar configuration
+oxwm.bar.set_font("monospace:style=Bold:size=10")
 
-    -- Keybindings
-    keybindings = {
-        { modifiers = { "Mod4" }, key = "Return", action = "Spawn", arg = "st" },
-        { modifiers = { "Mod4" }, key = "D", action = "Spawn", arg = { "sh", "-c", "dmenu_run -l 10" } },
-        { modifiers = { "Mod4" }, key = "S", action = "Spawn", arg = { "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" } },
-        { modifiers = { "Mod4" }, key = "Q", action = "KillClient" },
-        { modifiers = { "Mod4", "Shift" }, key = "Slash", action = "ShowKeybindOverlay" },
-        { modifiers = { "Mod4", "Shift" }, key = "F", action = "ToggleFullScreen" },
-        { modifiers = { "Mod4", "Shift" }, key = "Space", action = "ToggleFloating" },
-        { modifiers = { "Mod4" }, key = "F", action = "ChangeLayout", arg = "normie" },
-        { modifiers = { "Mod4" }, key = "C", action = "ChangeLayout", arg = "tiling" },
-        { modifiers = { "Mod1" }, key = "N", action = "CycleLayout" },
-        { modifiers = { "Mod4" }, key = "A", action = "ToggleGaps" },
-        { modifiers = { "Mod4", "Shift" }, key = "Q", action = "Quit" },
-        { modifiers = { "Mod4", "Shift" }, key = "R", action = "Restart" },
-        { modifiers = { "Mod4" }, key = "H", action = "FocusDirection", arg = 2 },
-        { modifiers = { "Mod4" }, key = "J", action = "FocusDirection", arg = 1 },
-        { modifiers = { "Mod4" }, key = "K", action = "FocusDirection", arg = 0 },
-        { modifiers = { "Mod4" }, key = "L", action = "FocusDirection", arg = 3 },
-        { modifiers = { "Mod4" }, key = "Comma", action = "FocusMonitor", arg = -1 },
-        { modifiers = { "Mod4" }, key = "Period", action = "FocusMonitor", arg = 1 },
-        { modifiers = { "Mod4" }, key = "1", action = "ViewTag", arg = 0 },
-        { modifiers = { "Mod4" }, key = "2", action = "ViewTag", arg = 1 },
-        { modifiers = { "Mod4" }, key = "3", action = "ViewTag", arg = 2 },
-        { modifiers = { "Mod4" }, key = "4", action = "ViewTag", arg = 3 },
-        { modifiers = { "Mod4" }, key = "5", action = "ViewTag", arg = 4 },
-        { modifiers = { "Mod4" }, key = "6", action = "ViewTag", arg = 5 },
-        { modifiers = { "Mod4" }, key = "7", action = "ViewTag", arg = 6 },
-        { modifiers = { "Mod4" }, key = "8", action = "ViewTag", arg = 7 },
-        { modifiers = { "Mod4" }, key = "9", action = "ViewTag", arg = 8 },
-        { modifiers = { "Mod4", "Shift" }, key = "1", action = "MoveToTag", arg = 0 },
-        { modifiers = { "Mod4", "Shift" }, key = "2", action = "MoveToTag", arg = 1 },
-        { modifiers = { "Mod4", "Shift" }, key = "3", action = "MoveToTag", arg = 2 },
-        { modifiers = { "Mod4", "Shift" }, key = "4", action = "MoveToTag", arg = 3 },
-        { modifiers = { "Mod4", "Shift" }, key = "5", action = "MoveToTag", arg = 4 },
-        { modifiers = { "Mod4", "Shift" }, key = "6", action = "MoveToTag", arg = 5 },
-        { modifiers = { "Mod4", "Shift" }, key = "7", action = "MoveToTag", arg = 6 },
-        { modifiers = { "Mod4", "Shift" }, key = "8", action = "MoveToTag", arg = 7 },
-        { modifiers = { "Mod4", "Shift" }, key = "9", action = "MoveToTag", arg = 8 },
-        { modifiers = { "Mod4", "Shift" }, key = "H", action = "SwapDirection", arg = 2 },
-        { modifiers = { "Mod4", "Shift" }, key = "J", action = "SwapDirection", arg = 1 },
-        { modifiers = { "Mod4", "Shift" }, key = "K", action = "SwapDirection", arg = 0 },
-        { modifiers = { "Mod4", "Shift" }, key = "L", action = "SwapDirection", arg = 3 },
-        {
-            keys = {
-                { modifiers = { "Mod4" }, key = "Space" },
-                { modifiers = {  }, key = "T" },
-            },
-            action = "Spawn",
-            arg = "st"
-        },
-    },
+-- Bar color schemes (for tag display)
+oxwm.bar.set_scheme_normal(colors.fg, colors.bg, "#444444")
+oxwm.bar.set_scheme_occupied(colors.cyan, colors.bg, colors.cyan)
+oxwm.bar.set_scheme_selected(colors.cyan, colors.bg, colors.purple)
 
-    -- Status bar blocks
-    status_blocks = {
-        {
-            format = "Ram: {used}/{total} GB",
-            command = "Ram",
-            interval_secs = 5,
-            color = colors.light_blue,
-            underline = true
-        },
-        {
-            format = " │  ",
-            command = "Static",
-            interval_secs = 999999999,
-            color = colors.lavender,
-            underline = false
-        },
-        {
-            format = "Kernel: {}",
-            command = "Shell",
-            command_arg = "uname -r",
-            interval_secs = 999999999,
-            color = colors.red,
-            underline = true
-        },
-        {
-            format = " │  ",
-            command = "Static",
-            interval_secs = 999999999,
-            color = colors.lavender,
-            underline = false
-        },
-        {
-            format = "{}",
-            command = "DateTime",
-            command_arg = "%a, %b %d - %-I:%M %P",
-            interval_secs = 1,
-            color = colors.cyan,
-            underline = true
-        },
-    },
+-- Keybindings
 
-    -- Color schemes for bar
-    scheme_normal = {
-        foreground = colors.fg,
-        background = colors.bg,
-        underline = "#444444"
-    },
-    scheme_occupied = {
-        foreground = colors.cyan,
-        background = colors.bg,
-        underline = colors.cyan
-    },
-    scheme_selected = {
-        foreground = colors.cyan,
-        background = colors.bg,
-        underline = colors.purple
-    },
+-- Basic window management
+oxwm.key.bind({ "Mod4" }, "Return", oxwm.spawn("st"))
+oxwm.key.bind({ "Mod4" }, "D", oxwm.spawn({ "sh", "-c", "dmenu_run -l 10" }))
+oxwm.key.bind({ "Mod4" }, "S", oxwm.spawn({ "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" }))
+oxwm.key.bind({ "Mod4" }, "Q", oxwm.client.kill())
 
-    -- Autostart commands
-    autostart = {  },
-}
+-- Keybind overlay
+oxwm.key.bind({ "Mod4", "Shift" }, "Slash", oxwm.show_keybinds())
+
+-- Client actions
+oxwm.key.bind({ "Mod4", "Shift" }, "F", oxwm.client.toggle_fullscreen())
+oxwm.key.bind({ "Mod4", "Shift" }, "Space", oxwm.client.toggle_floating())
+
+-- Layout management
+oxwm.key.bind({ "Mod4" }, "F", oxwm.layout.set("normie"))
+oxwm.key.bind({ "Mod4" }, "C", oxwm.layout.set("tiling"))
+oxwm.key.bind({ "Mod1" }, "N", oxwm.layout.cycle())
+
+-- Gaps toggle
+oxwm.key.bind({ "Mod4" }, "A", oxwm.toggle_gaps())
+
+-- WM controls
+oxwm.key.bind({ "Mod4", "Shift" }, "Q", oxwm.quit())
+oxwm.key.bind({ "Mod4", "Shift" }, "R", oxwm.restart())
+
+-- Focus direction (vim keys: h=left=2, j=down=1, k=up=0, l=right=3)
+oxwm.key.bind({ "Mod4" }, "H", oxwm.client.focus_direction("left"))
+oxwm.key.bind({ "Mod4" }, "J", oxwm.client.focus_direction("down"))
+oxwm.key.bind({ "Mod4" }, "K", oxwm.client.focus_direction("up"))
+oxwm.key.bind({ "Mod4" }, "L", oxwm.client.focus_direction("right"))
+
+-- Monitor focus
+oxwm.key.bind({ "Mod4" }, "Comma", oxwm.focus_monitor(-1))
+oxwm.key.bind({ "Mod4" }, "Period", oxwm.focus_monitor(1))
+
+-- Tag viewing
+oxwm.key.bind({ "Mod4" }, "1", oxwm.tag.view(0))
+oxwm.key.bind({ "Mod4" }, "2", oxwm.tag.view(1))
+oxwm.key.bind({ "Mod4" }, "3", oxwm.tag.view(2))
+oxwm.key.bind({ "Mod4" }, "4", oxwm.tag.view(3))
+oxwm.key.bind({ "Mod4" }, "5", oxwm.tag.view(4))
+oxwm.key.bind({ "Mod4" }, "6", oxwm.tag.view(5))
+oxwm.key.bind({ "Mod4" }, "7", oxwm.tag.view(6))
+oxwm.key.bind({ "Mod4" }, "8", oxwm.tag.view(7))
+oxwm.key.bind({ "Mod4" }, "9", oxwm.tag.view(8))
+
+-- Move window to tag
+oxwm.key.bind({ "Mod4", "Shift" }, "1", oxwm.tag.move_to(0))
+oxwm.key.bind({ "Mod4", "Shift" }, "2", oxwm.tag.move_to(1))
+oxwm.key.bind({ "Mod4", "Shift" }, "3", oxwm.tag.move_to(2))
+oxwm.key.bind({ "Mod4", "Shift" }, "4", oxwm.tag.move_to(3))
+oxwm.key.bind({ "Mod4", "Shift" }, "5", oxwm.tag.move_to(4))
+oxwm.key.bind({ "Mod4", "Shift" }, "6", oxwm.tag.move_to(5))
+oxwm.key.bind({ "Mod4", "Shift" }, "7", oxwm.tag.move_to(6))
+oxwm.key.bind({ "Mod4", "Shift" }, "8", oxwm.tag.move_to(7))
+oxwm.key.bind({ "Mod4", "Shift" }, "9", oxwm.tag.move_to(8))
+
+-- Swap windows in direction
+oxwm.key.bind({ "Mod4", "Shift" }, "H", oxwm.client.swap_direction("left"))
+oxwm.key.bind({ "Mod4", "Shift" }, "J", oxwm.client.swap_direction("down"))
+oxwm.key.bind({ "Mod4", "Shift" }, "K", oxwm.client.swap_direction("up"))
+oxwm.key.bind({ "Mod4", "Shift" }, "L", oxwm.client.swap_direction("right"))
+
+-- Keychord example: Mod4+Space then T to spawn terminal
+oxwm.key.chord({
+    { { "Mod4" }, "Space" },
+    { {},       "T" }
+}, oxwm.spawn("st"))
+
+-- Status bar blocks
+oxwm.bar.add_block("Ram: {used}/{total} GB", "Ram", nil, 5, colors.light_blue, true)
+oxwm.bar.add_block(" │  ", "Static", " │  ", 999999999, colors.lavender, false)
+oxwm.bar.add_block("Kernel: {}", "Shell", "uname -r", 999999999, colors.red, true)
+oxwm.bar.add_block(" │  ", "Static", " │  ", 999999999, colors.lavender, false)
+oxwm.bar.add_block("{}", "DateTime", "%a, %b %d - %-I:%M %P", 1, colors.cyan, true)
+
+-- Autostart commands (runs once at startup)
+-- oxwm.autostart("picom")
+-- oxwm.autostart("feh --bg-scale ~/wallpaper.jpg")

@@ -22,7 +22,6 @@ pub enum X11Error {
 
 #[derive(Debug)]
 pub enum ConfigError {
-    ParseError(ron::error::SpannedError),
     LuaError(String),
     InvalidModkey(String),
     UnknownKey(String),
@@ -30,10 +29,6 @@ pub enum ConfigError {
     UnknownBlockCommand(String),
     MissingCommandArg { command: String, field: String },
     ValidationError(String),
-    InvalidVariableName(String),
-    InvalidDefine(String),
-    UndefinedVariable(String),
-    MigrationError(String),
 }
 
 #[derive(Debug)]
@@ -78,7 +73,6 @@ impl std::error::Error for X11Error {}
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ParseError(err) => write!(f, "Failed to parse RON config: {}", err),
             Self::LuaError(msg) => write!(f, "Lua config error: {}", msg),
             Self::InvalidModkey(key) => write!(f, "Invalid modkey: {}", key),
             Self::UnknownKey(key) => write!(f, "Unknown key: {}", key),
@@ -88,24 +82,6 @@ impl std::fmt::Display for ConfigError {
                 write!(f, "{} command requires {}", command, field)
             }
             Self::ValidationError(msg) => write!(f, "Config validation error: {}", msg),
-            Self::InvalidVariableName(name) => {
-                write!(f, "Invalid variable name '{}': must start with $", name)
-            }
-            Self::InvalidDefine(line) => {
-                write!(
-                    f,
-                    "Invalid #DEFINE syntax: '{}'. Expected: #DEFINE $var_name = value",
-                    line
-                )
-            }
-            Self::UndefinedVariable(var) => {
-                write!(
-                    f,
-                    "Undefined variable '{}': define it with #DEFINE before use",
-                    var
-                )
-            }
-            Self::MigrationError(msg) => write!(f, "Migration error: {}", msg),
         }
     }
 }
@@ -159,12 +135,6 @@ impl From<io::Error> for BlockError {
 impl From<std::num::ParseIntError> for BlockError {
     fn from(value: std::num::ParseIntError) -> Self {
         BlockError::ParseInt(value)
-    }
-}
-
-impl From<ron::error::SpannedError> for ConfigError {
-    fn from(value: ron::error::SpannedError) -> Self {
-        ConfigError::ParseError(value)
     }
 }
 

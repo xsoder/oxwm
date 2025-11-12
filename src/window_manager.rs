@@ -254,32 +254,16 @@ impl WindowManager {
         };
 
         let lua_path = config_dir.join("config.lua");
-        let ron_path = config_dir.join("config.ron");
 
-        let config_path = if lua_path.exists() {
-            lua_path
-        } else if ron_path.exists() {
-            ron_path
-        } else {
-            return Err("No config file found".to_string());
-        };
+        if !lua_path.exists() {
+            return Err("No config.lua file found".to_string());
+        }
 
-        let config_str = std::fs::read_to_string(&config_path)
+        let config_str = std::fs::read_to_string(&lua_path)
             .map_err(|e| format!("Failed to read config: {}", e))?;
 
-        let is_lua = config_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s == "lua")
-            .unwrap_or(false);
-
-        let new_config = if is_lua {
-            let config_dir = config_path.parent();
-            crate::config::parse_lua_config(&config_str, config_dir)
-                .map_err(|e| format!("Config error: {}", e))?
-        } else {
-            crate::config::parse_config(&config_str).map_err(|e| format!("Config error: {}", e))?
-        };
+        let new_config = crate::config::parse_lua_config(&config_str, Some(&config_dir))
+            .map_err(|e| format!("Config error: {}", e))?;
 
         self.config = new_config;
         self.error_message = None;
