@@ -5,10 +5,11 @@
   xorg,
   freetype,
   fontconfig,
+  gitRev ? "unkown",
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "oxwm";
-  version = "0.6.0";
+  version = "${lib.substring 0 8 gitRev}";
 
   src = ./.;
 
