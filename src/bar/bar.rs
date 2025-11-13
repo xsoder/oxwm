@@ -347,4 +347,28 @@ impl Bar {
     pub fn needs_redraw(&self) -> bool {
         self.needs_redraw
     }
+
+    pub fn update_from_config(&mut self, config: &Config) {
+        self.blocks = config
+            .status_blocks
+            .iter()
+            .map(|block_config| block_config.to_block())
+            .collect();
+
+        self.block_underlines = config
+            .status_blocks
+            .iter()
+            .map(|block_config| block_config.underline)
+            .collect();
+
+        self.block_last_updates = vec![Instant::now(); self.blocks.len()];
+
+        self.tags = config.tags.clone();
+        self.scheme_normal = config.scheme_normal;
+        self.scheme_occupied = config.scheme_occupied;
+        self.scheme_selected = config.scheme_selected;
+
+        self.status_text.clear();
+        self.needs_redraw = true;
+    }
 }

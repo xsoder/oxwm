@@ -263,10 +263,15 @@ impl WindowManager {
             .map_err(|e| format!("Failed to read config: {}", e))?;
 
         let new_config = crate::config::parse_lua_config(&config_str, Some(&config_dir))
-            .map_err(|e| format!("Config error: {}", e))?;
+            .map_err(|e| format!("{}", e))?;
 
         self.config = new_config;
         self.error_message = None;
+
+        for bar in &mut self.bars {
+            bar.update_from_config(&self.config);
+        }
+
         Ok(())
     }
 
@@ -1773,16 +1778,20 @@ impl WindowManager {
                                     self.update_bar()?;
                                 }
                                 Err(err) => {
+                                    eprintln!("Config reload error: {}", err);
                                     self.error_message = Some(err.clone());
                                     let screen_width = self.screen.width_in_pixels;
                                     let screen_height = self.screen.height_in_pixels;
-                                    let _ = self.overlay.show_error(
+                                    match self.overlay.show_error(
                                         &self.connection,
                                         &self.font,
                                         &err,
                                         screen_width,
                                         screen_height,
-                                    );
+                                    ) {
+                                        Ok(()) => eprintln!("Error modal displayed"),
+                                        Err(e) => eprintln!("Failed to show error modal: {:?}", e),
+                                    }
                                 }
                             },
                             _ => self.handle_key_action(action, &arg)?,

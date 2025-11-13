@@ -73,15 +73,15 @@ impl std::error::Error for X11Error {}
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::LuaError(msg) => write!(f, "Lua config error: {}", msg),
-            Self::InvalidModkey(key) => write!(f, "Invalid modkey: {}", key),
-            Self::UnknownKey(key) => write!(f, "Unknown key: {}", key),
-            Self::UnknownAction(action) => write!(f, "Unknown action: {}", action),
-            Self::UnknownBlockCommand(cmd) => write!(f, "Unknown block command: {}", cmd),
+            Self::LuaError(msg) => write!(f, "{}", msg),
+            Self::InvalidModkey(msg) => write!(f, "{}", msg),
+            Self::UnknownKey(msg) => write!(f, "{}", msg),
+            Self::UnknownAction(msg) => write!(f, "{}", msg),
+            Self::UnknownBlockCommand(msg) => write!(f, "{}", msg),
             Self::MissingCommandArg { command, field } => {
                 write!(f, "{} command requires {}", command, field)
             }
-            Self::ValidationError(msg) => write!(f, "Config validation error: {}", msg),
+            Self::ValidationError(msg) => write!(f, "{}", msg),
         }
     }
 }

@@ -28,7 +28,7 @@ pub fn parse_lua_config(
 
     lua.load(input)
         .exec()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to execute Lua config: {}", e)))?;
+        .map_err(|e| ConfigError::LuaError(format!("{}", e)))?;
 
     let builder_data = builder.borrow().clone();
 
@@ -59,7 +59,7 @@ pub fn parse_lua_config(
     let config: Table = lua
         .load(input)
         .eval()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to execute Lua config: {}", e)))?;
+        .map_err(|e| ConfigError::LuaError(format!("{}", e)))?;
     let border_width: u32 = get_table_field(&config, "border_width")?;
     let border_focused: u32 = parse_color(&config, "border_focused")?;
     let border_unfocused: u32 = parse_color(&config, "border_unfocused")?;
