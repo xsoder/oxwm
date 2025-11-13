@@ -6,7 +6,9 @@
 ---Load type definitions for LSP
 ---@module 'oxwm'
 
--- Color palette
+
+-- Set variables as needed
+-- Colors
 local colors = {
     lavender = 0xa9b1d6,
     light_blue = 0x7aa2f7,
@@ -20,9 +22,11 @@ local colors = {
     blue = 0x6dade3,
 }
 
+local modkey = "Mod1";
+
 -- Basic settings
 oxwm.set_terminal("st")
-oxwm.set_modkey("Mod1")
+oxwm.set_modkey(modkey)
 oxwm.set_tags({ "1", "2", "3", "4", "5", "6", "7", "8", "9" })
 
 -- Layout symbol overrides
@@ -51,68 +55,68 @@ oxwm.bar.set_scheme_selected(colors.cyan, colors.bg, colors.purple)
 
 -- Keychord: Mod1+Space then T to spawn terminal
 oxwm.key.chord({
-    { { "Mod1" }, "Space" },
+    { { modkey }, "Space" },
     { {},         "T" }
 }, oxwm.spawn("st"))
 
 -- Basic window management
-oxwm.key.bind({ "Mod1" }, "Return", oxwm.spawn("st"))
-oxwm.key.bind({ "Mod1" }, "D", oxwm.spawn({ "sh", "-c", "dmenu_run -l 10" }))
-oxwm.key.bind({ "Mod1" }, "S", oxwm.spawn({ "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" }))
-oxwm.key.bind({ "Mod1" }, "Q", oxwm.client.kill())
+oxwm.key.bind({ modkey }, "Return", oxwm.spawn("st"))
+oxwm.key.bind({ modkey }, "D", oxwm.spawn({ "sh", "-c", "dmenu_run -l 10" }))
+oxwm.key.bind({ modkey }, "S", oxwm.spawn({ "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" }))
+oxwm.key.bind({ modkey }, "Q", oxwm.client.kill())
 
 -- Keybind overlay
-oxwm.key.bind({ "Mod1", "Shift" }, "Slash", oxwm.show_keybinds())
+oxwm.key.bind({ modkey, "Shift" }, "Slash", oxwm.show_keybinds())
 
 -- Client actions
-oxwm.key.bind({ "Mod1", "Shift" }, "F", oxwm.client.toggle_fullscreen())
-oxwm.key.bind({ "Mod1", "Shift" }, "Space", oxwm.client.toggle_floating())
+oxwm.key.bind({ modkey, "Shift" }, "F", oxwm.client.toggle_fullscreen())
+oxwm.key.bind({ modkey, "Shift" }, "Space", oxwm.client.toggle_floating())
 
 -- Layout management
-oxwm.key.bind({ "Mod1" }, "F", oxwm.layout.set("normie"))
-oxwm.key.bind({ "Mod1" }, "C", oxwm.layout.set("tiling"))
-oxwm.key.bind({ "Mod1" }, "N", oxwm.layout.cycle())
+oxwm.key.bind({ modkey }, "F", oxwm.layout.set("normie"))
+oxwm.key.bind({ modkey }, "C", oxwm.layout.set("tiling"))
+oxwm.key.bind({ modkey }, "N", oxwm.layout.cycle())
 
 -- Gaps toggle
-oxwm.key.bind({ "Mod1" }, "A", oxwm.toggle_gaps())
+oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps())
 
 -- WM controls
-oxwm.key.bind({ "Mod1", "Shift" }, "Q", oxwm.quit())
-oxwm.key.bind({ "Mod1", "Shift" }, "R", oxwm.restart())
+oxwm.key.bind({ modkey, "Shift" }, "Q", oxwm.quit())
+oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart())
 
 -- Focus direction (vim keys)
-oxwm.key.bind({ "Mod1" }, "H", oxwm.client.focus_direction("left"))
-oxwm.key.bind({ "Mod1" }, "J", oxwm.client.focus_direction("down"))
-oxwm.key.bind({ "Mod1" }, "K", oxwm.client.focus_direction("up"))
-oxwm.key.bind({ "Mod1" }, "L", oxwm.client.focus_direction("right"))
+oxwm.key.bind({ modkey }, "H", oxwm.client.focus_direction("left"))
+oxwm.key.bind({ modkey }, "J", oxwm.client.focus_direction("down"))
+oxwm.key.bind({ modkey }, "K", oxwm.client.focus_direction("up"))
+oxwm.key.bind({ modkey }, "L", oxwm.client.focus_direction("right"))
 
 -- Swap windows in direction
-oxwm.key.bind({ "Mod1", "Shift" }, "H", oxwm.client.swap_direction("left"))
-oxwm.key.bind({ "Mod1", "Shift" }, "J", oxwm.client.swap_direction("down"))
-oxwm.key.bind({ "Mod1", "Shift" }, "K", oxwm.client.swap_direction("up"))
-oxwm.key.bind({ "Mod1", "Shift" }, "L", oxwm.client.swap_direction("right"))
+oxwm.key.bind({ modkey, "Shift" }, "H", oxwm.client.swap_direction("left"))
+oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.swap_direction("down"))
+oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.swap_direction("up"))
+oxwm.key.bind({ modkey, "Shift" }, "L", oxwm.client.swap_direction("right"))
 
 -- Tag viewing
-oxwm.key.bind({ "Mod1" }, "1", oxwm.tag.view(0))
-oxwm.key.bind({ "Mod1" }, "2", oxwm.tag.view(1))
-oxwm.key.bind({ "Mod1" }, "3", oxwm.tag.view(2))
-oxwm.key.bind({ "Mod1" }, "4", oxwm.tag.view(3))
-oxwm.key.bind({ "Mod1" }, "5", oxwm.tag.view(4))
-oxwm.key.bind({ "Mod1" }, "6", oxwm.tag.view(5))
-oxwm.key.bind({ "Mod1" }, "7", oxwm.tag.view(6))
-oxwm.key.bind({ "Mod1" }, "8", oxwm.tag.view(7))
-oxwm.key.bind({ "Mod1" }, "9", oxwm.tag.view(8))
+oxwm.key.bind({ modkey }, "1", oxwm.tag.view(0))
+oxwm.key.bind({ modkey }, "2", oxwm.tag.view(1))
+oxwm.key.bind({ modkey }, "3", oxwm.tag.view(2))
+oxwm.key.bind({ modkey }, "4", oxwm.tag.view(3))
+oxwm.key.bind({ modkey }, "5", oxwm.tag.view(4))
+oxwm.key.bind({ modkey }, "6", oxwm.tag.view(5))
+oxwm.key.bind({ modkey }, "7", oxwm.tag.view(6))
+oxwm.key.bind({ modkey }, "8", oxwm.tag.view(7))
+oxwm.key.bind({ modkey }, "9", oxwm.tag.view(8))
 
 -- Move window to tag
-oxwm.key.bind({ "Mod1", "Shift" }, "1", oxwm.tag.move_to(0))
-oxwm.key.bind({ "Mod1", "Shift" }, "2", oxwm.tag.move_to(1))
-oxwm.key.bind({ "Mod1", "Shift" }, "3", oxwm.tag.move_to(2))
-oxwm.key.bind({ "Mod1", "Shift" }, "4", oxwm.tag.move_to(3))
-oxwm.key.bind({ "Mod1", "Shift" }, "5", oxwm.tag.move_to(4))
-oxwm.key.bind({ "Mod1", "Shift" }, "6", oxwm.tag.move_to(5))
-oxwm.key.bind({ "Mod1", "Shift" }, "7", oxwm.tag.move_to(6))
-oxwm.key.bind({ "Mod1", "Shift" }, "8", oxwm.tag.move_to(7))
-oxwm.key.bind({ "Mod1", "Shift" }, "9", oxwm.tag.move_to(8))
+oxwm.key.bind({ modkey, "Shift" }, "1", oxwm.tag.move_to(0))
+oxwm.key.bind({ modkey, "Shift" }, "2", oxwm.tag.move_to(1))
+oxwm.key.bind({ modkey, "Shift" }, "3", oxwm.tag.move_to(2))
+oxwm.key.bind({ modkey, "Shift" }, "4", oxwm.tag.move_to(3))
+oxwm.key.bind({ modkey, "Shift" }, "5", oxwm.tag.move_to(4))
+oxwm.key.bind({ modkey, "Shift" }, "6", oxwm.tag.move_to(5))
+oxwm.key.bind({ modkey, "Shift" }, "7", oxwm.tag.move_to(6))
+oxwm.key.bind({ modkey, "Shift" }, "8", oxwm.tag.move_to(7))
+oxwm.key.bind({ modkey, "Shift" }, "9", oxwm.tag.move_to(8))
 
 -- Status bar blocks
 oxwm.bar.add_block("", "Battery", {

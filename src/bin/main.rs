@@ -54,7 +54,6 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
         let lua_path = config_dir.join("config.lua");
 
         if !lua_path.exists() {
-            // Check if user had an old RON config
             let ron_path = config_dir.join("config.ron");
             let had_ron_config = ron_path.exists();
 
@@ -63,7 +62,7 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
             init_config()?;
 
             if had_ron_config {
-                println!("\n⚠️  NOTICE: OXWM has migrated to Lua configuration.");
+                println!("\n NOTICE: OXWM has migrated to Lua configuration.");
                 println!("   Your old config.ron has been preserved, but is no longer used.");
                 println!("   Your settings have been reset to defaults.");
                 println!("   Please manually port your configuration to the new Lua format.");
@@ -86,12 +85,10 @@ fn init_config() -> Result<()> {
     let config_dir = get_config_path();
     std::fs::create_dir_all(&config_dir)?;
 
-    // Copy config.lua template
     let config_template = include_str!("../../templates/config.lua");
     let config_path = config_dir.join("config.lua");
     std::fs::write(&config_path, config_template)?;
 
-    // Copy oxwm.lua API definitions for LSP support
     let oxwm_lua_template = include_str!("../../templates/oxwm.lua");
     let oxwm_lua_path = config_dir.join("oxwm.lua");
     std::fs::write(&oxwm_lua_path, oxwm_lua_template)?;

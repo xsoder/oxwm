@@ -55,8 +55,9 @@ impl ErrorOverlay {
         screen_width: u16,
         screen_height: u16,
     ) -> Result<(), X11Error> {
-        let max_line_width = (screen_width as i16 - PADDING * 4).max(300) as u16;
-        self.lines = self.wrap_text(error_text, font, max_line_width);
+        let max_line_width = (screen_width as i16 / 2 - PADDING * 4).max(300) as u16;
+        let error_with_instruction = format!("{}\n\nFix the config file and reload.", error_text);
+        self.lines = self.wrap_text(&error_with_instruction, font, max_line_width);
 
         let mut content_width = 0u16;
         for line in &self.lines {

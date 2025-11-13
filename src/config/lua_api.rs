@@ -363,7 +363,7 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
                     } else {
                         None
                     }
-                }).ok_or_else(|| mlua::Error::RuntimeError("DateTime requires format string".into()))?;
+                }).ok_or_else(|| mlua::Error::RuntimeError("oxwm.bar.add_block: DateTime command requires a format string as the third argument. example: oxwm.bar.add_block(\"\", \"DateTime\", \"%H:%M\", 60, 0xffffff, false)".into()))?;
                 BlockCommand::DateTime(fmt)
             }
             "Shell" => {
@@ -373,7 +373,7 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
                     } else {
                         None
                     }
-                }).ok_or_else(|| mlua::Error::RuntimeError("Shell requires command string".into()))?;
+                }).ok_or_else(|| mlua::Error::RuntimeError("oxwm.bar.add_block: Shell command requires a shell command string as the third argument. example: oxwm.bar.add_block(\"\", \"Shell\", \"date +%H:%M\", 60, 0xffffff, false)".into()))?;
                 BlockCommand::Shell(cmd_str)
             }
             "Ram" => BlockCommand::Ram,
@@ -394,7 +394,7 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
                     } else {
                         None
                     }
-                }).ok_or_else(|| mlua::Error::RuntimeError("Battery requires formats table".into()))?;
+                }).ok_or_else(|| mlua::Error::RuntimeError("oxwm.bar.add_block: Battery command requires a formats table as the third argument. example: {charging=\"CHR {percentage}%\", discharging=\"BAT {percentage}%\", full=\"FULL\"}".into()))?;
 
                 let charging: String = formats.get("charging")?;
                 let discharging: String = formats.get("discharging")?;
@@ -406,7 +406,7 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
                     format_full: full,
                 }
             }
-            _ => return Err(mlua::Error::RuntimeError(format!("Unknown block command: {}", command))),
+            _ => return Err(mlua::Error::RuntimeError(format!("oxwm.bar.add_block: unknown block command '{}'. valid commands: DateTime, Shell, Ram, Static, Battery", command))),
         };
 
         let color_u32 = parse_color_value(color)?;
@@ -572,7 +572,7 @@ fn parse_modifiers_value(_lua: &Lua, value: Value) -> mlua::Result<Vec<KeyButMas
             for i in 1..=t.len()? {
                 let mod_str: String = t.get(i)?;
                 let mask = parse_modkey_string(&mod_str)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("{}", e)))?;
+                    .map_err(|e| mlua::Error::RuntimeError(format!("oxwm.key.bind: invalid modifier - {}", e)))?;
                 mods.push(mask);
             }
             Ok(mods)
@@ -580,11 +580,11 @@ fn parse_modifiers_value(_lua: &Lua, value: Value) -> mlua::Result<Vec<KeyButMas
         Value::String(s) => {
             let s_str = s.to_str()?;
             let mask = parse_modkey_string(&s_str)
-                .map_err(|e| mlua::Error::RuntimeError(format!("{}", e)))?;
+                .map_err(|e| mlua::Error::RuntimeError(format!("oxwm.key.bind: invalid modifier - {}", e)))?;
             Ok(vec![mask])
         }
         _ => Err(mlua::Error::RuntimeError(
-            "modifiers must be string or table".into(),
+            "oxwm.key.bind: first argument must be a table of modifiers like {\"Mod4\"} or {\"Mod4\", \"Shift\"}".into(),
         )),
     }
 }
@@ -598,19 +598,23 @@ fn parse_modkey_string(s: &str) -> Result<KeyButMask, ConfigError> {
         "Mod5" => Ok(KeyButMask::MOD5),
         "Shift" => Ok(KeyButMask::SHIFT),
         "Control" => Ok(KeyButMask::CONTROL),
-        _ => Err(ConfigError::InvalidModkey(s.to_string())),
+        _ => Err(ConfigError::InvalidModkey(format!("'{}' is not a valid modifier. Use one of: Mod1, Mod4, Shift, Control", s))),
     }
 }
 
 fn parse_keysym(key: &str) -> mlua::Result<Keysym> {
     keysyms::keysym_from_str(key)
-        .ok_or_else(|| mlua::Error::RuntimeError(format!("Unknown key: {}", key)))
+        .ok_or_else(|| mlua::Error::RuntimeError(format!("unknown key '{}'. valid keys include: Return, Space, A-Z, 0-9, F1-F12, Left, Right, Up, Down, etc. check oxwm.lua type definitions for the complete list", key)))
 }
 
 fn parse_action_value(_lua: &Lua, value: Value) -> mlua::Result<(KeyAction, Arg)> {
     match value {
+        Value::Function(_) => {
+            Err(mlua::Error::RuntimeError(
+                "action must be a function call, not a function reference. did you forget ()? example: oxwm.spawn('st') not oxwm.spawn".into()
+            ))
+        }
         Value::Table(t) => {
-            // Check if this table has our action metadata
             if let Ok(action_name) = t.get::<String>("__action") {
                 let action = string_to_action(&action_name)?;
                 let arg = if let Ok(arg_val) = t.get::<Value>("__arg") {
@@ -622,11 +626,11 @@ fn parse_action_value(_lua: &Lua, value: Value) -> mlua::Result<(KeyAction, Arg)
             }
 
             Err(mlua::Error::RuntimeError(
-                "action table missing __action field".into(),
+                "action must be a table returned by oxwm functions like oxwm.spawn(), oxwm.client.kill(), oxwm.quit(), etc.".into(),
             ))
         }
         _ => Err(mlua::Error::RuntimeError(
-            "action must be a table returned by oxwm actions".into(),
+            "action must be a table returned by oxwm functions like oxwm.spawn(), oxwm.client.kill(), oxwm.quit(), etc.".into(),
         )),
     }
 }
@@ -652,7 +656,7 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "SmartMoveWin" => Ok(KeyAction::SmartMoveWin),
         "ExchangeClient" => Ok(KeyAction::ExchangeClient),
         "ShowKeybindOverlay" => Ok(KeyAction::ShowKeybindOverlay),
-        _ => Err(mlua::Error::RuntimeError(format!("Unknown action: {}", s))),
+        _ => Err(mlua::Error::RuntimeError(format!("unknown action '{}'. this is an internal error, please report it", s))),
     }
 }
 
@@ -688,7 +692,7 @@ fn direction_string_to_int(dir: &str) -> mlua::Result<i64> {
         "left" => Ok(2),
         "right" => Ok(3),
         _ => Err(mlua::Error::RuntimeError(
-            format!("Invalid direction '{}', must be one of: up, down, left, right", dir)
+            format!("invalid direction '{}'. must be one of: up, down, left, right", dir)
         )),
     }
 }
@@ -701,17 +705,17 @@ fn parse_color_value(value: Value) -> mlua::Result<u32> {
             let s = s.to_str()?;
             if s.starts_with('#') {
                 u32::from_str_radix(&s[1..], 16)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("Invalid hex color: {}", e)))
+                    .map_err(|e| mlua::Error::RuntimeError(format!("invalid hex color '{}': {}. use format like #ff0000 or 0xff0000", s, e)))
             } else if s.starts_with("0x") {
                 u32::from_str_radix(&s[2..], 16)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("Invalid hex color: {}", e)))
+                    .map_err(|e| mlua::Error::RuntimeError(format!("invalid hex color '{}': {}. use format like 0xff0000 or #ff0000", s, e)))
             } else {
                 s.parse::<u32>()
-                    .map_err(|e| mlua::Error::RuntimeError(format!("Invalid color: {}", e)))
+                    .map_err(|e| mlua::Error::RuntimeError(format!("invalid color '{}': {}. use hex format like 0xff0000 or #ff0000", s, e)))
             }
         }
         _ => Err(mlua::Error::RuntimeError(
-            "color must be number or string".into(),
+            "color must be a number (0xff0000) or string ('#ff0000' or '0xff0000')".into(),
         )),
     }
 }
