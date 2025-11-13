@@ -3,7 +3,7 @@
 -- OXWM Configuration File
 -------------------------------------------------------------------------------
 -- This is the default configuration for OXWM, a dynamic window manager.
--- Edit this file and reload with Mod+Shift+R (no compilation needed!)
+-- Edit this file and reload with Mod+Shift+R (no compilation needed)
 --
 -- For more information about configuring OXWM, see the documentation.
 -- The Lua Language Server provides autocomplete and type checking.
@@ -21,8 +21,8 @@
 -- Modifier key: "Mod4" is the Super/Windows key, "Mod1" is Alt
 local modkey = "Mod4"
 
--- Terminal emulator command
-local terminal = "st"
+-- Terminal emulator command (defualts to alacritty)
+local terminal = "alacritty"
 
 -- Color palette - customize these to match your theme
 local colors = {
@@ -48,7 +48,7 @@ local bar_font = "monospace:style=Bold:size=10"
 -- Basic Settings
 -------------------------------------------------------------------------------
 oxwm.set_terminal(terminal)
-oxwm.set_modkey(modkey)
+oxwm.set_modkey(modkey) -- This is for Mod + mouse binds, such as drag/resize
 oxwm.set_tags(tags)
 
 -------------------------------------------------------------------------------
@@ -63,14 +63,14 @@ oxwm.set_layout_symbol("normie", "[F]")
 -- Appearance
 -------------------------------------------------------------------------------
 -- Border configuration
-oxwm.border.set_width(2)                        -- Width in pixels
-oxwm.border.set_focused_color(colors.blue)      -- Color of focused window border
-oxwm.border.set_unfocused_color(colors.grey)    -- Color of unfocused window borders
+oxwm.border.set_width(2)                     -- Width in pixels
+oxwm.border.set_focused_color(colors.blue)   -- Color of focused window border
+oxwm.border.set_unfocused_color(colors.grey) -- Color of unfocused window borders
 
 -- Gap configuration (space between windows and screen edges)
-oxwm.gaps.set_enabled(true)                     -- Enable or disable gaps
-oxwm.gaps.set_inner(5, 5)                       -- Inner gaps (horizontal, vertical) in pixels
-oxwm.gaps.set_outer(5, 5)                       -- Outer gaps (horizontal, vertical) in pixels
+oxwm.gaps.set_enabled(true) -- Enable or disable gaps
+oxwm.gaps.set_inner(5, 5)   -- Inner gaps (horizontal, vertical) in pixels
+oxwm.gaps.set_outer(5, 5)   -- Outer gaps (horizontal, vertical) in pixels
 
 -------------------------------------------------------------------------------
 -- Status Bar Configuration
@@ -80,8 +80,8 @@ oxwm.bar.set_font(bar_font)
 
 -- Bar color schemes (for workspace tag display)
 -- Parameters: foreground, background, border
-oxwm.bar.set_scheme_normal(colors.fg, colors.bg, "#444444")        -- Unoccupied tags
-oxwm.bar.set_scheme_occupied(colors.cyan, colors.bg, colors.cyan)  -- Occupied tags
+oxwm.bar.set_scheme_normal(colors.fg, colors.bg, "#444444")         -- Unoccupied tags
+oxwm.bar.set_scheme_occupied(colors.cyan, colors.bg, colors.cyan)   -- Occupied tags
 oxwm.bar.set_scheme_selected(colors.cyan, colors.bg, colors.purple) -- Currently selected tag
 
 -------------------------------------------------------------------------------
@@ -96,39 +96,39 @@ oxwm.bar.set_scheme_selected(colors.cyan, colors.bg, colors.purple) -- Currently
 -- Common keys: Return, Space, Tab, Escape, Backspace, Delete, Left, Right, Up, Down
 
 -- Basic window management
-oxwm.key.bind({ modkey }, "Return", oxwm.spawn(terminal))                          -- Spawn terminal
-oxwm.key.bind({ modkey }, "D", oxwm.spawn({ "sh", "-c", "dmenu_run -l 10" }))     -- Application launcher
-oxwm.key.bind({ modkey }, "S", oxwm.spawn({ "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" }))  -- Screenshot selection
-oxwm.key.bind({ modkey }, "Q", oxwm.client.kill())                                 -- Close focused window
+oxwm.key.bind({ modkey }, "Return", oxwm.spawn(terminal))                                                       -- Spawn terminal
+oxwm.key.bind({ modkey }, "D", oxwm.spawn({ "sh", "-c", "dmenu_run -l 10" }))                                   -- Application launcher
+oxwm.key.bind({ modkey }, "S", oxwm.spawn({ "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" })) -- Screenshot selection
+oxwm.key.bind({ modkey }, "Q", oxwm.client.kill())                                                              -- Close focused window
 
 -- Keybind overlay - Shows important keybindings on screen
 oxwm.key.bind({ modkey, "Shift" }, "Slash", oxwm.show_keybinds())
 
 -- Window state toggles
-oxwm.key.bind({ modkey, "Shift" }, "F", oxwm.client.toggle_fullscreen())           -- Toggle fullscreen
-oxwm.key.bind({ modkey, "Shift" }, "Space", oxwm.client.toggle_floating())         -- Toggle floating mode
+oxwm.key.bind({ modkey, "Shift" }, "F", oxwm.client.toggle_fullscreen())   -- Toggle fullscreen
+oxwm.key.bind({ modkey, "Shift" }, "Space", oxwm.client.toggle_floating()) -- Toggle floating mode
 
 -- Layout management
-oxwm.key.bind({ modkey }, "F", oxwm.layout.set("normie"))                          -- Set floating layout
-oxwm.key.bind({ modkey }, "C", oxwm.layout.set("tiling"))                          -- Set tiling layout
-oxwm.key.bind({ "Mod1" }, "N", oxwm.layout.cycle())                                -- Cycle through layouts
+oxwm.key.bind({ modkey }, "F", oxwm.layout.set("normie")) -- Set floating layout
+oxwm.key.bind({ modkey }, "C", oxwm.layout.set("tiling")) -- Set tiling layout
+oxwm.key.bind({ modkey }, "N", oxwm.layout.cycle())       -- Cycle through layouts
 
 -- Gaps toggle
-oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps())                                 -- Toggle gaps on/off
+oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps()) -- Toggle gaps on/off
 
 -- Window manager controls
-oxwm.key.bind({ modkey, "Shift" }, "Q", oxwm.quit())                               -- Quit OXWM
-oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart())                            -- Restart OXWM (reloads config)
+oxwm.key.bind({ modkey, "Shift" }, "Q", oxwm.quit())    -- Quit OXWM
+oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart()) -- Restart OXWM (reloads config)
 
 -- Focus movement (vim keys)
-oxwm.key.bind({ modkey }, "H", oxwm.client.focus_direction("left"))                -- Focus window to the left
-oxwm.key.bind({ modkey }, "J", oxwm.client.focus_direction("down"))                -- Focus window below
-oxwm.key.bind({ modkey }, "K", oxwm.client.focus_direction("up"))                  -- Focus window above
-oxwm.key.bind({ modkey }, "L", oxwm.client.focus_direction("right"))               -- Focus window to the right
+oxwm.key.bind({ modkey }, "H", oxwm.client.focus_direction("left"))  -- Focus window to the left
+oxwm.key.bind({ modkey }, "J", oxwm.client.focus_direction("down"))  -- Focus window below
+oxwm.key.bind({ modkey }, "K", oxwm.client.focus_direction("up"))    -- Focus window above
+oxwm.key.bind({ modkey }, "L", oxwm.client.focus_direction("right")) -- Focus window to the right
 
 -- Multi-monitor support
-oxwm.key.bind({ modkey }, "Comma", oxwm.focus_monitor(-1))                         -- Focus previous monitor
-oxwm.key.bind({ modkey }, "Period", oxwm.focus_monitor(1))                         -- Focus next monitor
+oxwm.key.bind({ modkey }, "Comma", oxwm.focus_monitor(-1)) -- Focus previous monitor
+oxwm.key.bind({ modkey }, "Period", oxwm.focus_monitor(1)) -- Focus next monitor
 
 -- Workspace (tag) navigation
 -- Switch to workspace N (tags are 0-indexed, so tag "1" is index 0)
@@ -154,10 +154,10 @@ oxwm.key.bind({ modkey, "Shift" }, "8", oxwm.tag.move_to(7))
 oxwm.key.bind({ modkey, "Shift" }, "9", oxwm.tag.move_to(8))
 
 -- Swap windows in direction (vim keys with Shift)
-oxwm.key.bind({ modkey, "Shift" }, "H", oxwm.client.swap_direction("left"))        -- Swap with window to the left
-oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.swap_direction("down"))        -- Swap with window below
-oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.swap_direction("up"))          -- Swap with window above
-oxwm.key.bind({ modkey, "Shift" }, "L", oxwm.client.swap_direction("right"))       -- Swap with window to the right
+oxwm.key.bind({ modkey, "Shift" }, "H", oxwm.client.swap_direction("left"))  -- Swap with window to the left
+oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.swap_direction("down"))  -- Swap with window below
+oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.swap_direction("up"))    -- Swap with window above
+oxwm.key.bind({ modkey, "Shift" }, "L", oxwm.client.swap_direction("right")) -- Swap with window to the right
 
 -------------------------------------------------------------------------------
 -- Advanced: Keychords
@@ -183,9 +183,9 @@ oxwm.key.chord({
 --   separator: Whether to add space after this block
 
 oxwm.bar.add_block("Ram: {used}/{total} GB", "Ram", nil, 5, colors.light_blue, true)
-oxwm.bar.add_block(" │  ", "Static", " │  ", 999999999, colors.lavender, false)
+oxwm.bar.add_block(" │  ", "Static", "", 999999999, colors.lavender, false)
 oxwm.bar.add_block("Kernel: {}", "Shell", "uname -r", 999999999, colors.red, true)
-oxwm.bar.add_block(" │  ", "Static", " │  ", 999999999, colors.lavender, false)
+oxwm.bar.add_block(" │  ", "Static", "", 999999999, colors.lavender, false)
 oxwm.bar.add_block("{}", "DateTime", "%a, %b %d - %-I:%M %P", 1, colors.cyan, true)
 
 -- Uncomment to add battery status (useful for laptops)
