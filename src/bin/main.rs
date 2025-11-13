@@ -30,9 +30,14 @@ fn main() -> Result<()> {
         _ => {}
     }
 
-    let config = load_config(custom_config_path)?;
+    let (config, had_broken_config) = load_config(custom_config_path)?;
 
     let mut wm = oxwm::window_manager::WindowManager::new(config)?;
+
+    if had_broken_config {
+        wm.show_migration_overlay();
+    }
+
     let should_restart = wm.run()?;
 
     drop(wm);
@@ -46,7 +51,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
+fn load_config(custom_path: Option<PathBuf>) -> Result<(oxwm::Config, bool)> {
     let config_path = if let Some(path) = custom_path {
         path
     } else {
@@ -77,8 +82,16 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<oxwm::Config> {
         std::fs::read_to_string(&config_path).with_context(|| "Failed to read config file")?;
 
     let config_dir = config_path.parent();
-    oxwm::config::parse_lua_config(&config_str, config_dir)
-        .with_context(|| "Failed to parse Lua config")
+
+    match oxwm::config::parse_lua_config(&config_str, config_dir) {
+        Ok(config) => Ok((config, false)),
+        Err(_) => {
+            let template = include_str!("../../templates/config.lua");
+            let config = oxwm::config::parse_lua_config(template, None)
+                .with_context(|| "Failed to parse default template config")?;
+            Ok((config, true))
+        }
+    }
 }
 
 fn init_config() -> Result<()> {
