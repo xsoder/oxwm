@@ -244,6 +244,26 @@ impl WindowManager {
         Ok(tag_mask(0))
     }
 
+    pub fn show_migration_overlay(&mut self) {
+        let message = "Your config.lua uses legacy syntax or has errors.\n\n\
+                       You are now running with default configuration.\n\n\
+                       Press Mod+Shift+/ to see default keybinds\n\
+                       Press Mod+Shift+R to reload after fixing your config";
+
+        let screen_width = self.screen.width_in_pixels;
+        let screen_height = self.screen.height_in_pixels;
+
+        if let Err(e) = self.overlay.show_error(
+            &self.connection,
+            &self.font,
+            message,
+            screen_width,
+            screen_height,
+        ) {
+            eprintln!("Failed to show migration overlay: {:?}", e);
+        }
+    }
+
     fn try_reload_config(&mut self) -> Result<(), String> {
         let config_dir = if let Some(xdg_config) = std::env::var_os("XDG_CONFIG_HOME") {
             std::path::PathBuf::from(xdg_config).join("oxwm")
@@ -425,10 +445,6 @@ impl WindowManager {
 
             if self.bars.iter().any(|bar| bar.needs_redraw()) {
                 self.update_bar()?;
-            }
-
-            if self.overlay.is_visible() && self.overlay.should_auto_dismiss() {
-                let _ = self.overlay.hide(&self.connection);
             }
 
             std::thread::sleep(std::time::Duration::from_millis(100));
