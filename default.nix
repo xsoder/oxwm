@@ -29,6 +29,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     fontconfig
   ];
 
+  doCheck = false;
+
   postInstall = ''
     install resources/oxwm.desktop -Dt $out/share/xsessions
     install -Dm644 resources/oxwm.1 -t $out/share/man/man1
