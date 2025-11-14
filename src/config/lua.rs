@@ -369,6 +369,7 @@ fn string_to_key_action(s: &str) -> Result<KeyAction, ConfigError> {
         "ViewTag" => KeyAction::ViewTag,
         "ToggleGaps" => KeyAction::ToggleGaps,
         "ToggleFullScreen" => KeyAction::ToggleFullScreen,
+        "ToggleWindowFullscreen" => KeyAction::ToggleWindowFullscreen,
         "ToggleFloating" => KeyAction::ToggleFloating,
         "ChangeLayout" => KeyAction::ChangeLayout,
         "CycleLayout" => KeyAction::CycleLayout,

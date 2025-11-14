@@ -22,6 +22,7 @@ pub enum KeyAction {
     ViewTag,
     ToggleGaps,
     ToggleFullScreen,
+    ToggleWindowFullscreen,
     ToggleFloating,
     ChangeLayout,
     CycleLayout,

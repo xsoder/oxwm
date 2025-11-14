@@ -25,6 +25,10 @@ struct AtomCache {
     net_current_desktop: Atom,
     net_client_info: Atom,
     wm_state: Atom,
+    wm_protocols: Atom,
+    wm_delete_window: Atom,
+    net_wm_state: Atom,
+    net_wm_state_fullscreen: Atom,
 }
 
 impl AtomCache {
@@ -41,10 +45,34 @@ impl AtomCache {
 
         let wm_state = connection.intern_atom(false, b"WM_STATE")?.reply()?.atom;
 
+        let wm_protocols = connection
+            .intern_atom(false, b"WM_PROTOCOLS")?
+            .reply()?
+            .atom;
+
+        let wm_delete_window = connection
+            .intern_atom(false, b"WM_DELETE_WINDOW")?
+            .reply()?
+            .atom;
+
+        let net_wm_state = connection
+            .intern_atom(false, b"_NET_WM_STATE")?
+            .reply()?
+            .atom;
+
+        let net_wm_state_fullscreen = connection
+            .intern_atom(false, b"_NET_WM_STATE_FULLSCREEN")?
+            .reply()?
+            .atom;
+
         Ok(Self {
             net_current_desktop,
             net_client_info,
             wm_state,
+            wm_protocols,
+            wm_delete_window,
+            net_wm_state,
+            net_wm_state_fullscreen,
         })
     }
 }
@@ -62,6 +90,7 @@ pub struct WindowManager {
     window_geometries: std::collections::HashMap<Window, (i16, i16, u16, u16)>,
     gaps_enabled: bool,
     floating_windows: HashSet<Window>,
+    fullscreen_windows: HashSet<Window>,
     bars: Vec<Bar>,
     monitors: Vec<Monitor>,
     selected_monitor: usize,
@@ -185,6 +214,7 @@ impl WindowManager {
             window_geometries: std::collections::HashMap::new(),
             gaps_enabled,
             floating_windows: HashSet::new(),
+            fullscreen_windows: HashSet::new(),
             bars,
             monitors,
             selected_monitor: 0,
@@ -932,18 +962,43 @@ impl WindowManager {
                     .get(self.selected_monitor)
                     .and_then(|m| m.focused_window)
                 {
-                    match self.connection.kill_client(focused) {
-                        Ok(_) => {
-                            self.connection.flush()?;
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to kill window {}: {}", focused, e);
-                        }
-                    }
+                    self.kill_client(focused)?;
                 }
             }
             KeyAction::ToggleFullScreen => {
-                self.toggle_fullscreen()?;
+                // Smart fullscreen:
+                // - In normie (floating) layout: always fullscreen the focused window
+                // - With explicitly floating window: fullscreen that window
+                // - Otherwise: do monitor-level fullscreen (hide bar)
+                let is_normie_layout = self.layout.name() == "normie";
+
+                if let Some(focused) = self
+                    .monitors
+                    .get(self.selected_monitor)
+                    .and_then(|m| m.focused_window)
+                {
+                    if is_normie_layout || self.floating_windows.contains(&focused) {
+                        // In floating layout or window is floating - do per-window fullscreen
+                        let is_fullscreen = self.fullscreen_windows.contains(&focused);
+                        self.set_window_fullscreen(focused, !is_fullscreen)?;
+                    } else {
+                        // Window is tiled - do monitor fullscreen
+                        self.toggle_fullscreen()?;
+                    }
+                } else {
+                    // No focused window - do monitor fullscreen
+                    self.toggle_fullscreen()?;
+                }
+            }
+            KeyAction::ToggleWindowFullscreen => {
+                if let Some(focused) = self
+                    .monitors
+                    .get(self.selected_monitor)
+                    .and_then(|m| m.focused_window)
+                {
+                    let is_fullscreen = self.fullscreen_windows.contains(&focused);
+                    self.set_window_fullscreen(focused, !is_fullscreen)?;
+                }
             }
             KeyAction::ChangeLayout => {
                 if let Arg::Str(layout_name) = arg {
@@ -1463,6 +1518,147 @@ impl WindowManager {
         Ok(())
     }
 
+    fn kill_client(&self, window: Window) -> WmResult<()> {
+        // Try to send WM_DELETE_WINDOW message first (graceful close)
+        if self.send_event(window, self.atoms.wm_delete_window)? {
+            // Window supports WM_DELETE_WINDOW, it will close gracefully
+            self.connection.flush()?;
+        } else {
+            // Window doesn't support WM_DELETE_WINDOW, forcefully kill it
+            eprintln!("Window {} doesn't support WM_DELETE_WINDOW, killing forcefully", window);
+            self.connection.kill_client(window)?;
+            self.connection.flush()?;
+        }
+        Ok(())
+    }
+
+    fn send_event(&self, window: Window, protocol: Atom) -> WmResult<bool> {
+        // Check if the window supports this protocol
+        let protocols_reply = self.connection.get_property(
+            false,
+            window,
+            self.atoms.wm_protocols,
+            AtomEnum::ATOM,
+            0,
+            100,
+        )?.reply();
+
+        let protocols_reply = match protocols_reply {
+            Ok(reply) => reply,
+            Err(_) => return Ok(false),
+        };
+
+        let protocols: Vec<Atom> = protocols_reply
+            .value
+            .chunks_exact(4)
+            .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+
+        if !protocols.contains(&protocol) {
+            return Ok(false);
+        }
+
+        // Send a ClientMessage event
+        let event = x11rb::protocol::xproto::ClientMessageEvent {
+            response_type: x11rb::protocol::xproto::CLIENT_MESSAGE_EVENT,
+            format: 32,
+            sequence: 0,
+            window,
+            type_: self.atoms.wm_protocols,
+            data: x11rb::protocol::xproto::ClientMessageData::from([protocol, x11rb::CURRENT_TIME, 0, 0, 0]),
+        };
+
+        self.connection.send_event(
+            false,
+            window,
+            EventMask::NO_EVENT,
+            event,
+        )?;
+        self.connection.flush()?;
+        Ok(true)
+    }
+
+    fn set_window_fullscreen(&mut self, window: Window, fullscreen: bool) -> WmResult<()> {
+        if fullscreen && !self.fullscreen_windows.contains(&window) {
+            // Save current geometry before fullscreen
+            if let Ok(geom) = self.connection.get_geometry(window)?.reply() {
+                self.window_geometries.insert(window, (geom.x, geom.y, geom.width, geom.height));
+            }
+
+            // Set the _NET_WM_STATE property to fullscreen
+            self.connection.change_property(
+                PropMode::REPLACE,
+                window,
+                self.atoms.net_wm_state,
+                AtomEnum::ATOM,
+                32,
+                1,
+                &self.atoms.net_wm_state_fullscreen.to_ne_bytes(),
+            )?;
+
+            self.fullscreen_windows.insert(window);
+            self.floating_windows.insert(window);
+
+            // Get monitor dimensions
+            let window_mon = self.window_monitor.get(&window).copied().unwrap_or(self.selected_monitor);
+            let monitor = &self.monitors[window_mon];
+
+            // Make window fullscreen across the entire monitor
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(monitor.x)
+                    .y(monitor.y)
+                    .width(monitor.width)
+                    .height(monitor.height)
+                    .border_width(0)
+                    .stack_mode(StackMode::ABOVE),
+            )?;
+
+            self.connection.flush()?;
+        } else if !fullscreen && self.fullscreen_windows.contains(&window) {
+            // Clear the _NET_WM_STATE property
+            self.connection.delete_property(window, self.atoms.net_wm_state)?;
+
+            self.fullscreen_windows.remove(&window);
+
+            // Restore saved geometry
+            if let Some((x, y, width, height)) = self.window_geometries.get(&window) {
+                self.connection.configure_window(
+                    window,
+                    &ConfigureWindowAux::new()
+                        .x(*x as i32)
+                        .y(*y as i32)
+                        .width(*width as u32)
+                        .height(*height as u32)
+                        .border_width(self.config.border_width),
+                )?;
+            }
+
+            self.apply_layout()?;
+            self.connection.flush()?;
+        }
+        Ok(())
+    }
+
+    fn is_transient_window(&self, window: Window) -> bool {
+        // Check if window is transient (e.g., dialog, modal)
+        let transient_for = self.connection
+            .get_property(
+                false,
+                window,
+                AtomEnum::WM_TRANSIENT_FOR,
+                AtomEnum::WINDOW,
+                0,
+                1,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .filter(|reply| !reply.value.is_empty());
+
+        transient_for.is_some()
+    }
+
     pub fn set_focus(&mut self, window: Window) -> WmResult<()> {
         let old_focused = self.previous_focused;
 
@@ -1707,7 +1903,7 @@ impl WindowManager {
                 self.connection.map_window(event.window)?;
                 self.connection.change_window_attributes(
                     event.window,
-                    &ChangeWindowAttributesAux::new().event_mask(EventMask::ENTER_WINDOW),
+                    &ChangeWindowAttributesAux::new().event_mask(EventMask::ENTER_WINDOW | EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE),
                 )?;
 
                 let selected_tags = self
@@ -1723,9 +1919,36 @@ impl WindowManager {
                 self.set_wm_state(event.window, 1)?;
                 let _ = self.save_client_tag(event.window, selected_tags);
 
+                // Auto-float transient windows (e.g., dialogs, modals)
+                if self.is_transient_window(event.window) {
+                    self.floating_windows.insert(event.window);
+                }
+
                 self.apply_layout()?;
                 self.update_bar()?;
                 self.set_focus(event.window)?;
+            }
+            Event::ClientMessage(event) => {
+                // Handle _NET_WM_STATE fullscreen requests from clients
+                if event.type_ == self.atoms.net_wm_state {
+                    let data = event.data.as_data32();
+                    let action = data[0];  // 0 = remove, 1 = add, 2 = toggle
+                    let property1 = data[1];
+                    let property2 = data[2];
+
+                    if property1 == self.atoms.net_wm_state_fullscreen || property2 == self.atoms.net_wm_state_fullscreen {
+                        if self.windows.contains(&event.window) {
+                            let is_fullscreen = self.fullscreen_windows.contains(&event.window);
+                            let should_fullscreen = match action {
+                                0 => false,  // Remove
+                                1 => true,   // Add
+                                2 => !is_fullscreen,  // Toggle
+                                _ => is_fullscreen,
+                            };
+                            self.set_window_fullscreen(event.window, should_fullscreen)?;
+                        }
+                    }
+                }
             }
             Event::UnmapNotify(event) => {
                 if self.windows.contains(&event.window) && self.is_window_visible(event.window) {
@@ -1964,6 +2187,7 @@ impl WindowManager {
         self.window_monitor.remove(&window);
         self.window_geometries.remove(&window);
         self.floating_windows.remove(&window);
+        self.fullscreen_windows.remove(&window);
 
         if self.windows.len() < initial_count {
             let focused = self
