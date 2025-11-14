@@ -30,7 +30,7 @@
 - [[#license][License]]
 
 * OXWM — DWM but Better (and oxidized)
-A dynamic window manager written in Rust, inspired by dwm but designed to evolve on its own. Configuration is done in Rust source code, ditching the suckless philosophy of *"edit + recompile."*, and instead focusing on lowering friction for users, with sane defaults and no arbitrary elitism enforcing bad variable names and bad file structure topology.
+A dynamic window manager written in Rust, inspired by dwm but designed to evolve beyond it. OXWM features a clean, functional Lua API for configuration with hot-reloading support, ditching the suckless philosophy of *"edit + recompile"*. Instead, we focus on lowering friction for users with sane defaults, LSP-powered autocomplete, and instant configuration changes without restarting your X session.
 
 * Installation
 ** NixOS (with Flakes)
@@ -154,27 +154,62 @@ startx
 If using a display manager (LightDM, GDM, SDDM), OXWM should appear in the session list after installation.
 
 * Configuration
-OXWM was inspired by dwm, but ditched the suckless philosophy. This philosophy quite literally discourages users from using the software for the sake of 'elitism'. I find that quite nonsensical, so I went ahead and created this project to be user friendly. The configuration is done by editing =~/.config/oxwm/config.lua= and the binary can be reloaded with a hotkey (Super+Shift+R by default).
+OXWM uses a clean, functional Lua API for configuration. On first run, a default config is automatically created at =~/.config/oxwm/config.lua=.
 
+** Quick Example
+Here's what the new functional API looks like:
+
+#+begin_src lua
+-- Set basic options
+oxwm.set_terminal("st")
+oxwm.set_modkey("Mod4")
+oxwm.set_tags({ "1", "2", "3", "4", "5", "6", "7", "8", "9" })
+
+-- Configure borders
+oxwm.border.set_width(2)
+oxwm.border.set_focused_color("#6dade3")
+oxwm.border.set_unfocused_color("#bbbbbb")
+
+-- Configure gaps
+oxwm.gaps.set_enabled(true)
+oxwm.gaps.set_inner(5, 5)  -- horizontal, vertical
+oxwm.gaps.set_outer(5, 5)
+
+-- Set up keybindings
+oxwm.key.bind({ "Mod4" }, "Return", oxwm.spawn("st"))
+oxwm.key.bind({ "Mod4" }, "Q", oxwm.client.kill())
+oxwm.key.bind({ "Mod4", "Shift" }, "Q", oxwm.quit())
+
+-- Add status bar blocks
+oxwm.bar.add_block("{}", "DateTime", "%H:%M", 60, "#0db9d7", true)
+oxwm.bar.add_block("RAM: {used}/{total} GB", "Ram", nil, 5, "#7aa2f7", true)
+#+end_src
+
+** Features
+- *Hot-reload*: Changes take effect immediately with =Mod+Shift+R= (no X restart needed)
+- *LSP Support*: Full autocomplete and type hints for the API (=oxwm.lua= definitions included)
+- *Functional API*: Clean, discoverable functions instead of nested tables
+- *No compilation*: Edit and reload instantly
+
+** Key Configuration Areas
 Edit =~/.config/oxwm/config.lua= to customize:
-- Keybindings
-- Colors and appearance
-- Status bar blocks
-- Gaps and borders
-- Terminal and applications
+- Basic settings (terminal, modkey, tags)
+- Borders and colors
+- Window gaps
+- Status bar (font, blocks, color schemes)
+- Keybindings and keychords
+- Layout symbols
+- Autostart commands
 
 After making changes, reload OXWM with =Mod+Shift+R=
 
-** Migrating from RON
-If you have an old RON config (=config.ron=), use the migration tool to automatically convert it:
-
+** Creating Your Config
+Generate the default config:
 #+begin_src sh
-oxwm --migrate
-# Or specify a path:
-oxwm --migrate ~/.config/oxwm/config.ron
+oxwm --init
 #+end_src
 
-This will convert your =config.ron= to =config.lua=, preserving all your settings. Your old config will remain intact for backup. 
+Or just start OXWM - it will create one automatically on first run. 
 
 * Contributing
 When contributing to OXWM:
@@ -236,9 +271,13 @@ DISPLAY=:1 cargo run
 * Project Structure
 #+begin_src sh
 src/
-├── main.rs
-│   └── main()
-│       └── Creates WindowManager and calls .run()
+├── bin/
+│   └── main.rs                          [Entry point - handles CLI args, config loading, WM init]
+│       ├── main()                       [Parse args, load config, start WM]
+│       ├── load_config()                [Lua config loading with auto-init]
+│       └── init_config()                [Create default config.lua + oxwm.lua]
+│
+├── lib.rs                               [Library exports]
 │
 ├── window_manager.rs                    [CORE - X11 event handling]
 │   ├── struct WindowManager
@@ -248,42 +287,28 @@ src/
 │   │   ├── layout: Box<dyn Layout>
 │   │   ├── window_tags: HashMap<Window, TagMask>
 │   │   ├── selected_tags: TagMask
-│   │   └── bar: Bar                     [Status bar]
+│   │   └── bars: Vec<Bar>               [Status bars (multi-monitor)]
 │   │
 │   ├── new()                            [Initialize WM, grab root, restore tags, scan windows]
 │   ├── run()                            [Main event loop with block updates]
 │   ├── handle_event()                   [Route X11 events]
-│   │   ├── MapRequest    → add window, apply layout, update bar, save tag
-│   │   ├── UnmapNotify   → remove window, update bar
-│   │   ├── DestroyNotify → remove window, update bar
-│   │   ├── KeyPress      → get action, handle it (includes Restart)
-│   │   ├── ButtonPress   → handle bar clicks
-│   │   └── Expose        → redraw bar
-│   ├── handle_key_action()              [Execute keyboard actions]
-│   ├── get_saved_selected_tags()        [Restore selected tags from _NET_CURRENT_DESKTOP]
-│   ├── save_selected_tags()             [Persist selected tags to root window]
-│   ├── get_saved_tag()                  [Restore window tag from _NET_CLIENT_INFO]
-│   ├── save_client_tag()                [Persist window tag to window property]
-│   ├── scan_existing_windows()          [Manage windows on startup]
-│   ├── remove_window()                  [Remove from Vec, reapply layout]
-│   ├── set_focus()                      [Focus window, update visuals]
-│   ├── cycle_focus()                    [Move focus to next/prev window]
-│   ├── view_tag()                       [Switch to tag/workspace, update visibility]
-│   ├── move_to_tag()                    [Move window to tag]
-│   ├── update_bar()                     [Calculate occupied tags, redraw bar]
-│   ├── update_focus_visuals()           [Set border colors]
-│   ├── update_window_visibility()       [Map/unmap windows based on tags]
-│   └── apply_layout()                   [Position all windows below bar]
+│   ├── try_reload_config()              [Hot-reload Lua config]
+│   └── ...                              [Window/tag/focus management]
 │
-├── config.rs                            [CONFIGURATION - all settings here]
-│   ├── BORDER_WIDTH, BORDER_FOCUSED, BORDER_UNFOCUSED
-│   ├── FONT                             [XFT font string]
-│   ├── TAG_COUNT, TAGS                  [Workspace configuration]
-│   ├── TERMINAL, MODKEY
-│   ├── ColorScheme                      [Foreground, background, border colors]
-│   ├── SCHEME_NORMAL, SCHEME_OCCUPIED, SCHEME_SELECTED
-│   ├── KEYBINDINGS                      [All keybinds as const array]
-│   └── STATUS_BLOCKS                    [Block configurations with format, command, interval]
+├── config/
+│   ├── mod.rs                           [Config module exports]
+│   ├── lua.rs                           [Lua config parser - loads and executes config.lua]
+│   └── lua_api.rs                       [Functional Lua API implementation]
+│       ├── register_api()               [Set up oxwm.* functions in Lua]
+│       ├── register_spawn()             [oxwm.spawn()]
+│       ├── register_key_module()        [oxwm.key.bind(), oxwm.key.chord()]
+│       ├── register_gaps_module()       [oxwm.gaps.*]
+│       ├── register_border_module()     [oxwm.border.*]
+│       ├── register_client_module()     [oxwm.client.*]
+│       ├── register_layout_module()     [oxwm.layout.*]
+│       ├── register_tag_module()        [oxwm.tag.*]
+│       ├── register_bar_module()        [oxwm.bar.*]
+│       └── register_misc()              [oxwm.set_terminal(), etc.]
 │
 ├── bar/
 │   ├── mod.rs                           [Re-exports: Bar, BlockCommand, BlockConfig]
@@ -292,35 +317,46 @@ src/
 │   │   ├── new()                        [Create bar X11 window, load font, init blocks]
 │   │   ├── draw()                       [Render tags + blocks with underlines]
 │   │   ├── update_blocks()              [Update block content based on intervals]
-│   │   ├── handle_click()               [Detect which tag was clicked]
-│   │   └── invalidate()                 [Mark bar as needing redraw]
+│   │   └── handle_click()               [Detect which tag was clicked]
 │   ├── font.rs
 │   │   ├── struct Font                  [XFT font wrapper]
-│   │   ├── struct FontDraw              [XFT drawing context]
 │   │   └── draw_text()                  [Render text with color]
 │   └── blocks/
 │       ├── mod.rs                       [Block trait, BlockConfig, BlockCommand enum]
 │       ├── battery.rs                   [Battery status block]
 │       ├── datetime.rs                  [Date/time formatting block]
-│       └── shell.rs                     [Shell command execution block]
+│       ├── ram.rs                       [RAM usage block]
+│       ├── shell.rs                     [Shell command execution block]
+│       └── static.rs                    [Static text block]
 │
 ├── keyboard/
 │   ├── mod.rs                           [Re-exports]
-│   ├── keycodes.rs                      [Key constants: Q, J, RETURN, etc]
+│   ├── keysyms.rs                       [X11 keysym constants]
 │   └── handlers.rs
-│       ├── enum KeyAction               [Spawn, KillClient, FocusStack, ViewTag, Restart, etc]
-│       ├── enum Arg                     [None, Int, Str, Array]
-│       ├── struct Key                   [Keybinding definition]
-│       ├── setup_keybinds()             [Register keys with X11]
-│       └── handle_key_press()           [Parse KeyPressEvent → KeyAction]
+│       ├── enum KeyAction               [All keyboard actions]
+│       ├── enum Arg                     [Action arguments]
+│       ├── struct KeyBinding            [Keybinding + keychord support]
+│       └── struct KeyPress              [Individual key press in chord]
 │
-└── layout/
-    ├── mod.rs                           [Layout trait definition]
-    └── tiling.rs
-        └── TilingLayout::arrange()      [Calculate window positions]
+├── layout/
+│   ├── mod.rs                           [Layout trait definition]
+│   └── tiling.rs                        [Tiling layout implementation]
+│
+└── errors.rs                            [Error types: WmError, ConfigError, etc.]
+
+templates/
+├── config.lua                           [Default config with functional API]
+└── oxwm.lua                             [LSP type definitions for autocomplete]
 #+end_src
 
 * Architecture Notes
+** Lua Configuration System
+OXWM uses mlua to embed a Lua interpreter. The functional API is implemented in =src/config/lua_api.rs=:
+- Each API function (e.g., =oxwm.border.set_width()=) is registered as a Lua function
+- Functions modify a shared ConfigBuilder that accumulates settings
+- When config execution completes, the builder produces the final Config struct
+- Type definitions in =templates/oxwm.lua= provide LSP autocomplete and documentation
+
 ** Tag System
 Tags are implemented as bitmasks (TagMask = u32), allowing windows to belong to multiple tags simultaneously. Each window has an associated TagMask stored in a HashMap. Tags persist across WM restarts using X11 properties (_NET_CURRENT_DESKTOP for selected tags, _NET_CLIENT_INFO for per-window tags).
 
@@ -330,6 +366,7 @@ The bar uses a performance-optimized approach with a modular block system:
 - Pre-calculates tag widths on creation
 - Blocks update independently based on their configured intervals
 - Supports custom colors and underline indicators
+- Color schemes (normal/occupied/selected) control tag appearance
 - Easily extensible - add new block types in src/bar/blocks/
 
 ** Layout System
@@ -345,24 +382,17 @@ The tiling layout divides the screen into a master area (left half) and stack ar
   - Fullscreen state should be maintained when switching tags
   - Window should remain fullscreen when returning to its tag
 
-** PRIORITY Medium [1/4]
+** PRIORITY Medium [2/4]
 - [ ] Add keybindings to increase/decrease window size
   - Master area resize (Mod+H / Mod+L)
   - Individual window resize for floating windows
-- [ ] Keychords:
-  - Desired Behaviour:
-#+begin_src rust
-// Keychord: Mod+f, then f (same key twice)
-(keys: [
-    (modifiers: [Mod], key: F),
-    (modifiers: [], key: F),
-], action: Spawn, arg: "repos-dmenu.sh"),
-
-#+end_src
+- [X] Keychords
+  - Implemented with =oxwm.key.chord()= in the functional API
+  - Example: =oxwm.key.chord({ { {"Mod4"}, "Space" }, { {}, "T" } }, oxwm.spawn("st"))=
 - [X] Fix cursor on hover for bar
   - Bar should show pointer cursor on hover
   - Indicate clickable tag areas
-- [ ] Add guess_terminal() function to default config.rs
+- [ ] Add auto-detect terminal to default config
   - Auto-detect available terminal emulator
   - Priority order: st → alacritty → kitty → wezterm → xterm
   - Fallback to xterm if none found

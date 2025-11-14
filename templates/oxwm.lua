@@ -1,0 +1,213 @@
+---@meta
+
+---OXWM Configuration API
+---@class oxwm
+oxwm = {}
+
+---Spawn a command
+---@param cmd string|string[] Command to spawn (string or array of strings)
+---@return table Action table for keybinding
+function oxwm.spawn(cmd) end
+
+---Set the terminal emulator
+---@param terminal string Terminal command (e.g., "st", "alacritty")
+function oxwm.set_terminal(terminal) end
+
+---Set the modifier key
+---@param modkey string Modifier key ("Mod1", "Mod4", "Shift", "Control")
+function oxwm.set_modkey(modkey) end
+
+---Set workspace tags
+---@param tags string[] Array of tag names
+function oxwm.set_tags(tags) end
+
+---Set layout symbol override
+---@param name string Layout name (e.g., "tiling", "normie")
+---@param symbol string Symbol to display (e.g., "[T]", "[F]")
+function oxwm.set_layout_symbol(name, symbol) end
+
+---Quit the window manager
+---@return table Action table for keybinding
+function oxwm.quit() end
+
+---Restart the window manager
+---@return table Action table for keybinding
+function oxwm.restart() end
+
+---Recompile the window manager
+---@return table Action table for keybinding
+function oxwm.recompile() end
+
+---Toggle gaps on/off
+---@return table Action table for keybinding
+function oxwm.toggle_gaps() end
+
+---Show keybind overlay
+---@return table Action table for keybinding
+function oxwm.show_keybinds() end
+
+---Focus monitor by index
+---@param index integer Monitor index (-1 for previous, 1 for next)
+---@return table Action table for keybinding
+function oxwm.focus_monitor(index) end
+
+---Keybinding module
+---@class oxwm.key
+oxwm.key = {}
+
+---Bind a key combination to an action
+---@param modifiers string|string[] Modifier keys (e.g., {"Mod4"}, {"Mod4", "Shift"})
+---@param key string Key name (e.g., "Return", "Q", "1")
+---@param action table Action returned by oxwm functions
+function oxwm.key.bind(modifiers, key, action) end
+
+---Bind a keychord (multi-key sequence) to an action
+---@param keys table[] Array of key presses, each: {{modifiers}, key}
+---@param action table Action returned by oxwm functions
+function oxwm.key.chord(keys, action) end
+
+---Gap configuration module
+---@class oxwm.gaps
+oxwm.gaps = {}
+
+---Set gaps enabled/disabled
+---@param enabled boolean Enable or disable gaps
+function oxwm.gaps.set_enabled(enabled) end
+
+---Enable gaps
+function oxwm.gaps.enable() end
+
+---Disable gaps
+function oxwm.gaps.disable() end
+
+---Set inner gaps
+---@param horizontal integer Horizontal inner gap in pixels
+---@param vertical integer Vertical inner gap in pixels
+function oxwm.gaps.set_inner(horizontal, vertical) end
+
+---Set outer gaps
+---@param horizontal integer Horizontal outer gap in pixels
+---@param vertical integer Vertical outer gap in pixels
+function oxwm.gaps.set_outer(horizontal, vertical) end
+
+---Border configuration module
+---@class oxwm.border
+oxwm.border = {}
+
+---Set border width
+---@param width integer Border width in pixels
+function oxwm.border.set_width(width) end
+
+---Set focused window border color
+---@param color string|integer Color as hex string ("#ff0000", "0xff0000") or integer
+function oxwm.border.set_focused_color(color) end
+
+---Set unfocused window border color
+---@param color string|integer Color as hex string ("#666666", "0x666666") or integer
+function oxwm.border.set_unfocused_color(color) end
+
+---Client/window management module
+---@class oxwm.client
+oxwm.client = {}
+
+---Kill the focused window
+---@return table Action table for keybinding
+function oxwm.client.kill() end
+
+---Toggle fullscreen mode
+---@return table Action table for keybinding
+function oxwm.client.toggle_fullscreen() end
+
+---Toggle floating mode
+---@return table Action table for keybinding
+function oxwm.client.toggle_floating() end
+
+---Focus window in direction
+---@param direction "up"|"down"|"left"|"right" Direction to focus
+---@return table Action table for keybinding
+function oxwm.client.focus_direction(direction) end
+
+---Swap window in direction
+---@param direction "up"|"down"|"left"|"right" Direction to swap
+---@return table Action table for keybinding
+function oxwm.client.swap_direction(direction) end
+
+---Smart move window (move or swap)
+---@param direction "up"|"down"|"left"|"right" Direction to move
+---@return table Action table for keybinding
+function oxwm.client.smart_move(direction) end
+
+---Focus stack (next/previous window)
+---@param dir integer Direction (1 for next, -1 for previous)
+---@return table Action table for keybinding
+function oxwm.client.focus_stack(dir) end
+
+---Exchange client positions
+---@return table Action table for keybinding
+function oxwm.client.exchange() end
+
+---Layout management module
+---@class oxwm.layout
+oxwm.layout = {}
+
+---Cycle through layouts
+---@return table Action table for keybinding
+function oxwm.layout.cycle() end
+
+---Set specific layout
+---@param name string Layout name (e.g., "tiling", "normie")
+---@return table Action table for keybinding
+function oxwm.layout.set(name) end
+
+---Tag/workspace management module
+---@class oxwm.tag
+oxwm.tag = {}
+
+---View/switch to tag
+---@param index integer Tag index (0-based)
+---@return table Action table for keybinding
+function oxwm.tag.view(index) end
+
+---Move focused window to tag
+---@param index integer Tag index (0-based)
+---@return table Action table for keybinding
+function oxwm.tag.move_to(index) end
+
+---Status bar configuration module
+---@class oxwm.bar
+oxwm.bar = {}
+
+---Set status bar font
+---@param font string Font string (e.g., "monospace:style=Bold:size=10")
+function oxwm.bar.set_font(font) end
+
+---Add a status bar block
+---@param format string Format string with {} placeholders
+---@param command "DateTime"|"Shell"|"Ram"|"Static"|"Battery" Block command type
+---@param arg string|table|nil Command argument (format for DateTime, command for Shell, text for Static, formats table for Battery, nil for Ram)
+---@param interval integer Update interval in seconds
+---@param color string|integer Color as hex string or integer
+---@param underline boolean Whether to underline the block
+function oxwm.bar.add_block(format, command, arg, interval, color, underline) end
+
+---Set normal tag color scheme (unselected, no windows)
+---@param foreground string|integer Foreground color
+---@param background string|integer Background color
+---@param underline string|integer Underline color
+function oxwm.bar.set_scheme_normal(foreground, background, underline) end
+
+---Set occupied tag color scheme (unselected, has windows)
+---@param foreground string|integer Foreground color
+---@param background string|integer Background color
+---@param underline string|integer Underline color
+function oxwm.bar.set_scheme_occupied(foreground, background, underline) end
+
+---Set selected tag color scheme (currently selected tag)
+---@param foreground string|integer Foreground color
+---@param background string|integer Background color
+---@param underline string|integer Underline color
+function oxwm.bar.set_scheme_selected(foreground, background, underline) end
+
+---Add an autostart command
+---@param cmd string Command to run at startup
+function oxwm.autostart(cmd) end

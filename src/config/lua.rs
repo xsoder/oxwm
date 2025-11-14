@@ -7,6 +7,8 @@ use crate::{ColorScheme, LayoutSymbolOverride};
 use mlua::{Lua, Table, Value};
 use x11rb::protocol::xproto::KeyButMask;
 
+use super::lua_api;
+
 pub fn parse_lua_config(
     input: &str,
     config_dir: Option<&std::path::Path>,
@@ -22,10 +24,42 @@ pub fn parse_lua_config(
         }
     }
 
+    let builder = lua_api::register_api(&lua)?;
+
+    lua.load(input)
+        .exec()
+        .map_err(|e| ConfigError::LuaError(format!("{}", e)))?;
+
+    let builder_data = builder.borrow().clone();
+
+    return Ok(crate::Config {
+        border_width: builder_data.border_width,
+        border_focused: builder_data.border_focused,
+        border_unfocused: builder_data.border_unfocused,
+        font: builder_data.font,
+        gaps_enabled: builder_data.gaps_enabled,
+        gap_inner_horizontal: builder_data.gap_inner_horizontal,
+        gap_inner_vertical: builder_data.gap_inner_vertical,
+        gap_outer_horizontal: builder_data.gap_outer_horizontal,
+        gap_outer_vertical: builder_data.gap_outer_vertical,
+        terminal: builder_data.terminal,
+        modkey: builder_data.modkey,
+        tags: builder_data.tags,
+        layout_symbols: builder_data.layout_symbols,
+        keybindings: builder_data.keybindings,
+        status_blocks: builder_data.status_blocks,
+        scheme_normal: builder_data.scheme_normal,
+        scheme_occupied: builder_data.scheme_occupied,
+        scheme_selected: builder_data.scheme_selected,
+        autostart: builder_data.autostart,
+    });
+
+    #[allow(unreachable_code)]
+    {
     let config: Table = lua
         .load(input)
         .eval()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to execute Lua config: {}", e)))?;
+        .map_err(|e| ConfigError::LuaError(format!("{}", e)))?;
     let border_width: u32 = get_table_field(&config, "border_width")?;
     let border_focused: u32 = parse_color(&config, "border_focused")?;
     let border_unfocused: u32 = parse_color(&config, "border_unfocused")?;
@@ -72,6 +106,7 @@ pub fn parse_lua_config(
         scheme_selected,
         autostart,
     })
+    }
 }
 
 fn get_table_field<T>(table: &Table, field: &str) -> Result<T, ConfigError>

@@ -1,7 +1,6 @@
 use super::{Overlay, OverlayBase};
 use crate::bar::font::Font;
 use crate::errors::X11Error;
-use std::time::Instant;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
@@ -10,11 +9,9 @@ const PADDING: i16 = 20;
 const LINE_SPACING: i16 = 5;
 const BORDER_WIDTH: u16 = 2;
 const BORDER_COLOR: u32 = 0xff5555;
-const AUTO_DISMISS_SECONDS: u64 = 10;
 
 pub struct ErrorOverlay {
     base: OverlayBase,
-    created_at: Option<Instant>,
     lines: Vec<String>,
 }
 
@@ -42,7 +39,6 @@ impl ErrorOverlay {
 
         Ok(ErrorOverlay {
             base,
-            created_at: None,
             lines: Vec::new(),
         })
     }
@@ -55,8 +51,9 @@ impl ErrorOverlay {
         screen_width: u16,
         screen_height: u16,
     ) -> Result<(), X11Error> {
-        let max_line_width = (screen_width as i16 - PADDING * 4).max(300) as u16;
-        self.lines = self.wrap_text(error_text, font, max_line_width);
+        let max_line_width = (screen_width as i16 / 2 - PADDING * 4).max(300) as u16;
+        let error_with_instruction = format!("{}\n\nFix the config file and reload.", error_text);
+        self.lines = self.wrap_text(&error_with_instruction, font, max_line_width);
 
         let mut content_width = 0u16;
         for line in &self.lines {
@@ -75,17 +72,8 @@ impl ErrorOverlay {
 
         self.base.configure(connection, x, y, width, height)?;
         self.base.show(connection)?;
-        self.created_at = Some(Instant::now());
         self.draw(connection, font)?;
         Ok(())
-    }
-
-    pub fn should_auto_dismiss(&self) -> bool {
-        if let Some(created_at) = self.created_at {
-            created_at.elapsed().as_secs() >= AUTO_DISMISS_SECONDS
-        } else {
-            false
-        }
     }
 
     fn wrap_text(&self, text: &str, font: &Font, max_width: u16) -> Vec<String> {
@@ -133,7 +121,6 @@ impl Overlay for ErrorOverlay {
 
     fn hide(&mut self, connection: &RustConnection) -> Result<(), X11Error> {
         self.base.hide(connection)?;
-        self.created_at = None;
         self.lines.clear();
         Ok(())
     }
