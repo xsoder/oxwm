@@ -244,6 +244,26 @@ impl WindowManager {
         Ok(tag_mask(0))
     }
 
+    pub fn show_migration_overlay(&mut self) {
+        let message = "Your config.lua uses legacy syntax or has errors.\n\n\
+                       You are now running with default configuration.\n\n\
+                       Press Mod+Shift+/ to see default keybinds\n\
+                       Press Mod+Shift+R to reload after fixing your config";
+
+        let screen_width = self.screen.width_in_pixels;
+        let screen_height = self.screen.height_in_pixels;
+
+        if let Err(e) = self.overlay.show_error(
+            &self.connection,
+            &self.font,
+            message,
+            screen_width,
+            screen_height,
+        ) {
+            eprintln!("Failed to show migration overlay: {:?}", e);
+        }
+    }
+
     fn try_reload_config(&mut self) -> Result<(), String> {
         let config_dir = if let Some(xdg_config) = std::env::var_os("XDG_CONFIG_HOME") {
             std::path::PathBuf::from(xdg_config).join("oxwm")
@@ -254,35 +274,24 @@ impl WindowManager {
         };
 
         let lua_path = config_dir.join("config.lua");
-        let ron_path = config_dir.join("config.ron");
 
-        let config_path = if lua_path.exists() {
-            lua_path
-        } else if ron_path.exists() {
-            ron_path
-        } else {
-            return Err("No config file found".to_string());
-        };
+        if !lua_path.exists() {
+            return Err("No config.lua file found".to_string());
+        }
 
-        let config_str = std::fs::read_to_string(&config_path)
+        let config_str = std::fs::read_to_string(&lua_path)
             .map_err(|e| format!("Failed to read config: {}", e))?;
 
-        let is_lua = config_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s == "lua")
-            .unwrap_or(false);
-
-        let new_config = if is_lua {
-            let config_dir = config_path.parent();
-            crate::config::parse_lua_config(&config_str, config_dir)
-                .map_err(|e| format!("Config error: {}", e))?
-        } else {
-            crate::config::parse_config(&config_str).map_err(|e| format!("Config error: {}", e))?
-        };
+        let new_config = crate::config::parse_lua_config(&config_str, Some(&config_dir))
+            .map_err(|e| format!("{}", e))?;
 
         self.config = new_config;
         self.error_message = None;
+
+        for bar in &mut self.bars {
+            bar.update_from_config(&self.config);
+        }
+
         Ok(())
     }
 
@@ -436,10 +445,6 @@ impl WindowManager {
 
             if self.bars.iter().any(|bar| bar.needs_redraw()) {
                 self.update_bar()?;
-            }
-
-            if self.overlay.is_visible() && self.overlay.should_auto_dismiss() {
-                let _ = self.overlay.hide(&self.connection);
             }
 
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1789,16 +1794,20 @@ impl WindowManager {
                                     self.update_bar()?;
                                 }
                                 Err(err) => {
+                                    eprintln!("Config reload error: {}", err);
                                     self.error_message = Some(err.clone());
                                     let screen_width = self.screen.width_in_pixels;
                                     let screen_height = self.screen.height_in_pixels;
-                                    let _ = self.overlay.show_error(
+                                    match self.overlay.show_error(
                                         &self.connection,
                                         &self.font,
                                         &err,
                                         screen_width,
                                         screen_height,
-                                    );
+                                    ) {
+                                        Ok(()) => eprintln!("Error modal displayed"),
+                                        Err(e) => eprintln!("Failed to show error modal: {:?}", e),
+                                    }
                                 }
                             },
                             _ => self.handle_key_action(action, &arg)?,

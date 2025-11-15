@@ -1,180 +1,137 @@
--- OXWM Configuration File (Lua)
--- Migrated from config.ron
--- Edit this file and reload with Mod+Shift+R (no compilation needed!)
+---@meta
+---OXWM Test Configuration File (Lua)
+---Using the new functional API
+---Edit this file and reload with Mod+Alt+R
 
-local terminal = "st"
-local modkey = "Mod4"
+---Load type definitions for LSP
+---@module 'oxwm'
 
--- Color palette
+
+-- Set variables as needed
+-- Colors
 local colors = {
-    lavender = "#a9b1d6",
-    light_blue = "#7aa2f7",
-    grey = "#bbbbbb",
-    purple = "#ad8ee6",
-    cyan = "#0db9d7",
-    bg = "#1a1b26",
-    green = "#9ece6a",
-    red = "#f7768e",
-    fg = "#bbbbbb",
-    blue = "#6dade3",
+    lavender = 0xa9b1d6,
+    light_blue = 0x7aa2f7,
+    grey = 0xbbbbbb,
+    purple = 0xad8ee6,
+    cyan = 0x0db9d7,
+    bg = 0x1a1b26,
+    green = 0x9ece6a,
+    red = 0xf7768e,
+    fg = 0xbbbbbb,
+    blue = 0x6dade3,
 }
 
--- Main configuration table
-return {
-    -- Appearance
-    border_width = 2,
-    border_focused = colors.blue,
-    border_unfocused = colors.grey,
-    font = "JetBrainsMono Nerd Font:style=Bold:size=12",
+local modkey = "Mod1";
 
-    -- Window gaps
-    gaps_enabled = true,
-    gap_inner_horizontal = 5,
-    gap_inner_vertical = 5,
-    gap_outer_horizontal = 5,
-    gap_outer_vertical = 5,
+-- Basic settings
+oxwm.set_terminal("st")
+oxwm.set_modkey(modkey)
+oxwm.set_tags({ "1", "2", "3", "4", "5", "6", "7", "8", "9" })
 
-    -- Basics
-    modkey = "Mod1",
-    terminal = "st",
+-- Layout symbol overrides
+oxwm.set_layout_symbol("tiling", "[T]")
+oxwm.set_layout_symbol("normie", "[F]")
 
-    -- Workspace tags
-    tags = { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
+-- Border configuration
+oxwm.border.set_width(2)
+oxwm.border.set_focused_color(colors.blue)
+oxwm.border.set_unfocused_color(colors.grey)
 
-    -- Layout symbol overrides
-    layout_symbols = {
-        { name = "tiling", symbol = "[T]" },
-        { name = "normie", symbol = "[F]" },
-    },
+-- Gap configuration
+oxwm.gaps.set_enabled(true)
+oxwm.gaps.set_inner(5, 5)
+oxwm.gaps.set_outer(5, 5)
 
-    -- Keybindings
-    keybindings = {
-        {
-            keys = {
-                { modifiers = { "Mod1" }, key = "Space" },
-                { modifiers = {  }, key = "T" },
-            },
-            action = "Spawn",
-            arg = "st"
-        },
-        { modifiers = { "Mod1" }, key = "Return", action = "Spawn", arg = "st" },
-        { modifiers = { "Mod1" }, key = "D", action = "Spawn", arg = { "sh", "-c", "dmenu_run -l 10" } },
-        { modifiers = { "Mod1" }, key = "S", action = "Spawn", arg = { "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" } },
-        { modifiers = { "Mod1" }, key = "Q", action = "KillClient" },
-        { modifiers = { "Mod1", "Shift" }, key = "Slash", action = "ShowKeybindOverlay" },
-        { modifiers = { "Mod1", "Shift" }, key = "F", action = "ToggleFullScreen" },
-        { modifiers = { "Mod1", "Shift" }, key = "Space", action = "ToggleFloating" },
-        { modifiers = { "Mod1" }, key = "F", action = "ChangeLayout", arg = "normie" },
-        { modifiers = { "Mod1" }, key = "C", action = "ChangeLayout", arg = "tiling" },
-        { modifiers = { "Mod1" }, key = "N", action = "CycleLayout" },
-        { modifiers = { "Mod1" }, key = "A", action = "ToggleGaps" },
-        { modifiers = { "Mod1", "Shift" }, key = "Q", action = "Quit" },
-        { modifiers = { "Mod1", "Shift" }, key = "R", action = "Restart" },
-        { modifiers = { "Mod1" }, key = "H", action = "FocusDirection", arg = 2 },
-        { modifiers = { "Mod1" }, key = "J", action = "FocusDirection", arg = 1 },
-        { modifiers = { "Mod1" }, key = "K", action = "FocusDirection", arg = 0 },
-        { modifiers = { "Mod1" }, key = "L", action = "FocusDirection", arg = 3 },
-        { modifiers = { "Mod1", "Shift" }, key = "H", action = "SwapDirection", arg = 2 },
-        { modifiers = { "Mod1", "Shift" }, key = "J", action = "SwapDirection", arg = 1 },
-        { modifiers = { "Mod1", "Shift" }, key = "K", action = "SwapDirection", arg = 0 },
-        { modifiers = { "Mod1", "Shift" }, key = "L", action = "SwapDirection", arg = 3 },
-        { modifiers = { "Mod1" }, key = "1", action = "ViewTag", arg = 0 },
-        { modifiers = { "Mod1" }, key = "2", action = "ViewTag", arg = 1 },
-        { modifiers = { "Mod1" }, key = "3", action = "ViewTag", arg = 2 },
-        { modifiers = { "Mod1" }, key = "4", action = "ViewTag", arg = 3 },
-        { modifiers = { "Mod1" }, key = "5", action = "ViewTag", arg = 4 },
-        { modifiers = { "Mod1" }, key = "6", action = "ViewTag", arg = 5 },
-        { modifiers = { "Mod1" }, key = "7", action = "ViewTag", arg = 6 },
-        { modifiers = { "Mod1" }, key = "8", action = "ViewTag", arg = 7 },
-        { modifiers = { "Mod1" }, key = "9", action = "ViewTag", arg = 8 },
-        { modifiers = { "Mod1", "Shift" }, key = "1", action = "MoveToTag", arg = 0 },
-        { modifiers = { "Mod1", "Shift" }, key = "2", action = "MoveToTag", arg = 1 },
-        { modifiers = { "Mod1", "Shift" }, key = "3", action = "MoveToTag", arg = 2 },
-        { modifiers = { "Mod1", "Shift" }, key = "4", action = "MoveToTag", arg = 3 },
-        { modifiers = { "Mod1", "Shift" }, key = "5", action = "MoveToTag", arg = 4 },
-        { modifiers = { "Mod1", "Shift" }, key = "6", action = "MoveToTag", arg = 5 },
-        { modifiers = { "Mod1", "Shift" }, key = "7", action = "MoveToTag", arg = 6 },
-        { modifiers = { "Mod1", "Shift" }, key = "8", action = "MoveToTag", arg = 7 },
-        { modifiers = { "Mod1", "Shift" }, key = "9", action = "MoveToTag", arg = 8 },
-    },
+-- Bar configuration
+oxwm.bar.set_font("JetBrainsMono Nerd Font:style=Bold:size=12")
 
-    -- Status bar blocks
-    status_blocks = {
-        {
-            format = "",
-            command = "Battery",
-            battery_formats = {
-                charging = "󰂄 Bat: {}%",
-                discharging = "󰁹 Bat:{}%",
-                full = "󰁹 Bat: {}%"
-            },
-            interval_secs = 30,
-            color = colors.green,
-            underline = true
-        },
-        {
-            format = " │  ",
-            command = "Static",
-            interval_secs = 999999999,
-            color = colors.lavender,
-            underline = false
-        },
-        {
-            format = "󰍛 {used}/{total} GB",
-            command = "Ram",
-            interval_secs = 5,
-            color = colors.light_blue,
-            underline = true
-        },
-        {
-            format = " │  ",
-            command = "Static",
-            interval_secs = 999999999,
-            color = colors.lavender,
-            underline = false
-        },
-        {
-            format = " {}",
-            command = "Shell",
-            command_arg = "uname -r",
-            interval_secs = 999999999,
-            color = colors.red,
-            underline = true
-        },
-        {
-            format = " │  ",
-            command = "Static",
-            interval_secs = 999999999,
-            color = colors.lavender,
-            underline = false
-        },
-        {
-            format = "󰸘 {}",
-            command = "DateTime",
-            command_arg = "%a, %b %d - %-I:%M %P",
-            interval_secs = 1,
-            color = colors.cyan,
-            underline = true
-        },
-    },
+-- Bar color schemes (for tag display)
+oxwm.bar.set_scheme_normal(colors.fg, colors.bg, 0x444444)
+oxwm.bar.set_scheme_occupied(colors.cyan, colors.bg, colors.cyan)
+oxwm.bar.set_scheme_selected(colors.cyan, colors.bg, colors.purple)
 
-    -- Color schemes for bar
-    scheme_normal = {
-        foreground = colors.fg,
-        background = colors.bg,
-        underline = "#444444"
-    },
-    scheme_occupied = {
-        foreground = colors.cyan,
-        background = colors.bg,
-        underline = colors.cyan
-    },
-    scheme_selected = {
-        foreground = colors.cyan,
-        background = colors.bg,
-        underline = colors.purple
-    },
+-- Keybindings
 
-    -- Autostart commands
-    autostart = {},
-}
+-- Keychord: Mod1+Space then T to spawn terminal
+oxwm.key.chord({
+    { { modkey }, "Space" },
+    { {},         "T" }
+}, oxwm.spawn("st"))
+
+-- Basic window management
+oxwm.key.bind({ modkey }, "Return", oxwm.spawn("st"))
+oxwm.key.bind({ modkey }, "D", oxwm.spawn({ "sh", "-c", "dmenu_run -l 10" }))
+oxwm.key.bind({ modkey }, "S", oxwm.spawn({ "sh", "-c", "maim -s | xclip -selection clipboard -t image/png" }))
+oxwm.key.bind({ modkey }, "Q", oxwm.client.kill())
+
+-- Keybind overlay
+oxwm.key.bind({ modkey, "Shift" }, "Slash", oxwm.show_keybinds())
+
+-- Client actions
+oxwm.key.bind({ modkey, "Shift" }, "F", oxwm.client.toggle_fullscreen())
+oxwm.key.bind({ modkey, "Shift" }, "Space", oxwm.client.toggle_floating())
+
+-- Layout management
+oxwm.key.bind({ modkey }, "F", oxwm.layout.set("normie"))
+oxwm.key.bind({ modkey }, "C", oxwm.layout.set("tiling"))
+oxwm.key.bind({ modkey }, "N", oxwm.layout.cycle())
+
+-- Gaps toggle
+oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps())
+
+-- WM controls
+oxwm.key.bind({ modkey, "Shift" }, "Q", oxwm.quit())
+oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart())
+
+-- Focus direction (vim keys)
+oxwm.key.bind({ modkey }, "H", oxwm.client.focus_direction("left"))
+oxwm.key.bind({ modkey }, "J", oxwm.client.focus_direction("down"))
+oxwm.key.bind({ modkey }, "K", oxwm.client.focus_direction("up"))
+oxwm.key.bind({ modkey }, "L", oxwm.client.focus_direction("right"))
+
+-- Swap windows in direction
+oxwm.key.bind({ modkey, "Shift" }, "H", oxwm.client.swap_direction("left"))
+oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.swap_direction("down"))
+oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.swap_direction("up"))
+oxwm.key.bind({ modkey, "Shift" }, "L", oxwm.client.swap_direction("right"))
+
+-- Tag viewing
+oxwm.key.bind({ modkey }, "1", oxwm.tag.view(0))
+oxwm.key.bind({ modkey }, "2", oxwm.tag.view(1))
+oxwm.key.bind({ modkey }, "3", oxwm.tag.view(2))
+oxwm.key.bind({ modkey }, "4", oxwm.tag.view(3))
+oxwm.key.bind({ modkey }, "5", oxwm.tag.view(4))
+oxwm.key.bind({ modkey }, "6", oxwm.tag.view(5))
+oxwm.key.bind({ modkey }, "7", oxwm.tag.view(6))
+oxwm.key.bind({ modkey }, "8", oxwm.tag.view(7))
+oxwm.key.bind({ modkey }, "9", oxwm.tag.view(8))
+
+-- Move window to tag
+oxwm.key.bind({ modkey, "Shift" }, "1", oxwm.tag.move_to(0))
+oxwm.key.bind({ modkey, "Shift" }, "2", oxwm.tag.move_to(1))
+oxwm.key.bind({ modkey, "Shift" }, "3", oxwm.tag.move_to(2))
+oxwm.key.bind({ modkey, "Shift" }, "4", oxwm.tag.move_to(3))
+oxwm.key.bind({ modkey, "Shift" }, "5", oxwm.tag.move_to(4))
+oxwm.key.bind({ modkey, "Shift" }, "6", oxwm.tag.move_to(5))
+oxwm.key.bind({ modkey, "Shift" }, "7", oxwm.tag.move_to(6))
+oxwm.key.bind({ modkey, "Shift" }, "8", oxwm.tag.move_to(7))
+oxwm.key.bind({ modkey, "Shift" }, "9", oxwm.tag.move_to(8))
+
+-- Status bar blocks
+oxwm.bar.add_block("", "Battery", {
+    charging = "󰂄 Bat: {}%",
+    discharging = "󰁹 Bat:{}%",
+    full = "󰁹 Bat: {}%"
+}, 30, colors.green, true)
+
+oxwm.bar.add_block(" │  ", "Static", "", 999999999, colors.lavender, false)
+oxwm.bar.add_block("󰍛 {used}/{total} GB", "Ram", nil, 5, colors.light_blue, true)
+oxwm.bar.add_block(" │  ", "Static", "", 999999999, colors.lavender, false)
+oxwm.bar.add_block(" {}", "Shell", "uname -r", 999999999, colors.red, true)
+oxwm.bar.add_block(" │  ", "Static", "", 999999999, colors.lavender, false)
+oxwm.bar.add_block("󰸘 {}", "DateTime", "%a, %b %d - %-I:%M %P", 1, colors.cyan, true)
+
+-- Autostart commands (runs once at startup)
+-- oxwm.autostart("picom")
+-- oxwm.autostart("feh --bg-scale ~/wallpaper.jpg")
