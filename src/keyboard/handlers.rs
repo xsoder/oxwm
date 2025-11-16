@@ -12,6 +12,7 @@ use crate::keyboard::keysyms::{self, Keysym};
 #[derive(Debug, Copy, Clone, Deserialize, PartialEq)]
 pub enum KeyAction {
     Spawn,
+    SpawnTerminal,
     KillClient,
     FocusStack,
     FocusDirection,
@@ -22,7 +23,6 @@ pub enum KeyAction {
     ViewTag,
     ToggleGaps,
     ToggleFullScreen,
-    ToggleWindowFullscreen,
     ToggleFloating,
     ChangeLayout,
     CycleLayout,

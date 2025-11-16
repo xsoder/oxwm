@@ -75,8 +75,7 @@ type SharedBuilder = Rc<RefCell<ConfigBuilder>>;
 pub fn register_api(lua: &Lua) -> Result<SharedBuilder, ConfigError> {
     let builder = Rc::new(RefCell::new(ConfigBuilder::default()));
 
-    let oxwm_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create oxwm table: {}", e)))?;
+    let oxwm_table = lua.create_table()?;
 
     register_spawn(&lua, &oxwm_table, builder.clone())?;
     register_key_module(&lua, &oxwm_table, builder.clone())?;
@@ -88,8 +87,7 @@ pub fn register_api(lua: &Lua) -> Result<SharedBuilder, ConfigError> {
     register_bar_module(&lua, &oxwm_table, builder.clone())?;
     register_misc(&lua, &oxwm_table, builder.clone())?;
 
-    lua.globals().set("oxwm", oxwm_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set oxwm global: {}", e)))?;
+    lua.globals().set("oxwm", oxwm_table)?;
 
     Ok(builder)
 }
@@ -97,15 +95,17 @@ pub fn register_api(lua: &Lua) -> Result<SharedBuilder, ConfigError> {
 fn register_spawn(lua: &Lua, parent: &Table, _builder: SharedBuilder) -> Result<(), ConfigError> {
     let spawn = lua.create_function(|lua, cmd: Value| {
         create_action_table(lua, "Spawn", cmd)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create spawn: {}", e)))?;
-    parent.set("spawn", spawn)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set spawn: {}", e)))?;
+    })?;
+    let spawn_terminal = lua.create_function(|lua, ()| {
+        create_action_table(lua, "SpawnTerminal", Value::Nil)
+    })?;
+    parent.set("spawn", spawn)?;
+    parent.set("spawn_terminal", spawn_terminal)?;
     Ok(())
 }
 
 fn register_key_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<(), ConfigError> {
-    let key_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create key table: {}", e)))?;
+    let key_table = lua.create_table()?;
 
     let builder_clone = builder.clone();
     let bind = lua.create_function(move |lua, (mods, key, action): (Value, String, Value)| {
@@ -117,7 +117,7 @@ fn register_key_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
         builder_clone.borrow_mut().keybindings.push(binding);
 
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create bind: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let chord = lua.create_function(move |lua, (keys, action): (Table, Value)| {
@@ -139,38 +139,34 @@ fn register_key_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
         builder_clone.borrow_mut().keybindings.push(binding);
 
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create chord: {}", e)))?;
+    })?;
 
-    key_table.set("bind", bind)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set bind: {}", e)))?;
-    key_table.set("chord", chord)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set chord: {}", e)))?;
-    parent.set("key", key_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set key: {}", e)))?;
+    key_table.set("bind", bind)?;
+    key_table.set("chord", chord)?;
+    parent.set("key", key_table)?;
     Ok(())
 }
 
 fn register_gaps_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<(), ConfigError> {
-    let gaps_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create gaps table: {}", e)))?;
+    let gaps_table = lua.create_table()?;
 
     let builder_clone = builder.clone();
     let set_enabled = lua.create_function(move |_, enabled: bool| {
         builder_clone.borrow_mut().gaps_enabled = enabled;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_enabled: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let enable = lua.create_function(move |_, ()| {
         builder_clone.borrow_mut().gaps_enabled = true;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create enable: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let disable = lua.create_function(move |_, ()| {
         builder_clone.borrow_mut().gaps_enabled = false;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create disable: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_inner = lua.create_function(move |_, (h, v): (u32, u32)| {
@@ -178,7 +174,7 @@ fn register_gaps_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Re
         b.gap_inner_horizontal = h;
         b.gap_inner_vertical = v;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_inner: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_outer = lua.create_function(move |_, (h, v): (u32, u32)| {
@@ -186,227 +182,226 @@ fn register_gaps_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Re
         b.gap_outer_horizontal = h;
         b.gap_outer_vertical = v;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_outer: {}", e)))?;
+    })?;
 
-    gaps_table.set("set_enabled", set_enabled)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_enabled: {}", e)))?;
-    gaps_table.set("enable", enable)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set enable: {}", e)))?;
-    gaps_table.set("disable", disable)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set disable: {}", e)))?;
-    gaps_table.set("set_inner", set_inner)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_inner: {}", e)))?;
-    gaps_table.set("set_outer", set_outer)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_outer: {}", e)))?;
-    parent.set("gaps", gaps_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set gaps: {}", e)))?;
+    gaps_table.set("set_enabled", set_enabled)?;
+    gaps_table.set("enable", enable)?;
+    gaps_table.set("disable", disable)?;
+    gaps_table.set("set_inner", set_inner)?;
+    gaps_table.set("set_outer", set_outer)?;
+    parent.set("gaps", gaps_table)?;
     Ok(())
 }
 
 fn register_border_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<(), ConfigError> {
-    let border_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create border table: {}", e)))?;
+    let border_table = lua.create_table()?;
 
     let builder_clone = builder.clone();
     let set_width = lua.create_function(move |_, width: u32| {
         builder_clone.borrow_mut().border_width = width;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_width: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_focused_color = lua.create_function(move |_, color: Value| {
         let color_u32 = parse_color_value(color)?;
         builder_clone.borrow_mut().border_focused = color_u32;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_focused_color: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_unfocused_color = lua.create_function(move |_, color: Value| {
         let color_u32 = parse_color_value(color)?;
         builder_clone.borrow_mut().border_unfocused = color_u32;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_unfocused_color: {}", e)))?;
+    })?;
 
-    border_table.set("set_width", set_width)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_width: {}", e)))?;
-    border_table.set("set_focused_color", set_focused_color)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_focused_color: {}", e)))?;
-    border_table.set("set_unfocused_color", set_unfocused_color)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_unfocused_color: {}", e)))?;
-    parent.set("border", border_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set border: {}", e)))?;
+    border_table.set("set_width", set_width)?;
+    border_table.set("set_focused_color", set_focused_color)?;
+    border_table.set("set_unfocused_color", set_unfocused_color)?;
+    parent.set("border", border_table)?;
     Ok(())
 }
 
 fn register_client_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
-    let client_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create client table: {}", e)))?;
+    let client_table = lua.create_table()?;
 
     let kill = lua.create_function(|lua, ()| {
         create_action_table(lua, "KillClient", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create kill: {}", e)))?;
+    })?;
 
     let toggle_fullscreen = lua.create_function(|lua, ()| {
         create_action_table(lua, "ToggleFullScreen", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create toggle_fullscreen: {}", e)))?;
+    })?;
 
     let toggle_floating = lua.create_function(|lua, ()| {
         create_action_table(lua, "ToggleFloating", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create toggle_floating: {}", e)))?;
+    })?;
 
     let focus_stack = lua.create_function(|lua, dir: i32| {
         create_action_table(lua, "FocusStack", Value::Integer(dir as i64))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create focus_stack: {}", e)))?;
+    })?;
 
     let focus_direction = lua.create_function(|lua, dir: String| {
         let dir_int = direction_string_to_int(&dir)?;
         create_action_table(lua, "FocusDirection", Value::Integer(dir_int))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create focus_direction: {}", e)))?;
+    })?;
 
     let swap_direction = lua.create_function(|lua, dir: String| {
         let dir_int = direction_string_to_int(&dir)?;
         create_action_table(lua, "SwapDirection", Value::Integer(dir_int))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create swap_direction: {}", e)))?;
+    })?;
 
     let smart_move = lua.create_function(|lua, dir: String| {
         let dir_int = direction_string_to_int(&dir)?;
         create_action_table(lua, "SmartMoveWin", Value::Integer(dir_int))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create smart_move: {}", e)))?;
+    })?;
 
     let exchange = lua.create_function(|lua, ()| {
         create_action_table(lua, "ExchangeClient", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create exchange: {}", e)))?;
+    })?;
 
-    client_table.set("kill", kill)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set kill: {}", e)))?;
-    client_table.set("toggle_fullscreen", toggle_fullscreen)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set toggle_fullscreen: {}", e)))?;
-    client_table.set("toggle_floating", toggle_floating)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set toggle_floating: {}", e)))?;
-    client_table.set("focus_stack", focus_stack)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set focus_stack: {}", e)))?;
-    client_table.set("focus_direction", focus_direction)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set focus_direction: {}", e)))?;
-    client_table.set("swap_direction", swap_direction)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set swap_direction: {}", e)))?;
-    client_table.set("smart_move", smart_move)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set smart_move: {}", e)))?;
-    client_table.set("exchange", exchange)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set exchange: {}", e)))?;
+    client_table.set("kill", kill)?;
+    client_table.set("toggle_fullscreen", toggle_fullscreen)?;
+    client_table.set("toggle_floating", toggle_floating)?;
+    client_table.set("focus_stack", focus_stack)?;
+    client_table.set("focus_direction", focus_direction)?;
+    client_table.set("swap_direction", swap_direction)?;
+    client_table.set("smart_move", smart_move)?;
+    client_table.set("exchange", exchange)?;
 
-    parent.set("client", client_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set client: {}", e)))?;
+    parent.set("client", client_table)?;
     Ok(())
 }
 
 fn register_layout_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
-    let layout_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create layout table: {}", e)))?;
+    let layout_table = lua.create_table()?;
 
     let cycle = lua.create_function(|lua, ()| {
         create_action_table(lua, "CycleLayout", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create cycle: {}", e)))?;
+    })?;
 
     let set = lua.create_function(|lua, name: String| {
         create_action_table(lua, "ChangeLayout", Value::String(lua.create_string(&name)?))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set: {}", e)))?;
+    })?;
 
-    layout_table.set("cycle", cycle)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set cycle: {}", e)))?;
-    layout_table.set("set", set)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set: {}", e)))?;
-    parent.set("layout", layout_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set layout: {}", e)))?;
+    layout_table.set("cycle", cycle)?;
+    layout_table.set("set", set)?;
+    parent.set("layout", layout_table)?;
     Ok(())
 }
 
 fn register_tag_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
-    let tag_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create tag table: {}", e)))?;
+    let tag_table = lua.create_table()?;
 
     let view = lua.create_function(|lua, idx: i32| {
         create_action_table(lua, "ViewTag", Value::Integer(idx as i64))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create view: {}", e)))?;
+    })?;
 
     let move_to = lua.create_function(|lua, idx: i32| {
         create_action_table(lua, "MoveToTag", Value::Integer(idx as i64))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create move_to: {}", e)))?;
+    })?;
 
-    tag_table.set("view", view)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set view: {}", e)))?;
-    tag_table.set("move_to", move_to)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set move_to: {}", e)))?;
-    parent.set("tag", tag_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set tag: {}", e)))?;
+    tag_table.set("view", view)?;
+    tag_table.set("move_to", move_to)?;
+    parent.set("tag", tag_table)?;
     Ok(())
 }
 
 fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<(), ConfigError> {
-    let bar_table = lua.create_table()
-        .map_err(|e| ConfigError::LuaError(format!("Failed to create bar table: {}", e)))?;
+    let bar_table = lua.create_table()?;
 
     let builder_clone = builder.clone();
     let set_font = lua.create_function(move |_, font: String| {
         builder_clone.borrow_mut().font = font;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_font: {}", e)))?;
+    })?;
 
+    let block_table = lua.create_table()?;
+
+    let ram = lua.create_function(|lua, config: Table| {
+        create_block_config(lua, config, "Ram", None)
+    })?;
+
+    let datetime = lua.create_function(|lua, config: Table| {
+        let date_format: String = config.get("date_format")
+            .map_err(|_| mlua::Error::RuntimeError("oxwm.bar.block.datetime: 'date_format' field is required (e.g., '%H:%M')".into()))?;
+        create_block_config(lua, config, "DateTime", Some(Value::String(lua.create_string(&date_format)?)))
+    })?;
+
+    let shell = lua.create_function(|lua, config: Table| {
+        let command: String = config.get("command")
+            .map_err(|_| mlua::Error::RuntimeError("oxwm.bar.block.shell: 'command' field is required".into()))?;
+        create_block_config(lua, config, "Shell", Some(Value::String(lua.create_string(&command)?)))
+    })?;
+
+    let static_block = lua.create_function(|lua, config: Table| {
+        let text: String = config.get("text")
+            .map_err(|_| mlua::Error::RuntimeError("oxwm.bar.block.static: 'text' field is required".into()))?;
+        create_block_config(lua, config, "Static", Some(Value::String(lua.create_string(&text)?)))
+    })?;
+
+    let battery = lua.create_function(|lua, config: Table| {
+        let charging: String = config.get("charging")
+            .map_err(|_| mlua::Error::RuntimeError("oxwm.bar.block.battery: 'charging' field is required".into()))?;
+        let discharging: String = config.get("discharging")
+            .map_err(|_| mlua::Error::RuntimeError("oxwm.bar.block.battery: 'discharging' field is required".into()))?;
+        let full: String = config.get("full")
+            .map_err(|_| mlua::Error::RuntimeError("oxwm.bar.block.battery: 'full' field is required".into()))?;
+
+        let formats_table = lua.create_table()?;
+        formats_table.set("charging", charging)?;
+        formats_table.set("discharging", discharging)?;
+        formats_table.set("full", full)?;
+
+        create_block_config(lua, config, "Battery", Some(Value::Table(formats_table)))
+    })?;
+
+    block_table.set("ram", ram)?;
+    block_table.set("datetime", datetime)?;
+    block_table.set("shell", shell)?;
+    block_table.set("static", static_block)?;
+    block_table.set("battery", battery)?;
+
+    // Deprecated add_block() function for backwards compatibility
+    // This allows old configs to still work, but users should migrate to set_blocks()
     let builder_clone = builder.clone();
-    let add_block = lua.create_function(move |_, (format, command, arg, interval, color, underline): (String, String, Option<Value>, u64, Value, bool)| {
-        use crate::bar::BlockCommand;
+    let add_block = lua.create_function(move |_, (format, block_type, arg, interval, color, underline): (String, String, Value, u64, Value, Option<bool>)| -> mlua::Result<()> {
+        eprintln!("WARNING: oxwm.bar.add_block() is deprecated. Please migrate to oxwm.bar.set_blocks() with block constructors.");
+        eprintln!("See the migration guide for details.");
 
-        let cmd = match command.as_str() {
+        let cmd = match block_type.as_str() {
             "DateTime" => {
-                let fmt = arg.and_then(|v| {
-                    if let Value::String(s) = v {
-                        s.to_str().ok().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                }).ok_or_else(|| mlua::Error::RuntimeError("oxwm.bar.add_block: DateTime command requires a format string as the third argument. example: oxwm.bar.add_block(\"\", \"DateTime\", \"%H:%M\", 60, 0xffffff, false)".into()))?;
-                BlockCommand::DateTime(fmt)
+                let fmt = if let Value::String(s) = arg {
+                    s.to_str()?.to_string()
+                } else {
+                    return Err(mlua::Error::RuntimeError("DateTime block requires format string as third argument".into()));
+                };
+                crate::bar::BlockCommand::DateTime(fmt)
             }
             "Shell" => {
-                let cmd_str = arg.and_then(|v| {
-                    if let Value::String(s) = v {
-                        s.to_str().ok().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                }).ok_or_else(|| mlua::Error::RuntimeError("oxwm.bar.add_block: Shell command requires a shell command string as the third argument. example: oxwm.bar.add_block(\"\", \"Shell\", \"date +%H:%M\", 60, 0xffffff, false)".into()))?;
-                BlockCommand::Shell(cmd_str)
+                let cmd_str = if let Value::String(s) = arg {
+                    s.to_str()?.to_string()
+                } else {
+                    return Err(mlua::Error::RuntimeError("Shell block requires command string as third argument".into()));
+                };
+                crate::bar::BlockCommand::Shell(cmd_str)
             }
-            "Ram" => BlockCommand::Ram,
+            "Ram" => crate::bar::BlockCommand::Ram,
             "Static" => {
-                let text = arg.and_then(|v| {
-                    if let Value::String(s) = v {
-                        s.to_str().ok().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                }).unwrap_or_default();
-                BlockCommand::Static(text)
+                let text = if let Value::String(s) = arg {
+                    s.to_str()?.to_string()
+                } else {
+                    String::new()
+                };
+                crate::bar::BlockCommand::Static(text)
             }
             "Battery" => {
-                let formats = arg.and_then(|v| {
-                    if let Value::Table(t) = v {
-                        Some(t)
-                    } else {
-                        None
-                    }
-                }).ok_or_else(|| mlua::Error::RuntimeError("oxwm.bar.add_block: Battery command requires a formats table as the third argument. example: {charging=\"CHR {percentage}%\", discharging=\"BAT {percentage}%\", full=\"FULL\"}".into()))?;
-
-                let charging: String = formats.get("charging")?;
-                let discharging: String = formats.get("discharging")?;
-                let full: String = formats.get("full")?;
-
-                BlockCommand::Battery {
-                    format_charging: charging,
-                    format_discharging: discharging,
-                    format_full: full,
-                }
+                return Err(mlua::Error::RuntimeError(
+                    "Battery block is not supported with add_block(). Please use oxwm.bar.set_blocks() with oxwm.bar.block.battery()".into()
+                ));
             }
-            _ => return Err(mlua::Error::RuntimeError(format!("oxwm.bar.add_block: unknown block command '{}'. valid commands: DateTime, Shell, Ram, Static, Battery", command))),
+            _ => return Err(mlua::Error::RuntimeError(format!("Unknown block type '{}'", block_type))),
         };
 
         let color_u32 = parse_color_value(color)?;
@@ -416,12 +411,98 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
             command: cmd,
             interval_secs: interval,
             color: color_u32,
-            underline,
+            underline: underline.unwrap_or(false),
         };
 
         builder_clone.borrow_mut().status_blocks.push(block);
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create add_block: {}", e)))?;
+    })?;
+
+    let builder_clone = builder.clone();
+    let set_blocks = lua.create_function(move |_, blocks: Table| {
+        use crate::bar::BlockCommand;
+
+        let mut block_configs = Vec::new();
+
+        for i in 1..=blocks.len()? {
+            let block_table: Table = blocks.get(i)?;
+            let block_type: String = block_table.get("__block_type")?;
+            let format: String = block_table.get("format").unwrap_or_default();
+            let interval: u64 = block_table.get("interval")?;
+            let color_val: Value = block_table.get("color")?;
+            let underline: bool = block_table.get("underline").unwrap_or(false);
+            let arg: Option<Value> = block_table.get("__arg").ok();
+
+            let cmd = match block_type.as_str() {
+                "DateTime" => {
+                    let fmt = arg.and_then(|v| {
+                        if let Value::String(s) = v {
+                            s.to_str().ok().map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    }).ok_or_else(|| mlua::Error::RuntimeError("DateTime block missing format".into()))?;
+                    BlockCommand::DateTime(fmt)
+                }
+                "Shell" => {
+                    let cmd_str = arg.and_then(|v| {
+                        if let Value::String(s) = v {
+                            s.to_str().ok().map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    }).ok_or_else(|| mlua::Error::RuntimeError("Shell block missing command".into()))?;
+                    BlockCommand::Shell(cmd_str)
+                }
+                "Ram" => BlockCommand::Ram,
+                "Static" => {
+                    let text = arg.and_then(|v| {
+                        if let Value::String(s) = v {
+                            s.to_str().ok().map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    }).unwrap_or_default();
+                    BlockCommand::Static(text)
+                }
+                "Battery" => {
+                    let formats = arg.and_then(|v| {
+                        if let Value::Table(t) = v {
+                            Some(t)
+                        } else {
+                            None
+                        }
+                    }).ok_or_else(|| mlua::Error::RuntimeError("Battery block missing formats".into()))?;
+
+                    let charging: String = formats.get("charging")?;
+                    let discharging: String = formats.get("discharging")?;
+                    let full: String = formats.get("full")?;
+
+                    BlockCommand::Battery {
+                        format_charging: charging,
+                        format_discharging: discharging,
+                        format_full: full,
+                    }
+                }
+                _ => return Err(mlua::Error::RuntimeError(format!("Unknown block type '{}'", block_type))),
+            };
+
+            let color_u32 = parse_color_value(color_val)?;
+
+            let block = crate::bar::BlockConfig {
+                format,
+                command: cmd,
+                interval_secs: interval,
+                color: color_u32,
+                underline,
+            };
+
+            block_configs.push(block);
+        }
+
+        builder_clone.borrow_mut().status_blocks = block_configs;
+        Ok(())
+    })?;
 
     let builder_clone = builder.clone();
     let set_scheme_normal = lua.create_function(move |_, (fg, bg, ul): (Value, Value, Value)| {
@@ -435,7 +516,7 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
             underline,
         };
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_scheme_normal: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_scheme_occupied = lua.create_function(move |_, (fg, bg, ul): (Value, Value, Value)| {
@@ -449,7 +530,7 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
             underline,
         };
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_scheme_occupied: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_scheme_selected = lua.create_function(move |_, (fg, bg, ul): (Value, Value, Value)| {
@@ -463,20 +544,16 @@ fn register_bar_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Res
             underline,
         };
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_scheme_selected: {}", e)))?;
+    })?;
 
-    bar_table.set("set_font", set_font)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_font: {}", e)))?;
-    bar_table.set("add_block", add_block)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set add_block: {}", e)))?;
-    bar_table.set("set_scheme_normal", set_scheme_normal)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_scheme_normal: {}", e)))?;
-    bar_table.set("set_scheme_occupied", set_scheme_occupied)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_scheme_occupied: {}", e)))?;
-    bar_table.set("set_scheme_selected", set_scheme_selected)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_scheme_selected: {}", e)))?;
-    parent.set("bar", bar_table)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set bar: {}", e)))?;
+    bar_table.set("set_font", set_font)?;
+    bar_table.set("block", block_table)?;
+    bar_table.set("add_block", add_block)?;  // Deprecated, for backwards compatibility
+    bar_table.set("set_blocks", set_blocks)?;
+    bar_table.set("set_scheme_normal", set_scheme_normal)?;
+    bar_table.set("set_scheme_occupied", set_scheme_occupied)?;
+    bar_table.set("set_scheme_selected", set_scheme_selected)?;
+    parent.set("bar", bar_table)?;
     Ok(())
 }
 
@@ -485,7 +562,7 @@ fn register_misc(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<()
     let set_terminal = lua.create_function(move |_, term: String| {
         builder_clone.borrow_mut().terminal = term;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_terminal: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_modkey = lua.create_function(move |_, modkey_str: String| {
@@ -493,37 +570,37 @@ fn register_misc(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<()
             .map_err(|e| mlua::Error::RuntimeError(format!("{}", e)))?;
         builder_clone.borrow_mut().modkey = modkey;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_modkey: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_tags = lua.create_function(move |_, tags: Vec<String>| {
         builder_clone.borrow_mut().tags = tags;
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_tags: {}", e)))?;
+    })?;
 
     let quit = lua.create_function(|lua, ()| {
         create_action_table(lua, "Quit", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create quit: {}", e)))?;
+    })?;
 
     let restart = lua.create_function(|lua, ()| {
         create_action_table(lua, "Restart", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create restart: {}", e)))?;
+    })?;
 
     let recompile = lua.create_function(|lua, ()| {
         create_action_table(lua, "Recompile", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create recompile: {}", e)))?;
+    })?;
 
     let toggle_gaps = lua.create_function(|lua, ()| {
         create_action_table(lua, "ToggleGaps", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create toggle_gaps: {}", e)))?;
+    })?;
 
     let show_keybinds = lua.create_function(|lua, ()| {
         create_action_table(lua, "ShowKeybindOverlay", Value::Nil)
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create show_keybinds: {}", e)))?;
+    })?;
 
     let focus_monitor = lua.create_function(|lua, idx: i32| {
         create_action_table(lua, "FocusMonitor", Value::Integer(idx as i64))
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create focus_monitor: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let set_layout_symbol = lua.create_function(move |_, (name, symbol): (String, String)| {
@@ -532,36 +609,25 @@ fn register_misc(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<()
             symbol,
         });
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create set_layout_symbol: {}", e)))?;
+    })?;
 
     let builder_clone = builder.clone();
     let autostart = lua.create_function(move |_, cmd: String| {
         builder_clone.borrow_mut().autostart.push(cmd);
         Ok(())
-    }).map_err(|e| ConfigError::LuaError(format!("Failed to create autostart: {}", e)))?;
+    })?;
 
-    parent.set("set_terminal", set_terminal)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_terminal: {}", e)))?;
-    parent.set("set_modkey", set_modkey)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_modkey: {}", e)))?;
-    parent.set("set_tags", set_tags)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_tags: {}", e)))?;
-    parent.set("set_layout_symbol", set_layout_symbol)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set set_layout_symbol: {}", e)))?;
-    parent.set("autostart", autostart)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set autostart: {}", e)))?;
-    parent.set("quit", quit)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set quit: {}", e)))?;
-    parent.set("restart", restart)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set restart: {}", e)))?;
-    parent.set("recompile", recompile)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set recompile: {}", e)))?;
-    parent.set("toggle_gaps", toggle_gaps)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set toggle_gaps: {}", e)))?;
-    parent.set("show_keybinds", show_keybinds)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set show_keybinds: {}", e)))?;
-    parent.set("focus_monitor", focus_monitor)
-        .map_err(|e| ConfigError::LuaError(format!("Failed to set focus_monitor: {}", e)))?;
+    parent.set("set_terminal", set_terminal)?;
+    parent.set("set_modkey", set_modkey)?;
+    parent.set("set_tags", set_tags)?;
+    parent.set("set_layout_symbol", set_layout_symbol)?;
+    parent.set("autostart", autostart)?;
+    parent.set("quit", quit)?;
+    parent.set("restart", restart)?;
+    parent.set("recompile", recompile)?;
+    parent.set("toggle_gaps", toggle_gaps)?;
+    parent.set("show_keybinds", show_keybinds)?;
+    parent.set("focus_monitor", focus_monitor)?;
     Ok(())
 }
 
@@ -638,6 +704,7 @@ fn parse_action_value(_lua: &Lua, value: Value) -> mlua::Result<(KeyAction, Arg)
 fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
     match s {
         "Spawn" => Ok(KeyAction::Spawn),
+        "SpawnTerminal" => Ok(KeyAction::SpawnTerminal),
         "KillClient" => Ok(KeyAction::KillClient),
         "FocusStack" => Ok(KeyAction::FocusStack),
         "FocusDirection" => Ok(KeyAction::FocusDirection),
@@ -718,4 +785,25 @@ fn parse_color_value(value: Value) -> mlua::Result<u32> {
             "color must be a number (0xff0000) or string ('#ff0000' or '0xff0000')".into(),
         )),
     }
+}
+
+fn create_block_config(lua: &Lua, config: Table, block_type: &str, arg: Option<Value>) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    table.set("__block_type", block_type)?;
+
+    let format: String = config.get("format").unwrap_or_default();
+    let interval: u64 = config.get("interval")?;
+    let color: Value = config.get("color")?;
+    let underline: bool = config.get("underline").unwrap_or(false);
+
+    table.set("format", format)?;
+    table.set("interval", interval)?;
+    table.set("color", color)?;
+    table.set("underline", underline)?;
+
+    if let Some(arg_val) = arg {
+        table.set("__arg", arg_val)?;
+    }
+
+    Ok(table)
 }

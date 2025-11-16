@@ -173,27 +173,66 @@ oxwm.key.chord({
 -------------------------------------------------------------------------------
 -- Status Bar Blocks
 -------------------------------------------------------------------------------
--- Add informational blocks to the status bar
--- Format: oxwm.bar.add_block(format, type, data, update_interval, color, separator)
+-- Add informational blocks to the status bar using block constructors
+-- Each block is created with oxwm.bar.block.<type>() and configured with a table:
 --   format: Display format with {} placeholders
---   type: Block type ("Ram", "DateTime", "Shell", "Static", "Battery")
---   data: Type-specific data (command for Shell, format for DateTime, etc.)
---   update_interval: Seconds between updates (large number for static content)
+--   interval: Seconds between updates
 --   color: Text color (from color palette)
---   separator: Whether to add space after this block
+--   underline: Whether to underline the block
+--
+-- Available block types:
+--   ram(config)         - Memory usage
+--   datetime(config)    - Date and time (requires date_format field)
+--   shell(config)       - Shell command output (requires command field)
+--   static(config)      - Static text (requires text field)
+--   battery(config)     - Battery status (requires charging, discharging, full fields)
 
-oxwm.bar.add_block("Ram: {used}/{total} GB", "Ram", nil, 5, colors.light_blue, true)
-oxwm.bar.add_block(" │  ", "Static", "", 999999999, colors.lavender, false)
-oxwm.bar.add_block("Kernel: {}", "Shell", "uname -r", 999999999, colors.red, true)
-oxwm.bar.add_block(" │  ", "Static", "", 999999999, colors.lavender, false)
-oxwm.bar.add_block("{}", "DateTime", "%a, %b %d - %-I:%M %P", 1, colors.cyan, true)
-
--- Uncomment to add battery status (useful for laptops)
--- oxwm.bar.add_block("Bat: {}%", "Battery", {
---     charging = "⚡ Bat: {}%",
---     discharging = "🔋 Bat: {}%",
---     full = "✓ Bat: {}%"
--- }, 30, colors.green, true)
+oxwm.bar.set_blocks({
+    oxwm.bar.block.ram({
+        format = "Ram: {used}/{total} GB",
+        interval = 5,
+        color = colors.light_blue,
+        underline = true,
+    }),
+    oxwm.bar.block.static({
+        format = "{}",
+        text = " │  ",
+        interval = 999999999,
+        color = colors.lavender,
+        underline = false,
+    }),
+    oxwm.bar.block.shell({
+        format = "Kernel: {}",
+        command = "uname -r",
+        interval = 999999999,
+        color = colors.red,
+        underline = true,
+    }),
+    oxwm.bar.block.static({
+        format = "{}",
+        text = " │  ",
+        interval = 999999999,
+        color = colors.lavender,
+        underline = false,
+    }),
+    oxwm.bar.block.datetime({
+        format = "{}",
+        date_format = "%a, %b %d - %-I:%M %P",
+        interval = 1,
+        color = colors.cyan,
+        underline = true,
+    }),
+    -- Uncomment to add battery status (useful for laptops)
+    -- oxwm.bar.block.battery({
+    --     format = "Bat: {}%",
+    --     charging = "⚡ Bat: {}%",
+    --     discharging = "🔋 Bat: {}%",
+    --     full = "✓ Bat: {}%",
+    --     interval = 30,
+    --     color = colors.green,
+    --     underline = true,
+    -- }),
+})
 
 -------------------------------------------------------------------------------
 -- Autostart

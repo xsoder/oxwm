@@ -13,7 +13,6 @@ pub struct Monitor {
     pub height: u32,
     pub selected_tags: u32,
     pub focused_window: Option<Window>,
-    pub fullscreen_enabled: bool,
 }
 
 impl Monitor {
@@ -25,7 +24,6 @@ impl Monitor {
             height,
             selected_tags: 1,
             focused_window: None,
-            fullscreen_enabled: false,
         }
     }
 
