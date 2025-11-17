@@ -74,7 +74,6 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<(oxwm::Config, bool)> {
                 println!("   See the new config.lua template for examples.\n");
             }
         } else {
-            // Always update LSP files to match the running version
             update_lsp_files()?;
         }
 
@@ -105,7 +104,6 @@ fn init_config() -> Result<()> {
     let config_path = config_dir.join("config.lua");
     std::fs::write(&config_path, config_template)?;
 
-    // Update LSP files
     update_lsp_files()?;
 
     println!("✓ Config created at {:?}", config_path);
@@ -119,16 +117,13 @@ fn init_config() -> Result<()> {
 fn update_lsp_files() -> Result<()> {
     let config_dir = get_config_path();
 
-    // Create lib directory for LSP files
     let lib_dir = config_dir.join("lib");
     std::fs::create_dir_all(&lib_dir)?;
 
-    // Always overwrite oxwm.lua with the version from this binary
     let oxwm_lua_template = include_str!("../../templates/oxwm.lua");
     let oxwm_lua_path = lib_dir.join("oxwm.lua");
     std::fs::write(&oxwm_lua_path, oxwm_lua_template)?;
 
-    // Create/update .luarc.json for LSP configuration
     let luarc_content = r#"{
   "workspace.library": [
     "lib"

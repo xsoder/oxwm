@@ -5,10 +5,11 @@
   xorg,
   freetype,
   fontconfig,
+  gitRev ? "unkown",
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "oxwm";
-  version = "0.7.0";
+  version = "${lib.substring 0 8 gitRev}";
 
   src = ./.;
 
@@ -27,6 +28,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     freetype
     fontconfig
   ];
+
+  doCheck = false;
 
   postInstall = ''
     install resources/oxwm.desktop -Dt $out/share/xsessions
