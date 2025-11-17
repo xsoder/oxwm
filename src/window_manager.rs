@@ -16,6 +16,20 @@ use x11rb::protocol::Event;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
+const DEFAULT_FLOAT_WIDTH_RATIO: f32 = 0.5;
+const DEFAULT_FLOAT_HEIGHT_RATIO: f32 = 0.5;
+const SMART_MOVE_STEP_RATIO_VERTICAL: i32 = 4;
+const SMART_MOVE_STEP_RATIO_HORIZONTAL: i32 = 6;
+
+#[derive(Debug, Clone, Copy)]
+pub struct CachedGeometry {
+    pub x_position: i16,
+    pub y_position: i16,
+    pub width: u16,
+    pub height: u16,
+    pub border_width: u16,
+}
+
 pub type TagMask = u32;
 pub fn tag_mask(tag: usize) -> TagMask {
     1 << tag
@@ -87,6 +101,7 @@ pub struct WindowManager {
     layout: LayoutBox,
     window_tags: std::collections::HashMap<Window, TagMask>,
     window_monitor: std::collections::HashMap<Window, usize>,
+    window_geometry_cache: std::collections::HashMap<Window, CachedGeometry>,
     gaps_enabled: bool,
     floating_windows: HashSet<Window>,
     fullscreen_windows: HashSet<Window>,
@@ -213,6 +228,7 @@ impl WindowManager {
             layout: Box::new(TilingLayout),
             window_tags: std::collections::HashMap::new(),
             window_monitor: std::collections::HashMap::new(),
+            window_geometry_cache: std::collections::HashMap::new(),
             gaps_enabled,
             floating_windows: HashSet::new(),
             fullscreen_windows: HashSet::new(),
@@ -237,45 +253,6 @@ impl WindowManager {
         window_manager.run_autostart_commands()?;
 
         Ok(window_manager)
-    }
-
-    /**
-     *
-     * This function is deprecated for now, but will potentially be used in the future.
-     *
-     */
-    fn _get_saved_selected_tags(
-        connection: &RustConnection,
-        root: Window,
-        tag_count: usize,
-    ) -> WmResult<TagMask> {
-        let net_current_desktop = connection
-            .intern_atom(false, b"_NET_CURRENT_DESKTOP")?
-            .reply()?
-            .atom;
-
-        match connection
-            .get_property(false, root, net_current_desktop, AtomEnum::CARDINAL, 0, 1)?
-            .reply()
-        {
-            Ok(prop) if prop.value.len() >= 4 => {
-                let desktop = u32::from_ne_bytes([
-                    prop.value[0],
-                    prop.value[1],
-                    prop.value[2],
-                    prop.value[3],
-                ]);
-                if desktop < tag_count as u32 {
-                    let mask = tag_mask(desktop as usize);
-                    return Ok(mask);
-                }
-            }
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("No _NET_CURRENT_DESKTOP property ({})", e);
-            }
-        }
-        Ok(tag_mask(0))
     }
 
     pub fn show_migration_overlay(&mut self) {
@@ -466,22 +443,31 @@ impl WindowManager {
         keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
         self.update_bar()?;
 
+        let mut last_bar_update = std::time::Instant::now();
+        const BAR_UPDATE_INTERVAL_MS: u64 = 100;
+
         loop {
-            while let Some(event) = self.connection.poll_for_event()? {
-                if let Some(should_restart) = self.handle_event(event)? {
-                    return Ok(should_restart);
+            match self.connection.poll_for_event_with_sequence()? {
+                Some((event, _sequence)) => {
+                    if let Some(should_restart) = self.handle_event(event)? {
+                        return Ok(should_restart);
+                    }
+                }
+                None => {
+                    if last_bar_update.elapsed().as_millis() >= BAR_UPDATE_INTERVAL_MS as u128 {
+                        if let Some(bar) = self.bars.get_mut(self.selected_monitor) {
+                            bar.update_blocks();
+                        }
+                        if self.bars.iter().any(|bar| bar.needs_redraw()) {
+                            self.update_bar()?;
+                        }
+                        last_bar_update = std::time::Instant::now();
+                    }
+
+                    self.connection.flush()?;
+                    std::thread::sleep(std::time::Duration::from_millis(16));
                 }
             }
-
-            if let Some(bar) = self.bars.get_mut(self.selected_monitor) {
-                bar.update_blocks();
-            }
-
-            if self.bars.iter().any(|bar| bar.needs_redraw()) {
-                self.update_bar()?;
-            }
-
-            std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }
 
@@ -502,7 +488,9 @@ impl WindowManager {
 
                 self.window_tags.insert(focused, selected_tags);
                 self.window_monitor.insert(focused, self.selected_monitor);
-                let _ = self.save_client_tag(focused, selected_tags);
+                if let Err(error) = self.save_client_tag(focused, selected_tags) {
+                    eprintln!("Failed to save client tag: {:?}", error);
+                }
 
                 self.apply_layout()?;
             } else {
@@ -534,52 +522,40 @@ impl WindowManager {
         Ok(())
     }
 
-    fn smart_move_window(&mut self, direction: i32) -> WmResult<()> {
-        let focused = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|m| m.focused_window)
-        {
-            Some(win) => win,
-            None => return Ok(()),
-        };
+    fn collect_visible_floating_geometries(&mut self) -> Vec<(Window, CachedGeometry)> {
+        let focused_window = self.monitors.get(self.selected_monitor)
+            .and_then(|monitor| monitor.focused_window)
+            .unwrap_or(0);
+        let selected_monitor_index = self.selected_monitor;
 
-        if !self.floating_windows.contains(&focused) {
-            let float_width = (self.screen.width_in_pixels / 2) as u32;
-            let float_height = (self.screen.height_in_pixels / 2) as u32;
-            let border_width = self.config.border_width;
-            let center_width = ((self.screen.width_in_pixels - float_width as u16) / 2) as i32;
-            let center_height = ((self.screen.height_in_pixels - float_height as u16) / 2) as i32;
+        let candidate_windows: Vec<Window> = self.windows.iter()
+            .filter(|&&window| {
+                window != focused_window
+                    && self.floating_windows.contains(&window)
+                    && self.is_window_visible(window)
+                    && self.window_monitor.get(&window).copied().unwrap_or(0) == selected_monitor_index
+            })
+            .copied()
+            .collect();
 
-            self.connection.configure_window(
-                focused,
-                &ConfigureWindowAux::new()
-                    .x(center_width)
-                    .y(center_height)
-                    .width(float_width)
-                    .height(float_height)
-                    .border_width(border_width)
-                    .stack_mode(StackMode::ABOVE),
-            )?;
-            self.floating_windows.insert(focused);
-        }
+        candidate_windows.into_iter()
+            .filter_map(|window| {
+                self.get_or_query_geometry(window).ok().map(|geometry| (window, geometry))
+            })
+            .collect()
+    }
 
-        let current_geom = match self.connection.get_geometry(focused)?.reply() {
-            Ok(geom) => geom,
-            Err(_) => return Ok(()),
-        };
-
-        let c_x = current_geom.x as i32;
-        let c_y = current_geom.y as i32;
-        let c_width = current_geom.width as i32;
-        let c_height = current_geom.height as i32;
-
-        let monitor = match self.monitors.get(self.selected_monitor) {
-            Some(m) => m,
-            None => return Ok(()),
-        };
-
-        let (gap_ih, gap_iv, gap_oh, gap_ov) = if self.gaps_enabled {
+    fn calculate_smart_move_position(
+        &self,
+        current_x: i32,
+        current_y: i32,
+        current_width: i32,
+        current_height: i32,
+        direction: i32,
+        monitor: &Monitor,
+        other_geometries: &[(Window, CachedGeometry)],
+    ) -> (i32, i32) {
+        let (gap_inner_horizontal, gap_inner_vertical, gap_outer_horizontal, gap_outer_vertical) = if self.gaps_enabled {
             (
                 self.config.gap_inner_horizontal as i32,
                 self.config.gap_inner_vertical as i32,
@@ -590,203 +566,185 @@ impl WindowManager {
             (0, 0, 0, 0)
         };
 
-        let (new_x, new_y) = match direction {
+        match direction {
             0 => {
-                // UP
-                let mut target = i32::MIN;
-                let top = c_y;
-                let mut ny = c_y - (monitor.height as i32 / 4);
+                let mut target_position = i32::MIN;
+                let current_top = current_y;
+                let mut new_y_position = current_y - (monitor.height as i32 / SMART_MOVE_STEP_RATIO_VERTICAL);
 
-                for &other_window in &self.windows {
-                    if other_window == focused {
-                        continue;
-                    }
-                    if !self.floating_windows.contains(&other_window) {
-                        continue;
-                    }
-                    if !self.is_window_visible(other_window) {
-                        continue;
-                    }
-                    let other_mon = self.window_monitor.get(&other_window).copied().unwrap_or(0);
-                    if other_mon != self.selected_monitor {
+                for (_other_window, other_geometry) in other_geometries {
+                    let other_x = other_geometry.x_position as i32;
+                    let other_y = other_geometry.y_position as i32;
+                    let other_width = other_geometry.width as i32;
+                    let other_height = other_geometry.height as i32;
+
+                    if current_x + current_width < other_x || current_x > other_x + other_width {
                         continue;
                     }
 
-                    let other_geom = match self.connection.get_geometry(other_window)?.reply() {
-                        Ok(geom) => geom,
-                        Err(_) => continue,
-                    };
-
-                    let o_x = other_geom.x as i32;
-                    let o_y = other_geom.y as i32;
-                    let o_width = other_geom.width as i32;
-                    let o_height = other_geom.height as i32;
-
-                    if c_x + c_width < o_x || c_x > o_x + o_width {
-                        continue;
-                    }
-
-                    let bottom = o_y + o_height + gap_iv;
-                    if top > bottom && ny < bottom {
-                        target = target.max(bottom);
+                    let other_bottom = other_y + other_height + gap_inner_vertical;
+                    if current_top > other_bottom && new_y_position < other_bottom {
+                        target_position = target_position.max(other_bottom);
                     }
                 }
 
-                if target != i32::MIN {
-                    ny = target;
+                if target_position != i32::MIN {
+                    new_y_position = target_position;
                 }
-                ny = ny.max(monitor.y as i32 + gap_ov);
-                (c_x, ny)
+                new_y_position = new_y_position.max(monitor.y as i32 + gap_outer_vertical);
+                (current_x, new_y_position)
             }
             1 => {
-                // DOWN
-                let mut target = i32::MAX;
-                let bottom = c_y + c_height;
-                let mut ny = c_y + (monitor.height as i32 / 4);
+                let mut target_position = i32::MAX;
+                let current_bottom = current_y + current_height;
+                let mut new_y_position = current_y + (monitor.height as i32 / SMART_MOVE_STEP_RATIO_VERTICAL);
 
-                for &other_window in &self.windows {
-                    if other_window == focused {
-                        continue;
-                    }
-                    if !self.floating_windows.contains(&other_window) {
-                        continue;
-                    }
-                    if !self.is_window_visible(other_window) {
-                        continue;
-                    }
-                    let other_mon = self.window_monitor.get(&other_window).copied().unwrap_or(0);
-                    if other_mon != self.selected_monitor {
+                for (_other_window, other_geometry) in other_geometries {
+                    let other_x = other_geometry.x_position as i32;
+                    let other_y = other_geometry.y_position as i32;
+                    let other_width = other_geometry.width as i32;
+
+                    if current_x + current_width < other_x || current_x > other_x + other_width {
                         continue;
                     }
 
-                    let other_geom = match self.connection.get_geometry(other_window)?.reply() {
-                        Ok(geom) => geom,
-                        Err(_) => continue,
-                    };
-
-                    let o_x = other_geom.x as i32;
-                    let o_y = other_geom.y as i32;
-                    let o_width = other_geom.width as i32;
-
-                    if c_x + c_width < o_x || c_x > o_x + o_width {
-                        continue;
-                    }
-
-                    let top = o_y - gap_iv;
-                    if bottom < top && (ny + c_height) > top {
-                        target = target.min(top - c_height);
+                    let other_top = other_y - gap_inner_vertical;
+                    if current_bottom < other_top && (new_y_position + current_height) > other_top {
+                        target_position = target_position.min(other_top - current_height);
                     }
                 }
 
-                if target != i32::MAX {
-                    ny = target;
+                if target_position != i32::MAX {
+                    new_y_position = target_position;
                 }
-                ny = ny.min(monitor.y as i32 + monitor.height as i32 - c_height - gap_ov);
-                (c_x, ny)
+                new_y_position = new_y_position.min(monitor.y as i32 + monitor.height as i32 - current_height - gap_outer_vertical);
+                (current_x, new_y_position)
             }
             2 => {
-                // LEFT
-                let mut target = i32::MIN;
-                let left = c_x;
-                let mut nx = c_x - (monitor.width as i32 / 6);
+                let mut target_position = i32::MIN;
+                let current_left = current_x;
+                let mut new_x_position = current_x - (monitor.width as i32 / SMART_MOVE_STEP_RATIO_HORIZONTAL);
 
-                for &other_window in &self.windows {
-                    if other_window == focused {
-                        continue;
-                    }
-                    if !self.floating_windows.contains(&other_window) {
-                        continue;
-                    }
-                    if !self.is_window_visible(other_window) {
-                        continue;
-                    }
-                    let other_mon = self.window_monitor.get(&other_window).copied().unwrap_or(0);
-                    if other_mon != self.selected_monitor {
+                for (_other_window, other_geometry) in other_geometries {
+                    let other_x = other_geometry.x_position as i32;
+                    let other_y = other_geometry.y_position as i32;
+                    let other_width = other_geometry.width as i32;
+                    let other_height = other_geometry.height as i32;
+
+                    if current_y + current_height < other_y || current_y > other_y + other_height {
                         continue;
                     }
 
-                    let other_geom = match self.connection.get_geometry(other_window)?.reply() {
-                        Ok(geom) => geom,
-                        Err(_) => continue,
-                    };
-
-                    let o_x = other_geom.x as i32;
-                    let o_y = other_geom.y as i32;
-                    let o_width = other_geom.width as i32;
-                    let o_height = other_geom.height as i32;
-
-                    if c_y + c_height < o_y || c_y > o_y + o_height {
-                        continue;
-                    }
-
-                    let right = o_x + o_width + gap_ih;
-                    if left > right && nx < right {
-                        target = target.max(right);
+                    let other_right = other_x + other_width + gap_inner_horizontal;
+                    if current_left > other_right && new_x_position < other_right {
+                        target_position = target_position.max(other_right);
                     }
                 }
 
-                if target != i32::MIN {
-                    nx = target;
+                if target_position != i32::MIN {
+                    new_x_position = target_position;
                 }
-                nx = nx.max(monitor.x as i32 + gap_oh);
-                (nx, c_y)
+                new_x_position = new_x_position.max(monitor.x as i32 + gap_outer_horizontal);
+                (new_x_position, current_y)
             }
             3 => {
-                // RIGHT
-                let mut target = i32::MAX;
-                let right = c_x + c_width;
-                let mut nx = c_x + (monitor.width as i32 / 6);
+                let mut target_position = i32::MAX;
+                let current_right = current_x + current_width;
+                let mut new_x_position = current_x + (monitor.width as i32 / SMART_MOVE_STEP_RATIO_HORIZONTAL);
 
-                for &other_window in &self.windows {
-                    if other_window == focused {
-                        continue;
-                    }
-                    if !self.floating_windows.contains(&other_window) {
-                        continue;
-                    }
-                    if !self.is_window_visible(other_window) {
-                        continue;
-                    }
-                    let other_mon = self.window_monitor.get(&other_window).copied().unwrap_or(0);
-                    if other_mon != self.selected_monitor {
+                for (_other_window, other_geometry) in other_geometries {
+                    let other_x = other_geometry.x_position as i32;
+                    let other_y = other_geometry.y_position as i32;
+                    let other_height = other_geometry.height as i32;
+
+                    if current_y + current_height < other_y || current_y > other_y + other_height {
                         continue;
                     }
 
-                    let other_geom = match self.connection.get_geometry(other_window)?.reply() {
-                        Ok(geom) => geom,
-                        Err(_) => continue,
-                    };
-
-                    let o_x = other_geom.x as i32;
-                    let o_y = other_geom.y as i32;
-                    let o_height = other_geom.height as i32;
-
-                    if c_y + c_height < o_y || c_y > o_y + o_height {
-                        continue;
-                    }
-
-                    let left = o_x - gap_ih;
-                    if right < left && (nx + c_width) > left {
-                        target = target.min(left - c_width);
+                    let other_left = other_x - gap_inner_horizontal;
+                    if current_right < other_left && (new_x_position + current_width) > other_left {
+                        target_position = target_position.min(other_left - current_width);
                     }
                 }
 
-                if target != i32::MAX {
-                    nx = target;
+                if target_position != i32::MAX {
+                    new_x_position = target_position;
                 }
-                nx = nx.min(monitor.x as i32 + monitor.width as i32 - c_width - gap_oh);
-                (nx, c_y)
+                new_x_position = new_x_position.min(monitor.x as i32 + monitor.width as i32 - current_width - gap_outer_horizontal);
+                (new_x_position, current_y)
             }
-            _ => return Ok(()),
+            _ => (current_x, current_y),
+        }
+    }
+
+    fn smart_move_window(&mut self, direction: i32) -> WmResult<()> {
+        let focused = match self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|monitor| monitor.focused_window)
+        {
+            Some(window) => window,
+            None => return Ok(()),
         };
+
+        if !self.floating_windows.contains(&focused) {
+            let float_width = (self.screen.width_in_pixels as f32 * DEFAULT_FLOAT_WIDTH_RATIO) as u32;
+            let float_height = (self.screen.height_in_pixels as f32 * DEFAULT_FLOAT_HEIGHT_RATIO) as u32;
+            let border_width = self.config.border_width;
+            let center_x_position = ((self.screen.width_in_pixels - float_width as u16) / 2) as i32;
+            let center_y_position = ((self.screen.height_in_pixels - float_height as u16) / 2) as i32;
+
+            self.connection.configure_window(
+                focused,
+                &ConfigureWindowAux::new()
+                    .x(center_x_position)
+                    .y(center_y_position)
+                    .width(float_width)
+                    .height(float_height)
+                    .border_width(border_width)
+                    .stack_mode(StackMode::ABOVE),
+            )?;
+            self.floating_windows.insert(focused);
+        }
+
+        let current_geometry = self.get_or_query_geometry(focused)?;
+        let current_x = current_geometry.x_position as i32;
+        let current_y = current_geometry.y_position as i32;
+        let current_width = current_geometry.width as i32;
+        let current_height = current_geometry.height as i32;
+
+        let other_geometries = self.collect_visible_floating_geometries();
+
+        let monitor = match self.monitors.get(self.selected_monitor) {
+            Some(monitor) => monitor,
+            None => return Ok(()),
+        };
+
+        let (new_x_position, new_y_position) = self.calculate_smart_move_position(
+            current_x,
+            current_y,
+            current_width,
+            current_height,
+            direction,
+            monitor,
+            &other_geometries,
+        );
 
         self.connection.configure_window(
             focused,
             &ConfigureWindowAux::new()
-                .x(new_x)
-                .y(new_y)
+                .x(new_x_position)
+                .y(new_y_position)
                 .stack_mode(StackMode::ABOVE),
         )?;
+
+        self.update_geometry_cache(focused, CachedGeometry {
+            x_position: new_x_position as i16,
+            y_position: new_y_position as i16,
+            width: current_width as u16,
+            height: current_height as u16,
+            border_width: current_geometry.border_width,
+        });
 
         self.connection.flush()?;
         Ok(())
@@ -952,7 +910,9 @@ impl WindowManager {
             KeyAction::SpawnTerminal => {
                 use std::process::Command;
                 let terminal = &self.config.terminal;
-                let _ = Command::new(terminal).spawn();
+                if let Err(error) = Command::new(terminal).spawn() {
+                    eprintln!("Failed to spawn terminal {}: {:?}", terminal, error);
+                }
             }
             KeyAction::KillClient => {
                 if let Some(focused) = self
@@ -1224,7 +1184,9 @@ impl WindowManager {
             let mask = tag_mask(tag_index);
             self.window_tags.insert(focused, mask);
 
-            let _ = self.save_client_tag(focused, mask);
+            if let Err(error) = self.save_client_tag(focused, mask) {
+                eprintln!("Failed to save client tag: {:?}", error);
+            }
 
             self.update_window_visibility()?;
             self.apply_layout()?;
@@ -1265,43 +1227,30 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn focus_direction(&mut self, direction: i32) -> WmResult<()> {
-        let focused = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|m| m.focused_window)
-        {
-            Some(win) => win,
-            None => return Ok(()),
-        };
-
-        let visible = self.visible_windows();
-        if visible.len() < 2 {
-            return Ok(());
+    fn find_directional_window_candidate(&mut self, focused_window: Window, direction: i32) -> Option<Window> {
+        let visible_windows = self.visible_windows();
+        if visible_windows.len() < 2 {
+            return None;
         }
 
-        let focused_geom = match self.connection.get_geometry(focused)?.reply() {
-            Ok(geom) => geom,
-            Err(_) => return Ok(()),
-        };
-
-        let focused_center_x = focused_geom.x + (focused_geom.width as i16 / 2);
-        let focused_center_y = focused_geom.y + (focused_geom.height as i16 / 2);
+        let focused_geometry = self.get_or_query_geometry(focused_window).ok()?;
+        let focused_center_x = focused_geometry.x_position + (focused_geometry.width as i16 / 2);
+        let focused_center_y = focused_geometry.y_position + (focused_geometry.height as i16 / 2);
 
         let mut candidates = Vec::new();
 
-        for &window in &visible {
-            if window == focused {
+        for &window in &visible_windows {
+            if window == focused_window {
                 continue;
             }
 
-            let geom = match self.connection.get_geometry(window)?.reply() {
-                Ok(g) => g,
+            let geometry = match self.get_or_query_geometry(window) {
+                Ok(geometry) => geometry,
                 Err(_) => continue,
             };
 
-            let center_x = geom.x + (geom.width as i16 / 2);
-            let center_y = geom.y + (geom.height as i16 / 2);
+            let center_x = geometry.x_position + (geometry.width as i16 / 2);
+            let center_y = geometry.y_position + (geometry.height as i16 / 2);
 
             let is_valid_direction = match direction {
                 0 => center_y < focused_center_y,
@@ -1312,87 +1261,56 @@ impl WindowManager {
             };
 
             if is_valid_direction {
-                let dx = (center_x - focused_center_x) as i32;
-                let dy = (center_y - focused_center_y) as i32;
-                let distance = dx * dx + dy * dy;
-                candidates.push((window, distance));
+                let delta_x = (center_x - focused_center_x) as i32;
+                let delta_y = (center_y - focused_center_y) as i32;
+                let distance_squared = delta_x * delta_x + delta_y * delta_y;
+                candidates.push((window, distance_squared));
             }
         }
 
-        if let Some(&(closest_window, _)) = candidates.iter().min_by_key(|&(_, dist)| dist) {
-            self.set_focus(closest_window)?;
+        candidates.iter().min_by_key(|&(_window, distance)| distance).map(|&(window, _distance)| window)
+    }
+
+    pub fn focus_direction(&mut self, direction: i32) -> WmResult<()> {
+        let focused_window = match self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|monitor| monitor.focused_window)
+        {
+            Some(window) => window,
+            None => return Ok(()),
+        };
+
+        if let Some(target_window) = self.find_directional_window_candidate(focused_window, direction) {
+            self.set_focus(target_window)?;
         }
 
         Ok(())
     }
 
     pub fn swap_direction(&mut self, direction: i32) -> WmResult<()> {
-        let focused = match self
+        let focused_window = match self
             .monitors
             .get(self.selected_monitor)
-            .and_then(|m| m.focused_window)
+            .and_then(|monitor| monitor.focused_window)
         {
-            Some(win) => win,
+            Some(window) => window,
             None => return Ok(()),
         };
 
-        let visible = self.visible_windows();
-        if visible.len() < 2 {
-            return Ok(());
-        }
+        if let Some(target_window) = self.find_directional_window_candidate(focused_window, direction) {
+            let focused_position = self.windows.iter().position(|&window| window == focused_window);
+            let target_position = self.windows.iter().position(|&window| window == target_window);
 
-        let focused_geom = match self.connection.get_geometry(focused)?.reply() {
-            Ok(geom) => geom,
-            Err(_) => return Ok(()),
-        };
-
-        let focused_center_x = focused_geom.x + (focused_geom.width as i16 / 2);
-        let focused_center_y = focused_geom.y + (focused_geom.height as i16 / 2);
-
-        let mut candidates = Vec::new();
-
-        for &window in &visible {
-            if window == focused {
-                continue;
-            }
-
-            let geom = match self.connection.get_geometry(window)?.reply() {
-                Ok(g) => g,
-                Err(_) => continue,
-            };
-
-            let center_x = geom.x + (geom.width as i16 / 2);
-            let center_y = geom.y + (geom.height as i16 / 2);
-
-            let is_valid_direction = match direction {
-                0 => center_y < focused_center_y,
-                1 => center_y > focused_center_y,
-                2 => center_x < focused_center_x,
-                3 => center_x > focused_center_x,
-                _ => false,
-            };
-
-            if is_valid_direction {
-                let dx = (center_x - focused_center_x) as i32;
-                let dy = (center_y - focused_center_y) as i32;
-                let distance = dx * dx + dy * dy;
-                candidates.push((window, distance));
-            }
-        }
-
-        if let Some(&(target_window, _)) = candidates.iter().min_by_key(|&(_, dist)| dist) {
-            let focused_pos = self.windows.iter().position(|&w| w == focused);
-            let target_pos = self.windows.iter().position(|&w| w == target_window);
-
-            if let (Some(f_pos), Some(t_pos)) = (focused_pos, target_pos) {
-                self.windows.swap(f_pos, t_pos);
+            if let (Some(focused_index), Some(target_index)) = (focused_position, target_position) {
+                self.windows.swap(focused_index, target_index);
                 self.apply_layout()?;
-                self.set_focus(focused)?;
+                self.set_focus(focused_window)?;
 
-                if let Ok(geometry) = self.connection.get_geometry(focused)?.reply() {
+                if let Ok(geometry) = self.get_or_query_geometry(focused_window) {
                     self.connection.warp_pointer(
                         x11rb::NONE,
-                        focused,
+                        focused_window,
                         0,
                         0,
                         0,
@@ -1585,18 +1503,18 @@ impl WindowManager {
                     (0, 0)
                 };
 
-                let x = monitor.x + outer_gap_h as i32;
-                let y = monitor.y + outer_gap_v as i32;
-                let width = monitor.width.saturating_sub(2 * outer_gap_h).saturating_sub(2 * border_width);
-                let height = monitor.height.saturating_sub(2 * outer_gap_v).saturating_sub(2 * border_width);
+                let window_x = monitor.x + outer_gap_h as i32;
+                let window_y = monitor.y + outer_gap_v as i32;
+                let window_width = monitor.width.saturating_sub(2 * outer_gap_h).saturating_sub(2 * border_width);
+                let window_height = monitor.height.saturating_sub(2 * outer_gap_v).saturating_sub(2 * border_width);
 
                 self.connection.configure_window(
                     window,
                     &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                        .x(x)
-                        .y(y)
-                        .width(width)
-                        .height(height),
+                        .x(window_x)
+                        .y(window_y)
+                        .width(window_width)
+                        .height(window_height),
                 )?;
             }
             self.connection.flush()?;
@@ -1901,21 +1819,27 @@ impl WindowManager {
 
     fn handle_event(&mut self, event: Event) -> WmResult<Option<bool>> {
         match event {
-            Event::KeyPress(ref e) if e.event == self.overlay.window() => {
+            Event::KeyPress(ref key_event) if key_event.event == self.overlay.window() => {
                 if self.overlay.is_visible() {
-                    let _ = self.overlay.hide(&self.connection);
+                    if let Err(error) = self.overlay.hide(&self.connection) {
+                        eprintln!("Failed to hide overlay: {:?}", error);
+                    }
                 }
                 return Ok(None);
             }
-            Event::ButtonPress(ref e) if e.event == self.overlay.window() => {
+            Event::ButtonPress(ref button_event) if button_event.event == self.overlay.window() => {
                 if self.overlay.is_visible() {
-                    let _ = self.overlay.hide(&self.connection);
+                    if let Err(error) = self.overlay.hide(&self.connection) {
+                        eprintln!("Failed to hide overlay: {:?}", error);
+                    }
                 }
                 return Ok(None);
             }
-            Event::Expose(ref e) if e.window == self.overlay.window() => {
+            Event::Expose(ref expose_event) if expose_event.window == self.overlay.window() => {
                 if self.overlay.is_visible() {
-                    let _ = self.overlay.draw(&self.connection, &self.font);
+                    if let Err(error) = self.overlay.draw(&self.connection, &self.font) {
+                        eprintln!("Failed to draw overlay: {:?}", error);
+                    }
                 }
                 return Ok(None);
             }
@@ -1940,7 +1864,9 @@ impl WindowManager {
 
                     if let Some(&keysym) = keyboard_mapping.keysyms.get(index) {
                         if keysym == keysyms::XK_ESCAPE || keysym == keysyms::XK_Q {
-                            let _ = self.keybind_overlay.hide(&self.connection);
+                            if let Err(error) = self.keybind_overlay.hide(&self.connection) {
+                                eprintln!("Failed to hide keybind overlay: {:?}", error);
+                            }
                         }
                     }
                 }
@@ -1949,9 +1875,11 @@ impl WindowManager {
             Event::ButtonPress(ref e) if e.event == self.keybind_overlay.window() => {
                 return Ok(None);
             }
-            Event::Expose(ref e) if e.window == self.keybind_overlay.window() => {
+            Event::Expose(ref expose_event) if expose_event.window == self.keybind_overlay.window() => {
                 if self.keybind_overlay.is_visible() {
-                    let _ = self.keybind_overlay.draw(&self.connection, &self.font);
+                    if let Err(error) = self.keybind_overlay.draw(&self.connection, &self.font) {
+                        eprintln!("Failed to draw keybind overlay: {:?}", error);
+                    }
                 }
                 return Ok(None);
             }
@@ -1986,7 +1914,9 @@ impl WindowManager {
                 self.window_monitor
                     .insert(event.window, self.selected_monitor);
                 self.set_wm_state(event.window, 1)?;
-                let _ = self.save_client_tag(event.window, selected_tags);
+                if let Err(error) = self.save_client_tag(event.window, selected_tags) {
+                    eprintln!("Failed to save client tag for new window: {:?}", error);
+                }
 
                 let is_transient = self.is_transient_window(event.window);
                 if is_transient {
@@ -2100,7 +2030,9 @@ impl WindowManager {
                                 Ok(()) => {
                                     self.gaps_enabled = self.config.gaps_enabled;
                                     self.error_message = None;
-                                    let _ = self.overlay.hide(&self.connection);
+                                    if let Err(error) = self.overlay.hide(&self.connection) {
+                                        eprintln!("Failed to hide overlay after config reload: {:?}", error);
+                                    }
                                     self.apply_layout()?;
                                     self.update_bar()?;
                                 }
@@ -2202,12 +2134,14 @@ impl WindowManager {
         Ok(None)
     }
 
-    fn apply_layout(&self) -> WmResult<()> {
+    fn apply_layout(&mut self) -> WmResult<()> {
         if self.layout.name() == LayoutType::Normie.as_str() {
             return Ok(());
         }
 
-        for (monitor_index, monitor) in self.monitors.iter().enumerate() {
+        let monitor_count = self.monitors.len();
+        for monitor_index in 0..monitor_count {
+            let monitor = &self.monitors[monitor_index];
             let border_width = self.config.border_width;
 
             let gaps = if self.gaps_enabled {
@@ -2226,22 +2160,28 @@ impl WindowManager {
                 }
             };
 
+            let monitor_selected_tags = monitor.selected_tags;
+            let monitor_x = monitor.x;
+            let monitor_y = monitor.y;
+            let monitor_width = monitor.width;
+            let monitor_height = monitor.height;
+
             let visible: Vec<Window> = self
                 .windows
                 .iter()
-                .filter(|&&w| {
-                    let window_mon = self.window_monitor.get(&w).copied().unwrap_or(0);
-                    if window_mon != monitor_index {
+                .filter(|&&window| {
+                    let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
+                    if window_monitor_index != monitor_index {
                         return false;
                     }
-                    if self.floating_windows.contains(&w) {
+                    if self.floating_windows.contains(&window) {
                         return false;
                     }
-                    if self.fullscreen_windows.contains(&w) {
+                    if self.fullscreen_windows.contains(&window) {
                         return false;
                     }
-                    if let Some(&tags) = self.window_tags.get(&w) {
-                        (tags & monitor.selected_tags) != 0
+                    if let Some(&tags) = self.window_tags.get(&window) {
+                        (tags & monitor_selected_tags) != 0
                     } else {
                         false
                     }
@@ -2252,23 +2192,23 @@ impl WindowManager {
             let bar_height = if self.show_bar {
                 self.bars
                     .get(monitor_index)
-                    .map(|b| b.height() as u32)
+                    .map(|bar| bar.height() as u32)
                     .unwrap_or(0)
             } else {
                 0
             };
-            let usable_height = monitor.height.saturating_sub(bar_height);
+            let usable_height = monitor_height.saturating_sub(bar_height);
 
             let geometries = self
                 .layout
-                .arrange(&visible, monitor.width, usable_height, &gaps);
+                .arrange(&visible, monitor_width, usable_height, &gaps);
 
             for (window, geometry) in visible.iter().zip(geometries.iter()) {
                 let adjusted_width = geometry.width.saturating_sub(2 * border_width);
                 let adjusted_height = geometry.height.saturating_sub(2 * border_width);
 
-                let adjusted_x = geometry.x_coordinate + monitor.x;
-                let adjusted_y = geometry.y_coordinate + monitor.y + bar_height as i32;
+                let adjusted_x = geometry.x_coordinate + monitor_x;
+                let adjusted_y = geometry.y_coordinate + monitor_y + bar_height as i32;
 
                 self.connection.configure_window(
                     *window,
@@ -2279,6 +2219,14 @@ impl WindowManager {
                         .height(adjusted_height)
                         .border_width(border_width),
                 )?;
+
+                self.update_geometry_cache(*window, CachedGeometry {
+                    x_position: adjusted_x as i16,
+                    y_position: adjusted_y as i16,
+                    width: adjusted_width as u16,
+                    height: adjusted_height as u16,
+                    border_width: border_width as u16,
+                });
             }
         }
 
@@ -2292,12 +2240,38 @@ impl WindowManager {
         Ok(())
     }
 
+    fn update_geometry_cache(&mut self, window: Window, geometry: CachedGeometry) {
+        self.window_geometry_cache.insert(window, geometry);
+    }
+
+    fn get_cached_geometry(&self, window: Window) -> Option<CachedGeometry> {
+        self.window_geometry_cache.get(&window).copied()
+    }
+
+    fn get_or_query_geometry(&mut self, window: Window) -> WmResult<CachedGeometry> {
+        if let Some(cached) = self.get_cached_geometry(window) {
+            return Ok(cached);
+        }
+
+        let geometry = self.connection.get_geometry(window)?.reply()?;
+        let cached = CachedGeometry {
+            x_position: geometry.x,
+            y_position: geometry.y,
+            width: geometry.width,
+            height: geometry.height,
+            border_width: geometry.border_width as u16,
+        };
+        self.update_geometry_cache(window, cached);
+        Ok(cached)
+    }
+
     fn remove_window(&mut self, window: Window) -> WmResult<()> {
         let initial_count = self.windows.len();
 
         self.windows.retain(|&w| w != window);
         self.window_tags.remove(&window);
         self.window_monitor.remove(&window);
+        self.window_geometry_cache.remove(&window);
         self.floating_windows.remove(&window);
 
         if self.windows.len() < initial_count {

@@ -1,12 +1,11 @@
-use anyhow::{Context, Result};
 use std::path::PathBuf;
 
-fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments: Vec<String> = std::env::args().collect();
 
     let mut custom_config_path: Option<PathBuf> = None;
 
-    match args.get(1).map(|s| s.as_str()) {
+    match arguments.get(1).map(|string| string.as_str()) {
         Some("--version") => {
             println!("oxwm {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
@@ -20,7 +19,7 @@ fn main() -> Result<()> {
             return Ok(());
         }
         Some("--config") => {
-            if let Some(path) = args.get(2) {
+            if let Some(path) = arguments.get(2) {
                 custom_config_path = Some(PathBuf::from(path));
             } else {
                 eprintln!("Error: --config requires a path argument");
@@ -32,37 +31,37 @@ fn main() -> Result<()> {
 
     let (config, had_broken_config) = load_config(custom_config_path)?;
 
-    let mut wm = oxwm::window_manager::WindowManager::new(config)?;
+    let mut window_manager = oxwm::window_manager::WindowManager::new(config)?;
 
     if had_broken_config {
-        wm.show_migration_overlay();
+        window_manager.show_migration_overlay();
     }
 
-    let should_restart = wm.run()?;
+    let should_restart = window_manager.run()?;
 
-    drop(wm);
+    drop(window_manager);
 
     if should_restart {
         use std::os::unix::process::CommandExt;
-        let err = std::process::Command::new(&args[0]).args(&args[1..]).exec();
-        eprintln!("Failed to restart: {}", err);
+        let error = std::process::Command::new(&arguments[0]).args(&arguments[1..]).exec();
+        eprintln!("Failed to restart: {}", error);
     }
 
     Ok(())
 }
 
-fn load_config(custom_path: Option<PathBuf>) -> Result<(oxwm::Config, bool)> {
+fn load_config(custom_path: Option<PathBuf>) -> Result<(oxwm::Config, bool), Box<dyn std::error::Error>> {
     let config_path = if let Some(path) = custom_path {
         path
     } else {
-        let config_dir = get_config_path();
-        let lua_path = config_dir.join("config.lua");
+        let config_directory = get_config_path();
+        let lua_path = config_directory.join("config.lua");
 
         if !lua_path.exists() {
-            let ron_path = config_dir.join("config.ron");
+            let ron_path = config_directory.join("config.ron");
             let had_ron_config = ron_path.exists();
 
-            println!("No config found at {:?}", config_dir);
+            println!("No config found at {:?}", config_directory);
             println!("Creating default Lua config...");
             init_config()?;
 
@@ -80,48 +79,48 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<(oxwm::Config, bool)> {
         lua_path
     };
 
-    let config_str =
-        std::fs::read_to_string(&config_path).with_context(|| "Failed to read config file")?;
+    let config_string = std::fs::read_to_string(&config_path)
+        .map_err(|error| format!("Failed to read config file: {}", error))?;
 
-    let config_dir = config_path.parent();
+    let config_directory = config_path.parent();
 
-    match oxwm::config::parse_lua_config(&config_str, config_dir) {
+    match oxwm::config::parse_lua_config(&config_string, config_directory) {
         Ok(config) => Ok((config, false)),
-        Err(_) => {
+        Err(_error) => {
             let template = include_str!("../../templates/config.lua");
             let config = oxwm::config::parse_lua_config(template, None)
-                .with_context(|| "Failed to parse default template config")?;
+                .map_err(|error| format!("Failed to parse default template config: {}", error))?;
             Ok((config, true))
         }
     }
 }
 
-fn init_config() -> Result<()> {
-    let config_dir = get_config_path();
-    std::fs::create_dir_all(&config_dir)?;
+fn init_config() -> Result<(), Box<dyn std::error::Error>> {
+    let config_directory = get_config_path();
+    std::fs::create_dir_all(&config_directory)?;
 
     let config_template = include_str!("../../templates/config.lua");
-    let config_path = config_dir.join("config.lua");
+    let config_path = config_directory.join("config.lua");
     std::fs::write(&config_path, config_template)?;
 
     update_lsp_files()?;
 
     println!("✓ Config created at {:?}", config_path);
-    println!("✓ LSP definitions installed at {:?}/lib/oxwm.lua", config_dir);
+    println!("✓ LSP definitions installed at {:?}/lib/oxwm.lua", config_directory);
     println!("  Edit the file and reload with Mod+Shift+R");
     println!("  No compilation needed - changes take effect immediately!");
 
     Ok(())
 }
 
-fn update_lsp_files() -> Result<()> {
-    let config_dir = get_config_path();
+fn update_lsp_files() -> Result<(), Box<dyn std::error::Error>> {
+    let config_directory = get_config_path();
 
-    let lib_dir = config_dir.join("lib");
-    std::fs::create_dir_all(&lib_dir)?;
+    let library_directory = config_directory.join("lib");
+    std::fs::create_dir_all(&library_directory)?;
 
     let oxwm_lua_template = include_str!("../../templates/oxwm.lua");
-    let oxwm_lua_path = lib_dir.join("oxwm.lua");
+    let oxwm_lua_path = library_directory.join("oxwm.lua");
     std::fs::write(&oxwm_lua_path, oxwm_lua_template)?;
 
     let luarc_content = r#"{
@@ -130,7 +129,7 @@ fn update_lsp_files() -> Result<()> {
   ]
 }
 "#;
-    let luarc_path = config_dir.join(".luarc.json");
+    let luarc_path = config_directory.join(".luarc.json");
     std::fs::write(&luarc_path, luarc_content)?;
 
     Ok(())
