@@ -8,3 +8,5 @@ result
 # User config
 src/config.rs
 
+# Notes
+*.md

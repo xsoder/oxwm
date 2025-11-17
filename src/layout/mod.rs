@@ -1,4 +1,5 @@
 pub mod grid;
+pub mod monocle;
 pub mod normie;
 pub mod tiling;
 
@@ -17,6 +18,7 @@ pub enum LayoutType {
     Tiling,
     Normie,
     Grid,
+    Monocle,
 }
 
 impl LayoutType {
@@ -25,6 +27,7 @@ impl LayoutType {
             Self::Tiling => Box::new(tiling::TilingLayout),
             Self::Normie => Box::new(normie::NormieLayout),
             Self::Grid => Box::new(grid::GridLayout),
+            Self::Monocle => Box::new(monocle::MonocleLayout),
         }
     }
 
@@ -32,7 +35,8 @@ impl LayoutType {
         match self {
             Self::Tiling => Self::Normie,
             Self::Normie => Self::Grid,
-            Self::Grid => Self::Tiling,
+            Self::Grid => Self::Monocle,
+            Self::Monocle => Self::Tiling,
         }
     }
 
@@ -41,6 +45,7 @@ impl LayoutType {
             Self::Tiling => "tiling",
             Self::Normie => "normie",
             Self::Grid => "grid",
+            Self::Monocle => "monocle",
         }
     }
 
@@ -49,6 +54,7 @@ impl LayoutType {
             "tiling" => Ok(Self::Tiling),
             "normie" | "floating" => Ok(Self::Normie),
             "grid" => Ok(Self::Grid),
+            "monocle" => Ok(Self::Monocle),
             _ => Err(format!("Invalid Layout Type: {}", s)),
         }
     }
@@ -79,6 +85,7 @@ pub trait Layout {
     fn symbol(&self) -> &'static str;
 }
 
+#[derive(Clone)]
 pub struct WindowGeometry {
     pub x_coordinate: i32,
     pub y_coordinate: i32,

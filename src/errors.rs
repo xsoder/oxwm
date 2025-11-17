@@ -161,3 +161,19 @@ impl From<x11rb::errors::ReplyOrIdError> for X11Error {
         X11Error::ReplyOrIdError(value)
     }
 }
+
+impl From<mlua::Error> for ConfigError {
+    fn from(err: mlua::Error) -> Self {
+        ConfigError::LuaError(err.to_string())
+    }
+}
+
+pub trait LuaResultExt<T> {
+    fn lua_context(self, context: &str) -> Result<T, ConfigError>;
+}
+
+impl<T> LuaResultExt<T> for Result<T, mlua::Error> {
+    fn lua_context(self, context: &str) -> Result<T, ConfigError> {
+        self.map_err(|e| ConfigError::LuaError(format!("{}: {}", context, e)))
+    }
+}

@@ -394,6 +394,7 @@ fn parse_key_action(kb_table: &Table) -> Result<KeyAction, ConfigError> {
 fn string_to_key_action(s: &str) -> Result<KeyAction, ConfigError> {
     let action = match s {
         "Spawn" => KeyAction::Spawn,
+        "SpawnTerminal" => KeyAction::SpawnTerminal,
         "KillClient" => KeyAction::KillClient,
         "FocusStack" => KeyAction::FocusStack,
         "FocusDirection" => KeyAction::FocusDirection,

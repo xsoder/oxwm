@@ -13,6 +13,8 @@ pub struct Bar {
     width: u16,
     height: u16,
     graphics_context: Gcontext,
+    pixmap: x11::xlib::Pixmap,
+    display: *mut x11::xlib::Display,
 
     font_draw: FontDraw,
 
@@ -77,8 +79,19 @@ impl Bar {
 
         let visual = unsafe { x11::xlib::XDefaultVisual(display, screen_num as i32) };
         let colormap = unsafe { x11::xlib::XDefaultColormap(display, screen_num as i32) };
+        let depth = unsafe { x11::xlib::XDefaultDepth(display, screen_num as i32) };
 
-        let font_draw = FontDraw::new(display, window as x11::xlib::Drawable, visual, colormap)?;
+        let pixmap = unsafe {
+            x11::xlib::XCreatePixmap(
+                display,
+                window as x11::xlib::Drawable,
+                width as u32,
+                height as u32,
+                depth as u32,
+            )
+        };
+
+        let font_draw = FontDraw::new(display, pixmap, visual, colormap)?;
 
         let horizontal_padding = (font.height() as f32 * 0.4) as u16;
 
@@ -110,6 +123,8 @@ impl Bar {
             width,
             height,
             graphics_context,
+            pixmap,
+            display,
             font_draw,
             tag_widths,
             needs_redraw: true,
@@ -182,16 +197,22 @@ impl Bar {
             self.graphics_context,
             &ChangeGCAux::new().foreground(self.scheme_normal.background),
         )?;
-        connection.poly_fill_rectangle(
-            self.window,
-            self.graphics_context,
-            &[Rectangle {
-                x: 0,
-                y: 0,
-                width: self.width,
-                height: self.height,
-            }],
-        )?;
+        connection.flush()?;
+
+        unsafe {
+            let gc = x11::xlib::XCreateGC(display, self.pixmap, 0, std::ptr::null_mut());
+            x11::xlib::XSetForeground(display, gc, self.scheme_normal.background as u64);
+            x11::xlib::XFillRectangle(
+                display,
+                self.pixmap,
+                gc,
+                0,
+                0,
+                self.width as u32,
+                self.height as u32,
+            );
+            x11::xlib::XFreeGC(display, gc);
+        }
 
         let mut x_position: i16 = 0;
 
@@ -229,20 +250,20 @@ impl Bar {
                 let underline_width = tag_width - underline_padding;
                 let underline_x = x_position + (underline_padding / 2) as i16;
 
-                connection.change_gc(
-                    self.graphics_context,
-                    &ChangeGCAux::new().foreground(scheme.underline),
-                )?;
-                connection.poly_fill_rectangle(
-                    self.window,
-                    self.graphics_context,
-                    &[Rectangle {
-                        x: underline_x,
-                        y: underline_y,
-                        width: underline_width,
-                        height: underline_height,
-                    }],
-                )?;
+                unsafe {
+                    let gc = x11::xlib::XCreateGC(display, self.pixmap, 0, std::ptr::null_mut());
+                    x11::xlib::XSetForeground(display, gc, scheme.underline as u64);
+                    x11::xlib::XFillRectangle(
+                        display,
+                        self.pixmap,
+                        gc,
+                        underline_x as i32,
+                        underline_y as i32,
+                        underline_width as u32,
+                        underline_height as u32,
+                    );
+                    x11::xlib::XFreeGC(display, gc);
+                }
             }
 
             x_position += tag_width as i16;
@@ -304,29 +325,43 @@ impl Bar {
                         let underline_width = text_width + underline_padding;
                         let underline_x = x_position - (underline_padding / 2) as i16;
 
-                        connection.change_gc(
-                            self.graphics_context,
-                            &ChangeGCAux::new().foreground(block.color()),
-                        )?;
-
-                        connection.poly_fill_rectangle(
-                            self.window,
-                            self.graphics_context,
-                            &[Rectangle {
-                                x: underline_x,
-                                y: underline_y,
-                                width: underline_width,
-                                height: underline_height,
-                            }],
-                        )?;
+                        unsafe {
+                            let gc = x11::xlib::XCreateGC(display, self.pixmap, 0, std::ptr::null_mut());
+                            x11::xlib::XSetForeground(display, gc, block.color() as u64);
+                            x11::xlib::XFillRectangle(
+                                display,
+                                self.pixmap,
+                                gc,
+                                underline_x as i32,
+                                underline_y as i32,
+                                underline_width as u32,
+                                underline_height as u32,
+                            );
+                            x11::xlib::XFreeGC(display, gc);
+                        }
                     }
                 }
             }
         }
-        connection.flush()?;
+
         unsafe {
-            x11::xlib::XFlush(display);
+            let gc = x11::xlib::XCreateGC(display, self.window as x11::xlib::Drawable, 0, std::ptr::null_mut());
+            x11::xlib::XCopyArea(
+                display,
+                self.pixmap,
+                self.window as x11::xlib::Drawable,
+                gc,
+                0,
+                0,
+                self.width as u32,
+                self.height as u32,
+                0,
+                0,
+            );
+            x11::xlib::XFreeGC(display, gc);
+            x11::xlib::XSync(display, 0);
         }
+
         self.needs_redraw = false;
 
         Ok(())
@@ -370,5 +405,13 @@ impl Bar {
 
         self.status_text.clear();
         self.needs_redraw = true;
+    }
+}
+
+impl Drop for Bar {
+    fn drop(&mut self) {
+        unsafe {
+            x11::xlib::XFreePixmap(self.display, self.pixmap);
+        }
     }
 }

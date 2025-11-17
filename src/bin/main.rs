@@ -73,6 +73,8 @@ fn load_config(custom_path: Option<PathBuf>) -> Result<(oxwm::Config, bool)> {
                 println!("   Please manually port your configuration to the new Lua format.");
                 println!("   See the new config.lua template for examples.\n");
             }
+        } else {
+            update_lsp_files()?;
         }
 
         lua_path
@@ -102,14 +104,34 @@ fn init_config() -> Result<()> {
     let config_path = config_dir.join("config.lua");
     std::fs::write(&config_path, config_template)?;
 
-    let oxwm_lua_template = include_str!("../../templates/oxwm.lua");
-    let oxwm_lua_path = config_dir.join("oxwm.lua");
-    std::fs::write(&oxwm_lua_path, oxwm_lua_template)?;
+    update_lsp_files()?;
 
     println!("✓ Config created at {:?}", config_path);
-    println!("✓ LSP definitions installed at {:?}", oxwm_lua_path);
+    println!("✓ LSP definitions installed at {:?}/lib/oxwm.lua", config_dir);
     println!("  Edit the file and reload with Mod+Shift+R");
     println!("  No compilation needed - changes take effect immediately!");
+
+    Ok(())
+}
+
+fn update_lsp_files() -> Result<()> {
+    let config_dir = get_config_path();
+
+    let lib_dir = config_dir.join("lib");
+    std::fs::create_dir_all(&lib_dir)?;
+
+    let oxwm_lua_template = include_str!("../../templates/oxwm.lua");
+    let oxwm_lua_path = lib_dir.join("oxwm.lua");
+    std::fs::write(&oxwm_lua_path, oxwm_lua_template)?;
+
+    let luarc_content = r#"{
+  "workspace.library": [
+    "lib"
+  ]
+}
+"#;
+    let luarc_path = config_dir.join(".luarc.json");
+    std::fs::write(&luarc_path, luarc_content)?;
 
     Ok(())
 }
