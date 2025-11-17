@@ -90,6 +90,7 @@ pub struct WindowManager {
     gaps_enabled: bool,
     floating_windows: HashSet<Window>,
     fullscreen_windows: HashSet<Window>,
+    floating_geometry_before_fullscreen: std::collections::HashMap<Window, (i16, i16, u16, u16, u16)>,
     bars: Vec<Bar>,
     show_bar: bool,
     last_layout: Option<&'static str>,
@@ -215,6 +216,7 @@ impl WindowManager {
             gaps_enabled,
             floating_windows: HashSet::new(),
             fullscreen_windows: HashSet::new(),
+            floating_geometry_before_fullscreen: std::collections::HashMap::new(),
             bars,
             show_bar: true,
             last_layout: None,
@@ -1554,14 +1556,80 @@ impl WindowManager {
             if let Ok(layout) = layout_from_str("monocle") {
                 self.layout = layout;
             }
+            self.toggle_bar()?;
+            self.apply_layout()?;
+
+            let border_width = self.config.border_width;
+            let windows: Vec<Window> = self.windows.iter()
+                .filter(|&&w| self.floating_windows.contains(&w) && self.is_window_visible(w))
+                .copied()
+                .collect();
+
+            for window in windows {
+                if let Ok(geom) = self.connection.get_geometry(window)?.reply() {
+                        self.floating_geometry_before_fullscreen.insert(
+                            window,
+                            (geom.x, geom.y, geom.width, geom.height, geom.border_width as u16),
+                        );
+                    }
+
+                let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
+                let monitor = &self.monitors[monitor_idx];
+
+                let (outer_gap_h, outer_gap_v) = if self.gaps_enabled {
+                    (
+                        self.config.gap_outer_horizontal,
+                        self.config.gap_outer_vertical,
+                    )
+                } else {
+                    (0, 0)
+                };
+
+                let x = monitor.x + outer_gap_h as i32;
+                let y = monitor.y + outer_gap_v as i32;
+                let width = monitor.width.saturating_sub(2 * outer_gap_h).saturating_sub(2 * border_width);
+                let height = monitor.height.saturating_sub(2 * outer_gap_v).saturating_sub(2 * border_width);
+
+                self.connection.configure_window(
+                    window,
+                    &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                        .x(x)
+                        .y(y)
+                        .width(width)
+                        .height(height),
+                )?;
+            }
+            self.connection.flush()?;
         } else {
             if let Some(last) = self.last_layout {
                 if let Ok(layout) = layout_from_str(last) {
                     self.layout = layout;
                 }
             }
+            self.toggle_bar()?;
+            self.apply_layout()?;
+
+            let windows: Vec<Window> = self.windows.iter()
+                .filter(|&&w| self.floating_windows.contains(&w) && self.is_window_visible(w))
+                .copied()
+                .collect();
+
+            for window in windows {
+                if let Some(&(x, y, width, height, border_width)) = self.floating_geometry_before_fullscreen.get(&window) {
+                    self.connection.configure_window(
+                        window,
+                        &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                            .x(x as i32)
+                            .y(y as i32)
+                            .width(width as u32)
+                            .height(height as u32)
+                            .border_width(border_width as u32),
+                    )?;
+                    self.floating_geometry_before_fullscreen.remove(&window);
+                }
+            }
+            self.connection.flush()?;
         }
-        self.toggle_bar()?;
         Ok(())
     }
 
@@ -1579,7 +1647,6 @@ impl WindowManager {
             )?;
 
             self.fullscreen_windows.insert(window);
-            self.floating_windows.insert(window);
 
             let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
             let monitor = &self.monitors[monitor_idx];
@@ -1602,6 +1669,7 @@ impl WindowManager {
             )?;
 
             self.connection.flush()?;
+            self.update_bar()?;
         } else if !fullscreen && self.fullscreen_windows.contains(&window) {
             self.connection.change_property(
                 PropMode::REPLACE,
@@ -1614,10 +1682,6 @@ impl WindowManager {
             )?;
 
             self.fullscreen_windows.remove(&window);
-
-            if !self.is_transient_window(window) {
-                self.floating_windows.remove(&window);
-            }
 
             self.connection.configure_window(
                 window,
@@ -2171,6 +2235,9 @@ impl WindowManager {
                         return false;
                     }
                     if self.floating_windows.contains(&w) {
+                        return false;
+                    }
+                    if self.fullscreen_windows.contains(&w) {
                         return false;
                     }
                     if let Some(&tags) = self.window_tags.get(&w) {
