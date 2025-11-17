@@ -1579,30 +1579,25 @@ impl WindowManager {
             )?;
 
             self.fullscreen_windows.insert(window);
-
-            self.connection.configure_window(
-                window,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .border_width(0),
-            )?;
-
             self.floating_windows.insert(window);
 
             let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
             let monitor = &self.monitors[monitor_idx];
 
-            self.connection.configure_window(
-                window,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .x(monitor.x)
-                    .y(monitor.y)
-                    .width(monitor.width as u32)
-                    .height(monitor.height as u32),
-            )?;
+            if self.show_bar {
+                if let Some(bar) = self.bars.get(monitor_idx) {
+                    self.connection.unmap_window(bar.window())?;
+                }
+            }
 
             self.connection.configure_window(
                 window,
                 &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                    .border_width(0)
+                    .x(monitor.x)
+                    .y(monitor.y)
+                    .width(monitor.width as u32)
+                    .height(monitor.height as u32)
                     .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
             )?;
 
@@ -1629,6 +1624,13 @@ impl WindowManager {
                 &x11rb::protocol::xproto::ConfigureWindowAux::new()
                     .border_width(self.config.border_width),
             )?;
+
+            let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
+            if self.show_bar {
+                if let Some(bar) = self.bars.get(monitor_idx) {
+                    self.connection.map_window(bar.window())?;
+                }
+            }
 
             self.apply_layout()?;
         }
