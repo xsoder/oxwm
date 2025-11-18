@@ -107,14 +107,23 @@ oxwm.key.bind({ modkey, "Shift" }, "9", oxwm.tag.move_to(8))
 
 oxwm.bar.set_blocks({
     oxwm.bar.block.battery({
-        charging = "󰂄 Bat: {}%",
-        discharging = "󰁹 Bat: {}%",
-        full = "󰁹 Bat: {}%",
-        format = "",
+        format = "Bat: {}%",
+        charging = "⚡ Bat: {}%",
+        discharging = "🔋 Bat: {}%",
+        full = "✓ Bat: {}%",
         interval = 30,
         color = colors.green,
-        underline = true
+        underline = true,
     }),
+    -- oxwm.bar.block.battery({
+    --     charging = "󰂄 Bat: {}%",
+    --     discharging = "󰁹 Bat: {}%",
+    --     full = "󰁹 Bat: {}%",
+    --     format = "",
+    --     interval = 30,
+    --     color = colors.green,
+    --     underline = true
+    -- }),
     oxwm.bar.block.static({
         text = " │  ",
         format = "",

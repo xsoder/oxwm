@@ -1470,6 +1470,20 @@ impl WindowManager {
 
     fn fullscreen(&mut self) -> WmResult<()> {
         if self.show_bar {
+            let windows: Vec<Window> = self.windows.iter()
+                .filter(|&&w| self.is_window_visible(w))
+                .copied()
+                .collect();
+
+            for window in &windows {
+                if let Ok(geom) = self.connection.get_geometry(*window)?.reply() {
+                        self.floating_geometry_before_fullscreen.insert(
+                            *window,
+                            (geom.x, geom.y, geom.width, geom.height, geom.border_width as u16),
+                        );
+                    }
+            }
+
             self.last_layout = Some(self.layout.name());
             if let Ok(layout) = layout_from_str("monocle") {
                 self.layout = layout;
@@ -1478,19 +1492,12 @@ impl WindowManager {
             self.apply_layout()?;
 
             let border_width = self.config.border_width;
-            let windows: Vec<Window> = self.windows.iter()
-                .filter(|&&w| self.floating_windows.contains(&w) && self.is_window_visible(w))
+            let floating_windows: Vec<Window> = windows.iter()
+                .filter(|&&w| self.floating_windows.contains(&w))
                 .copied()
                 .collect();
 
-            for window in windows {
-                if let Ok(geom) = self.connection.get_geometry(window)?.reply() {
-                        self.floating_geometry_before_fullscreen.insert(
-                            window,
-                            (geom.x, geom.y, geom.width, geom.height, geom.border_width as u16),
-                        );
-                    }
-
+            for window in floating_windows {
                 let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
                 let monitor = &self.monitors[monitor_idx];
 
@@ -1524,15 +1531,13 @@ impl WindowManager {
                     self.layout = layout;
                 }
             }
-            self.toggle_bar()?;
-            self.apply_layout()?;
 
-            let windows: Vec<Window> = self.windows.iter()
-                .filter(|&&w| self.floating_windows.contains(&w) && self.is_window_visible(w))
+            let windows_to_restore: Vec<Window> = self.floating_geometry_before_fullscreen
+                .keys()
                 .copied()
                 .collect();
 
-            for window in windows {
+            for window in windows_to_restore {
                 if let Some(&(x, y, width, height, border_width)) = self.floating_geometry_before_fullscreen.get(&window) {
                     self.connection.configure_window(
                         window,
@@ -1543,10 +1548,34 @@ impl WindowManager {
                             .height(height as u32)
                             .border_width(border_width as u32),
                     )?;
+
+                    self.update_geometry_cache(window, CachedGeometry {
+                        x_position: x,
+                        y_position: y,
+                        width,
+                        height,
+                        border_width,
+                    });
+
                     self.floating_geometry_before_fullscreen.remove(&window);
                 }
             }
             self.connection.flush()?;
+
+            self.toggle_bar()?;
+
+            if self.layout.name() != "normie" {
+                self.apply_layout()?;
+            } else {
+                if let Some(bar) = self.bars.get(self.selected_monitor) {
+                    self.connection.configure_window(
+                        bar.window(),
+                        &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                            .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
+                    )?;
+                    self.connection.flush()?;
+                }
+            }
         }
         Ok(())
     }
