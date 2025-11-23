@@ -34,6 +34,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   postInstall = ''
     install resources/oxwm.desktop -Dt $out/share/xsessions
     install -Dm644 resources/oxwm.1 -t $out/share/man/man1
+    install -Dm644 templates/oxwm.lua -t $out/share/oxwm
   '';
 
   passthru.providedSessions = ["oxwm"];

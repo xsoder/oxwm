@@ -5,6 +5,7 @@ pub mod keyboard;
 pub mod layout;
 pub mod monitor;
 pub mod overlay;
+pub mod tab_bar;
 pub mod window_manager;
 
 pub mod prelude {
