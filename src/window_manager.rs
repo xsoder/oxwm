@@ -936,13 +936,10 @@ impl WindowManager {
                     .iter()
                     .filter(|&&window| {
                         let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                        if window_monitor_index != monitor_index {
-                            return false;
-                        }
-                        if self.floating_windows.contains(&window) {
-                            return false;
-                        }
-                        if self.fullscreen_windows.contains(&window) {
+                        if window_monitor_index != monitor_index
+                            || self.floating_windows.contains(&window)
+                            || self.fullscreen_windows.contains(&window)
+                        {
                             return false;
                         }
                         if let Some(&tags) = self.window_tags.get(&window) {
@@ -2225,13 +2222,10 @@ impl WindowManager {
                             .iter()
                             .filter(|&&window| {
                                 let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                                if window_monitor_index != monitor_index {
-                                    return false;
-                                }
-                                if self.floating_windows.contains(&window) {
-                                    return false;
-                                }
-                                if self.fullscreen_windows.contains(&window) {
+                                if window_monitor_index != monitor_index
+                                    || self.floating_windows.contains(&window)
+                                    || self.fullscreen_windows.contains(&window)
+                                {
                                     return false;
                                 }
                                 let monitor_tags = self.monitors.get(monitor_index).map(|m| m.selected_tags).unwrap_or(0);
@@ -2336,13 +2330,10 @@ impl WindowManager {
                 .iter()
                 .filter(|&&window| {
                     let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                    if window_monitor_index != monitor_index {
-                        return false;
-                    }
-                    if self.floating_windows.contains(&window) {
-                        return false;
-                    }
-                    if self.fullscreen_windows.contains(&window) {
+                    if window_monitor_index != monitor_index
+                        || self.floating_windows.contains(&window)
+                        || self.fullscreen_windows.contains(&window)
+                    {
                         return false;
                     }
                     if let Some(&tags) = self.window_tags.get(&window) {
@@ -2444,13 +2435,10 @@ impl WindowManager {
                 .iter()
                 .any(|&window| {
                     let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                    if window_monitor_index != monitor_index {
-                        return false;
-                    }
-                    if self.floating_windows.contains(&window) {
-                        return false;
-                    }
-                    if self.fullscreen_windows.contains(&window) {
+                    if window_monitor_index != monitor_index
+                        || self.floating_windows.contains(&window)
+                        || self.fullscreen_windows.contains(&window)
+                    {
                         return false;
                     }
                     if let Some(monitor) = self.monitors.get(monitor_index) {
