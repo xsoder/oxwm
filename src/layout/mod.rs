@@ -1,6 +1,7 @@
 pub mod grid;
 pub mod monocle;
 pub mod normie;
+pub mod tabbed;
 pub mod tiling;
 
 use x11rb::protocol::xproto::Window;
@@ -19,6 +20,7 @@ pub enum LayoutType {
     Normie,
     Grid,
     Monocle,
+    Tabbed,
 }
 
 impl LayoutType {
@@ -28,6 +30,7 @@ impl LayoutType {
             Self::Normie => Box::new(normie::NormieLayout),
             Self::Grid => Box::new(grid::GridLayout),
             Self::Monocle => Box::new(monocle::MonocleLayout),
+            Self::Tabbed => Box::new(tabbed::TabbedLayout),
         }
     }
 
@@ -36,7 +39,8 @@ impl LayoutType {
             Self::Tiling => Self::Normie,
             Self::Normie => Self::Grid,
             Self::Grid => Self::Monocle,
-            Self::Monocle => Self::Tiling,
+            Self::Monocle => Self::Tabbed,
+            Self::Tabbed => Self::Tiling,
         }
     }
 
@@ -46,6 +50,7 @@ impl LayoutType {
             Self::Normie => "normie",
             Self::Grid => "grid",
             Self::Monocle => "monocle",
+            Self::Tabbed => "tabbed",
         }
     }
 
@@ -55,6 +60,7 @@ impl LayoutType {
             "normie" | "floating" => Ok(Self::Normie),
             "grid" => Ok(Self::Grid),
             "monocle" => Ok(Self::Monocle),
+            "tabbed" => Ok(Self::Tabbed),
             _ => Err(format!("Invalid Layout Type: {}", s)),
         }
     }

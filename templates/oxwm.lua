@@ -38,8 +38,8 @@ function oxwm.set_modkey(modkey) end
 function oxwm.set_tags(tags) end
 
 ---Set layout symbol override
----@param name string Layout name (e.g., "tiling", "normie")
----@param symbol string Symbol to display (e.g., "[T]", "[F]")
+---@param name string Layout name (e.g., "tiling", "normie", "tabbed", "grid", "monocle")
+---@param symbol string Symbol to display (e.g., "[T]", "[F]", "[=]")
 function oxwm.set_layout_symbol(name, symbol) end
 
 ---Quit the window manager
@@ -171,7 +171,7 @@ oxwm.layout = {}
 function oxwm.layout.cycle() end
 
 ---Set specific layout
----@param name string Layout name (e.g., "tiling", "normie")
+---@param name string Layout name (e.g., "tiling", "normie", "tabbed", "grid", "monocle")
 ---@return table Action table for keybinding
 function oxwm.layout.set(name) end
 

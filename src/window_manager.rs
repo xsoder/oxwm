@@ -107,6 +107,7 @@ pub struct WindowManager {
     fullscreen_windows: HashSet<Window>,
     floating_geometry_before_fullscreen: std::collections::HashMap<Window, (i16, i16, u16, u16, u16)>,
     bars: Vec<Bar>,
+    tab_bars: Vec<crate::tab_bar::TabBar>,
     show_bar: bool,
     last_layout: Option<&'static str>,
     monitors: Vec<Monitor>,
@@ -202,6 +203,24 @@ impl WindowManager {
             bars.push(bar);
         }
 
+        let bar_height = font.height() as f32 * 1.4;
+        let mut tab_bars = Vec::new();
+        for monitor in monitors.iter() {
+            let tab_bar = crate::tab_bar::TabBar::new(
+                &connection,
+                &screen,
+                screen_number,
+                display,
+                &font,
+                (monitor.x + config.gap_outer_horizontal as i32) as i16,
+                (monitor.y as f32 + bar_height + config.gap_outer_vertical as f32) as i16,
+                monitor.width.saturating_sub(2 * config.gap_outer_horizontal) as u16,
+                config.scheme_occupied,
+                config.scheme_selected,
+            )?;
+            tab_bars.push(tab_bar);
+        }
+
         let gaps_enabled = config.gaps_enabled;
 
         let atoms = AtomCache::new(&connection)?;
@@ -234,6 +253,7 @@ impl WindowManager {
             fullscreen_windows: HashSet::new(),
             floating_geometry_before_fullscreen: std::collections::HashMap::new(),
             bars,
+            tab_bars,
             show_bar: true,
             last_layout: None,
             monitors,
@@ -247,6 +267,10 @@ impl WindowManager {
             overlay,
             keybind_overlay,
         };
+
+        for tab_bar in &window_manager.tab_bars {
+            tab_bar.hide(&window_manager.connection)?;
+        }
 
         window_manager.scan_existing_windows()?;
         window_manager.update_bar()?;
@@ -904,6 +928,42 @@ impl WindowManager {
         Ok(())
     }
 
+    fn update_tab_bars(&mut self) -> WmResult<()> {
+        for (monitor_index, monitor) in self.monitors.iter().enumerate() {
+            if let Some(tab_bar) = self.tab_bars.get_mut(monitor_index) {
+                let visible_windows: Vec<Window> = self
+                    .windows
+                    .iter()
+                    .filter(|&&window| {
+                        let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
+                        if window_monitor_index != monitor_index
+                            || self.floating_windows.contains(&window)
+                            || self.fullscreen_windows.contains(&window)
+                        {
+                            return false;
+                        }
+                        if let Some(&tags) = self.window_tags.get(&window) {
+                            (tags & monitor.selected_tags) != 0
+                        } else {
+                            false
+                        }
+                    })
+                    .copied()
+                    .collect();
+
+                let focused_window = monitor.focused_window;
+
+                tab_bar.draw(
+                    &self.connection,
+                    &self.font,
+                    &visible_windows,
+                    focused_window,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> WmResult<()> {
         match action {
             KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
@@ -1223,7 +1283,20 @@ impl WindowManager {
             visible[0]
         };
 
+        let is_tabbed = self.layout.name() == "tabbed";
+        if is_tabbed {
+            self.connection.configure_window(
+                next_window,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            )?;
+        }
+
         self.set_focus(next_window)?;
+
+        if is_tabbed {
+            self.update_tab_bars()?;
+        }
+
         Ok(())
     }
 
@@ -1693,6 +1766,11 @@ impl WindowManager {
 
         self.update_focus_visuals(old_focused, window)?;
         self.previous_focused = Some(window);
+
+        if self.layout.name() == "tabbed" {
+            self.update_tab_bars()?;
+        }
+
         Ok(())
     }
 
@@ -2001,6 +2079,10 @@ impl WindowManager {
                 self.apply_layout()?;
                 self.update_bar()?;
                 self.set_focus(event.window)?;
+
+                if self.layout.name() == "tabbed" {
+                    self.update_tab_bars()?;
+                }
             }
             Event::UnmapNotify(event) => {
                 if self.windows.contains(&event.window) && self.is_window_visible(event.window) {
@@ -2123,13 +2205,55 @@ impl WindowManager {
                         }
                         self.view_tag(tag_index)?;
                     }
-                } else if event.child != x11rb::NONE {
-                    self.set_focus(event.child)?;
+                } else {
+                    let is_tab_bar_click = self
+                        .tab_bars
+                        .iter()
+                        .enumerate()
+                        .find(|(_, tab_bar)| tab_bar.window() == event.event);
 
-                    if event.detail == ButtonIndex::M1.into() {
-                        self.move_mouse(event.child)?;
-                    } else if event.detail == ButtonIndex::M3.into() {
-                        self.resize_mouse(event.child)?;
+                    if let Some((monitor_index, tab_bar)) = is_tab_bar_click {
+                        if monitor_index != self.selected_monitor {
+                            self.selected_monitor = monitor_index;
+                        }
+
+                        let visible_windows: Vec<Window> = self
+                            .windows
+                            .iter()
+                            .filter(|&&window| {
+                                let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
+                                if window_monitor_index != monitor_index
+                                    || self.floating_windows.contains(&window)
+                                    || self.fullscreen_windows.contains(&window)
+                                {
+                                    return false;
+                                }
+                                let monitor_tags = self.monitors.get(monitor_index).map(|m| m.selected_tags).unwrap_or(0);
+                                if let Some(&tags) = self.window_tags.get(&window) {
+                                    (tags & monitor_tags) != 0
+                                } else {
+                                    false
+                                }
+                            })
+                            .copied()
+                            .collect();
+
+                        if let Some(clicked_window) = tab_bar.get_clicked_window(&visible_windows, event.event_x) {
+                            self.connection.configure_window(
+                                clicked_window,
+                                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                            )?;
+                            self.set_focus(clicked_window)?;
+                            self.update_tab_bars()?;
+                        }
+                    } else if event.child != x11rb::NONE {
+                        self.set_focus(event.child)?;
+
+                        if event.detail == ButtonIndex::M1.into() {
+                            self.move_mouse(event.child)?;
+                        } else if event.detail == ButtonIndex::M3.into() {
+                            self.resize_mouse(event.child)?;
+                        }
                     }
                 }
             }
@@ -2138,6 +2262,12 @@ impl WindowManager {
                     if event.window == bar.window() {
                         bar.invalidate();
                         self.update_bar()?;
+                        break;
+                    }
+                }
+                for _tab_bar in &self.tab_bars {
+                    if event.window == _tab_bar.window() {
+                        self.update_tab_bars()?;
                         break;
                     }
                 }
@@ -2200,13 +2330,10 @@ impl WindowManager {
                 .iter()
                 .filter(|&&window| {
                     let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                    if window_monitor_index != monitor_index {
-                        return false;
-                    }
-                    if self.floating_windows.contains(&window) {
-                        return false;
-                    }
-                    if self.fullscreen_windows.contains(&window) {
+                    if window_monitor_index != monitor_index
+                        || self.floating_windows.contains(&window)
+                        || self.fullscreen_windows.contains(&window)
+                    {
                         return false;
                     }
                     if let Some(&tags) = self.window_tags.get(&window) {
@@ -2260,6 +2387,83 @@ impl WindowManager {
         }
 
         self.connection.flush()?;
+
+        let is_tabbed = self.layout.name() == LayoutType::Tabbed.as_str();
+
+        if is_tabbed {
+            let outer_horizontal = if self.gaps_enabled {
+                self.config.gap_outer_horizontal
+            } else {
+                0
+            };
+            let outer_vertical = if self.gaps_enabled {
+                self.config.gap_outer_vertical
+            } else {
+                0
+            };
+
+            for monitor_index in 0..self.tab_bars.len() {
+                if let Some(monitor) = self.monitors.get(monitor_index) {
+                    let bar_height = if self.show_bar {
+                        self.bars
+                            .get(monitor_index)
+                            .map(|bar| bar.height() as f32)
+                            .unwrap_or(0.0)
+                    } else {
+                        0.0
+                    };
+
+                    let tab_bar_x = (monitor.x + outer_horizontal as i32) as i16;
+                    let tab_bar_y = (monitor.y as f32 + bar_height + outer_vertical as f32) as i16;
+                    let tab_bar_width = monitor.width.saturating_sub(2 * outer_horizontal) as u16;
+
+                    if let Err(e) = self.tab_bars[monitor_index].reposition(
+                        &self.connection,
+                        tab_bar_x,
+                        tab_bar_y,
+                        tab_bar_width,
+                    ) {
+                        eprintln!("Failed to reposition tab bar: {:?}", e);
+                    }
+                }
+            }
+        }
+
+        for monitor_index in 0..self.tab_bars.len() {
+            let has_visible_windows = self
+                .windows
+                .iter()
+                .any(|&window| {
+                    let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
+                    if window_monitor_index != monitor_index
+                        || self.floating_windows.contains(&window)
+                        || self.fullscreen_windows.contains(&window)
+                    {
+                        return false;
+                    }
+                    if let Some(monitor) = self.monitors.get(monitor_index) {
+                        if let Some(&tags) = self.window_tags.get(&window) {
+                            return (tags & monitor.selected_tags) != 0;
+                        }
+                    }
+                    false
+                });
+
+            if is_tabbed && has_visible_windows {
+                if let Err(e) = self.tab_bars[monitor_index].show(&self.connection) {
+                    eprintln!("Failed to show tab bar: {:?}", e);
+                }
+            } else {
+                if let Err(e) = self.tab_bars[monitor_index].hide(&self.connection) {
+                    eprintln!("Failed to hide tab bar: {:?}", e);
+                }
+            }
+        }
+
+        if is_tabbed {
+            self.update_tab_bars()?;
+        }
+
         Ok(())
     }
 
