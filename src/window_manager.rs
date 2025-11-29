@@ -43,6 +43,8 @@ struct AtomCache {
     wm_delete_window: Atom,
     net_wm_state: Atom,
     net_wm_state_fullscreen: Atom,
+    net_wm_window_type: Atom,
+    net_wm_window_type_dialog: Atom,
 }
 
 impl AtomCache {
@@ -79,6 +81,16 @@ impl AtomCache {
             .reply()?
             .atom;
 
+        let net_wm_window_type = connection
+            .intern_atom(false, b"_NET_WM_WINDOW_TYPE")?
+            .reply()?
+            .atom;
+
+        let net_wm_window_type_dialog = connection
+            .intern_atom(false, b"_NET_WM_WINDOW_TYPE_DIALOG")?
+            .reply()?
+            .atom;
+
         Ok(Self {
             net_current_desktop,
             net_client_info,
@@ -87,6 +99,8 @@ impl AtomCache {
             wm_delete_window,
             net_wm_state,
             net_wm_state_fullscreen,
+            net_wm_window_type,
+            net_wm_window_type_dialog,
         })
     }
 }
@@ -154,29 +168,40 @@ impl WindowManager {
             )?
             .check()?;
 
-        connection.grab_button(
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
-            GrabMode::SYNC,
-            GrabMode::ASYNC,
-            x11rb::NONE,
-            x11rb::NONE,
-            ButtonIndex::M1,
-            u16::from(config.modkey).into(),
-        )?;
+        let ignore_modifiers = [
+            0,
+            u16::from(ModMask::LOCK),
+            u16::from(ModMask::M2),
+            u16::from(ModMask::LOCK | ModMask::M2),
+        ];
 
-        connection.grab_button(
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
-            GrabMode::SYNC,
-            GrabMode::ASYNC,
-            x11rb::NONE,
-            x11rb::NONE,
-            ButtonIndex::M3,
-            u16::from(config.modkey).into(),
-        )?;
+        for &ignore_mask in &ignore_modifiers {
+            let grab_mask = u16::from(config.modkey) | ignore_mask;
+
+            connection.grab_button(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
+                GrabMode::SYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                x11rb::NONE,
+                ButtonIndex::M1,
+                grab_mask.into(),
+            )?;
+
+            connection.grab_button(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
+                GrabMode::SYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                x11rb::NONE,
+                ButtonIndex::M3,
+                grab_mask.into(),
+            )?;
+        }
 
         let monitors = detect_monitors(&connection, &screen, root)?;
 
@@ -966,7 +991,7 @@ impl WindowManager {
 
     fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> WmResult<()> {
         match action {
-            KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
+            KeyAction::Spawn => handlers::handle_spawn_action(action, arg, self.selected_monitor)?,
             KeyAction::SpawnTerminal => {
                 use std::process::Command;
                 let terminal = &self.config.terminal;
@@ -1431,6 +1456,13 @@ impl WindowManager {
 
         let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
 
+        let ignore_modifiers = [
+            0,
+            u16::from(ModMask::LOCK),
+            u16::from(ModMask::M2),
+            u16::from(ModMask::LOCK | ModMask::M2),
+        ];
+
         for &candidate_index in candidates {
             let binding = &self.config.keybindings[candidate_index];
             if keys_pressed < binding.keys.len() {
@@ -1439,17 +1471,20 @@ impl WindowManager {
 
                 if let Some(keycodes) = keysym_to_keycode.get(&next_key.keysym) {
                     if let Some(&keycode) = keycodes.first() {
-                        let key_tuple = (modifier_mask, keycode);
+                        for &ignore_mask in &ignore_modifiers {
+                            let grab_mask = modifier_mask | ignore_mask;
+                            let key_tuple = (grab_mask, keycode);
 
-                        if grabbed_keys.insert(key_tuple) {
-                            self.connection.grab_key(
-                                false,
-                                self.root,
-                                modifier_mask.into(),
-                                keycode,
-                                GrabMode::ASYNC,
-                                GrabMode::ASYNC,
-                            )?;
+                            if grabbed_keys.insert(key_tuple) {
+                                self.connection.grab_key(
+                                    false,
+                                    self.root,
+                                    grab_mask.into(),
+                                    keycode,
+                                    GrabMode::ASYNC,
+                                    GrabMode::ASYNC,
+                                )?;
+                            }
                         }
                     }
                 }
@@ -1458,14 +1493,16 @@ impl WindowManager {
 
         if let Some(keycodes) = keysym_to_keycode.get(&keyboard::keysyms::XK_ESCAPE) {
             if let Some(&keycode) = keycodes.first() {
-                self.connection.grab_key(
-                    false,
-                    self.root,
-                    ModMask::from(0u16),
-                    keycode,
-                    GrabMode::ASYNC,
-                    GrabMode::ASYNC,
-                )?;
+                for &ignore_mask in &ignore_modifiers {
+                    self.connection.grab_key(
+                        false,
+                        self.root,
+                        ModMask::from(ignore_mask),
+                        keycode,
+                        GrabMode::ASYNC,
+                        GrabMode::ASYNC,
+                    )?;
+                }
             }
         }
 
@@ -1482,12 +1519,9 @@ impl WindowManager {
     }
 
     fn kill_client(&self, window: Window) -> WmResult<()> {
-        // Try to send WM_DELETE_WINDOW message first (graceful close)
         if self.send_event(window, self.atoms.wm_delete_window)? {
-            // Window supports WM_DELETE_WINDOW, it will close gracefully
             self.connection.flush()?;
         } else {
-            // Window doesn't support WM_DELETE_WINDOW, forcefully kill it
             eprintln!("Window {} doesn't support WM_DELETE_WINDOW, killing forcefully", window);
             self.connection.kill_client(window)?;
             self.connection.flush()?;
@@ -1496,7 +1530,6 @@ impl WindowManager {
     }
 
     fn send_event(&self, window: Window, protocol: Atom) -> WmResult<bool> {
-        // Check if the window supports this protocol
         let protocols_reply = self.connection.get_property(
             false,
             window,
@@ -1521,7 +1554,6 @@ impl WindowManager {
             return Ok(false);
         }
 
-        // Send a ClientMessage event
         let event = x11rb::protocol::xproto::ClientMessageEvent {
             response_type: x11rb::protocol::xproto::CLIENT_MESSAGE_EVENT,
             format: 32,
@@ -1736,8 +1768,8 @@ impl WindowManager {
         Ok(())
     }
 
-    fn is_transient_window(&self, window: Window) -> bool {
-        let transient_for = self.connection
+    fn get_transient_parent(&self, window: Window) -> Option<Window> {
+        self.connection
             .get_property(
                 false,
                 window,
@@ -1748,9 +1780,233 @@ impl WindowManager {
             )
             .ok()
             .and_then(|cookie| cookie.reply().ok())
-            .filter(|reply| !reply.value.is_empty());
+            .filter(|reply| !reply.value.is_empty())
+            .and_then(|reply| {
+                if reply.value.len() >= 4 {
+                    let parent_window = u32::from_ne_bytes([
+                        reply.value[0],
+                        reply.value[1],
+                        reply.value[2],
+                        reply.value[3],
+                    ]);
+                    Some(parent_window)
+                } else {
+                    None
+                }
+            })
+    }
 
-        transient_for.is_some()
+    fn is_transient_window(&self, window: Window) -> bool {
+        self.get_transient_parent(window).is_some()
+    }
+
+    fn is_dialog_window(&self, window: Window) -> bool {
+        let window_type_property = self.connection
+            .get_property(
+                false,
+                window,
+                self.atoms.net_wm_window_type,
+                AtomEnum::ATOM,
+                0,
+                32,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok());
+
+        if let Some(reply) = window_type_property {
+            let atoms: Vec<Atom> = reply
+                .value
+                .chunks_exact(4)
+                .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+
+            atoms.contains(&self.atoms.net_wm_window_type_dialog)
+        } else {
+            false
+        }
+    }
+
+    fn get_window_class(&self, window: Window) -> Option<String> {
+        self.connection
+            .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .and_then(|reply| {
+                if reply.value.is_empty() {
+                    None
+                } else {
+                    std::str::from_utf8(&reply.value).ok().map(|s| {
+                        s.split('\0').nth(1).unwrap_or(s.split('\0').next().unwrap_or("")).to_string()
+                    })
+                }
+            })
+    }
+
+    fn manage_window(&mut self, window: Window) -> WmResult<()> {
+        let geometry = self.connection.get_geometry(window)?.reply()?;
+        let mut window_x = geometry.x as i32;
+        let mut window_y = geometry.y as i32;
+        let window_width = geometry.width as u32;
+        let window_height = geometry.height as u32;
+
+        let transient_parent = self.get_transient_parent(window);
+        let (window_tags, monitor_index) = if let Some(parent) = transient_parent {
+            let parent_tags = self.window_tags.get(&parent).copied().unwrap_or_else(|| {
+                self.monitors
+                    .get(self.selected_monitor)
+                    .map(|m| m.selected_tags)
+                    .unwrap_or(tag_mask(0))
+            });
+            let parent_monitor = self.window_monitor.get(&parent).copied().unwrap_or(self.selected_monitor);
+            (parent_tags, parent_monitor)
+        } else {
+            let selected_tags = self.monitors
+                .get(self.selected_monitor)
+                .map(|m| m.selected_tags)
+                .unwrap_or(tag_mask(0));
+            (selected_tags, self.selected_monitor)
+        };
+
+        let monitor = self.monitors[monitor_index].clone();
+        let border_width = self.config.border_width;
+
+        if window_x + (window_width as i32) + (2 * border_width as i32) > monitor.x + monitor.width as i32 {
+            window_x = monitor.x + monitor.width as i32 - (window_width as i32) - (2 * border_width as i32);
+        }
+        if window_y + (window_height as i32) + (2 * border_width as i32) > monitor.y + monitor.height as i32 {
+            window_y = monitor.y + monitor.height as i32 - (window_height as i32) - (2 * border_width as i32);
+        }
+        window_x = window_x.max(monitor.x);
+        window_y = window_y.max(monitor.y);
+
+        let is_transient = transient_parent.is_some();
+        let is_dialog = self.is_dialog_window(window);
+
+        let class_name = self.get_window_class(window).unwrap_or_default();
+        eprintln!("MapRequest 0x{:x}: class='{}' size={}x{} pos=({},{}) transient={} dialog={}",
+            window, class_name, window_width, window_height, window_x, window_y, is_transient, is_dialog);
+
+        let off_screen_x = window_x + (2 * self.screen.width_in_pixels as i32);
+
+        self.connection.configure_window(
+            window,
+            &ConfigureWindowAux::new()
+                .x(off_screen_x)
+                .y(window_y)
+                .width(window_width)
+                .height(window_height)
+                .border_width(border_width)
+        )?;
+
+        self.connection.change_window_attributes(
+            window,
+            &ChangeWindowAttributesAux::new().event_mask(
+                EventMask::ENTER_WINDOW | EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE
+            ),
+        )?;
+
+        self.windows.push(window);
+        self.window_tags.insert(window, window_tags);
+        self.window_monitor.insert(window, monitor_index);
+
+        if is_transient || is_dialog {
+            self.floating_windows.insert(window);
+
+            let (center_x, center_y) = if let Some(parent) = transient_parent {
+                if let Ok(parent_geom) = self.connection.get_geometry(parent)?.reply() {
+                    let parent_center_x = parent_geom.x as i32 + (parent_geom.width as i32 / 2);
+                    let parent_center_y = parent_geom.y as i32 + (parent_geom.height as i32 / 2);
+                    (parent_center_x, parent_center_y)
+                } else {
+                    let monitor_center_x = monitor.x + (monitor.width as i32 / 2);
+                    let monitor_center_y = monitor.y + (monitor.height as i32 / 2);
+                    (monitor_center_x, monitor_center_y)
+                }
+            } else {
+                let monitor_center_x = monitor.x + (monitor.width as i32 / 2);
+                let monitor_center_y = monitor.y + (monitor.height as i32 / 2);
+                (monitor_center_x, monitor_center_y)
+            };
+
+            let positioned_x = center_x - (window_width as i32 / 2);
+            let positioned_y = center_y - (window_height as i32 / 2);
+
+            let clamped_x = positioned_x
+                .max(monitor.x)
+                .min(monitor.x + monitor.width as i32 - window_width as i32);
+            let clamped_y = positioned_y
+                .max(monitor.y)
+                .min(monitor.y + monitor.height as i32 - window_height as i32);
+
+            self.update_geometry_cache(window, CachedGeometry {
+                x_position: clamped_x as i16,
+                y_position: clamped_y as i16,
+                width: window_width as u16,
+                height: window_height as u16,
+                border_width: border_width as u16,
+            });
+
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(clamped_x)
+                    .y(clamped_y)
+                    .width(window_width)
+                    .height(window_height)
+                    .border_width(border_width)
+                    .stack_mode(StackMode::ABOVE),
+            )?;
+        }
+
+        let is_normie_layout = self.layout.name() == "normie";
+        if is_normie_layout && !is_transient && !is_dialog {
+            if let Ok(pointer) = self.connection.query_pointer(self.root)?.reply() {
+                let cursor_monitor = self.get_monitor_at_point(pointer.root_x as i32, pointer.root_y as i32)
+                    .and_then(|idx| self.monitors.get(idx))
+                    .unwrap_or(&monitor);
+
+                let float_width = (cursor_monitor.width as f32 * 0.6) as u32;
+                let float_height = (cursor_monitor.height as f32 * 0.6) as u32;
+                let spawn_x = pointer.root_x as i32 - (float_width as i32 / 2);
+                let spawn_y = pointer.root_y as i32 - (float_height as i32 / 2);
+
+                let clamped_x = spawn_x
+                    .max(cursor_monitor.x)
+                    .min(cursor_monitor.x + cursor_monitor.width as i32 - float_width as i32);
+                let clamped_y = spawn_y
+                    .max(cursor_monitor.y)
+                    .min(cursor_monitor.y + cursor_monitor.height as i32 - float_height as i32);
+
+                self.connection.configure_window(
+                    window,
+                    &ConfigureWindowAux::new()
+                        .x(clamped_x)
+                        .y(clamped_y)
+                        .width(float_width)
+                        .height(float_height)
+                        .border_width(border_width)
+                        .stack_mode(StackMode::ABOVE),
+                )?;
+
+                self.floating_windows.insert(window);
+            }
+        }
+
+        self.set_wm_state(window, 1)?;
+        if let Err(error) = self.save_client_tag(window, window_tags) {
+            eprintln!("Failed to save client tag for new window: {:?}", error);
+        }
+
+        self.apply_layout()?;
+        self.connection.map_window(window)?;
+        self.update_bar()?;
+        self.set_focus(window)?;
+
+        if self.layout.name() == "tabbed" {
+            self.update_tab_bars()?;
+        }
+
+        Ok(())
     }
 
     pub fn set_focus(&mut self, window: Window) -> WmResult<()> {
@@ -2000,88 +2256,8 @@ impl WindowManager {
                     return Ok(None);
                 }
 
-                if self.windows.contains(&event.window) {
-                    return Ok(None);
-                }
-
-                self.connection.map_window(event.window)?;
-                self.connection.change_window_attributes(
-                    event.window,
-                    &ChangeWindowAttributesAux::new().event_mask(EventMask::ENTER_WINDOW | EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE),
-                )?;
-
-                let selected_tags = self
-                    .monitors
-                    .get(self.selected_monitor)
-                    .map(|m| m.selected_tags)
-                    .unwrap_or(tag_mask(0));
-
-                self.windows.push(event.window);
-                self.window_tags.insert(event.window, selected_tags);
-                self.window_monitor
-                    .insert(event.window, self.selected_monitor);
-                self.set_wm_state(event.window, 1)?;
-                if let Err(error) = self.save_client_tag(event.window, selected_tags) {
-                    eprintln!("Failed to save client tag for new window: {:?}", error);
-                }
-
-                let is_transient = self.is_transient_window(event.window);
-                if is_transient {
-                    self.floating_windows.insert(event.window);
-                }
-
-                let is_normie_layout = self.layout.name() == "normie";
-                if is_normie_layout && !is_transient {
-                    let mut pointer_x: i32 = 0;
-                    let mut pointer_y: i32 = 0;
-                    let mut root_return: x11::xlib::Window = 0;
-                    let mut child_return: x11::xlib::Window = 0;
-                    let mut win_x: i32 = 0;
-                    let mut win_y: i32 = 0;
-                    let mut mask_return: u32 = 0;
-
-                    let pointer_queried = unsafe {
-                        x11::xlib::XQueryPointer(
-                            self.display,
-                            self.root as x11::xlib::Window,
-                            &mut root_return,
-                            &mut child_return,
-                            &mut pointer_x,
-                            &mut pointer_y,
-                            &mut win_x,
-                            &mut win_y,
-                            &mut mask_return,
-                        ) != 0
-                    };
-
-                    if pointer_queried {
-                        let window_width = (self.screen.width_in_pixels as f32 * 0.6) as u32;
-                        let window_height = (self.screen.height_in_pixels as f32 * 0.6) as u32;
-
-                        let spawn_x = pointer_x - (window_width as i32 / 2);
-                        let spawn_y = pointer_y - (window_height as i32 / 2);
-
-                        self.connection.configure_window(
-                            event.window,
-                            &ConfigureWindowAux::new()
-                                .x(spawn_x)
-                                .y(spawn_y)
-                                .width(window_width)
-                                .height(window_height)
-                                .border_width(self.config.border_width)
-                                .stack_mode(StackMode::ABOVE),
-                        )?;
-
-                        self.floating_windows.insert(event.window);
-                    }
-                }
-
-                self.apply_layout()?;
-                self.update_bar()?;
-                self.set_focus(event.window)?;
-
-                if self.layout.name() == "tabbed" {
-                    self.update_tab_bars()?;
+                if !self.windows.contains(&event.window) {
+                    self.manage_window(event.window)?;
                 }
             }
             Event::UnmapNotify(event) => {
@@ -2099,6 +2275,12 @@ impl WindowManager {
                     return Ok(None);
                 }
                 if self.windows.contains(&event.event) {
+                    if let Some(&window_monitor_index) = self.window_monitor.get(&event.event) {
+                        if window_monitor_index != self.selected_monitor {
+                            self.selected_monitor = window_monitor_index;
+                            self.update_bar()?;
+                        }
+                    }
                     self.set_focus(event.event)?;
                 }
             }
@@ -2270,6 +2452,111 @@ impl WindowManager {
                         self.update_tab_bars()?;
                         break;
                     }
+                }
+            }
+            Event::ConfigureRequest(event) => {
+                if self.windows.contains(&event.window) {
+                    let monitor_index = *self.window_monitor.get(&event.window).unwrap_or(&self.selected_monitor);
+                    let monitor = &self.monitors[monitor_index];
+                    let is_floating = self.floating_windows.contains(&event.window);
+                    let is_tiling_layout = self.layout.name() != "normie";
+
+                    if is_floating || !is_tiling_layout {
+                        let cached_geom = self.window_geometry_cache.get(&event.window);
+                        let border_width = self.config.border_width as u16;
+
+                        let mut config = ConfigureWindowAux::new();
+                        let value_mask = event.value_mask;
+
+                        if value_mask.contains(ConfigWindow::BORDER_WIDTH) {
+                            config = config.border_width(event.border_width as u32);
+                        }
+
+                        if value_mask.contains(ConfigWindow::X) {
+                            let mut x = event.x as i32;
+                            x = x.max(monitor.x);
+                            if x + event.width as i32 + 2 * border_width as i32 > monitor.x + monitor.width as i32 {
+                                x = monitor.x + monitor.width as i32 - event.width as i32 - 2 * border_width as i32;
+                            }
+                            config = config.x(x);
+                        }
+
+                        if value_mask.contains(ConfigWindow::Y) {
+                            let mut y = event.y as i32;
+                            y = y.max(monitor.y);
+                            if y + event.height as i32 + 2 * border_width as i32 > monitor.y + monitor.height as i32 {
+                                y = monitor.y + monitor.height as i32 - event.height as i32 - 2 * border_width as i32;
+                            }
+                            config = config.y(y);
+                        }
+
+                        if value_mask.contains(ConfigWindow::WIDTH) {
+                            config = config.width(event.width as u32);
+                        }
+
+                        if value_mask.contains(ConfigWindow::HEIGHT) {
+                            config = config.height(event.height as u32);
+                        }
+
+                        if value_mask.contains(ConfigWindow::SIBLING) {
+                            config = config.sibling(event.sibling);
+                        }
+
+                        if value_mask.contains(ConfigWindow::STACK_MODE) {
+                            config = config.stack_mode(event.stack_mode);
+                        }
+
+                        self.connection.configure_window(event.window, &config)?;
+
+                        let final_x = if value_mask.contains(ConfigWindow::X) {
+                            let mut x = event.x as i32;
+                            x = x.max(monitor.x);
+                            if x + event.width as i32 + 2 * border_width as i32 > monitor.x + monitor.width as i32 {
+                                x = monitor.x + monitor.width as i32 - event.width as i32 - 2 * border_width as i32;
+                            }
+                            x as i16
+                        } else {
+                            cached_geom.map(|g| g.x_position).unwrap_or(0)
+                        };
+
+                        let final_y = if value_mask.contains(ConfigWindow::Y) {
+                            let mut y = event.y as i32;
+                            y = y.max(monitor.y);
+                            if y + event.height as i32 + 2 * border_width as i32 > monitor.y + monitor.height as i32 {
+                                y = monitor.y + monitor.height as i32 - event.height as i32 - 2 * border_width as i32;
+                            }
+                            y as i16
+                        } else {
+                            cached_geom.map(|g| g.y_position).unwrap_or(0)
+                        };
+
+                        self.update_geometry_cache(event.window, CachedGeometry {
+                            x_position: final_x,
+                            y_position: final_y,
+                            width: if value_mask.contains(ConfigWindow::WIDTH) { event.width } else { cached_geom.map(|g| g.width).unwrap_or(1) },
+                            height: if value_mask.contains(ConfigWindow::HEIGHT) { event.height } else { cached_geom.map(|g| g.height).unwrap_or(1) },
+                            border_width: if value_mask.contains(ConfigWindow::BORDER_WIDTH) { event.border_width } else { border_width },
+                        });
+                    } else {
+                        self.send_configure_notify(event.window)?;
+                    }
+                } else {
+                    let mut config = ConfigureWindowAux::new()
+                        .x(event.x as i32)
+                        .y(event.y as i32)
+                        .width(event.width as u32)
+                        .height(event.height as u32)
+                        .border_width(event.border_width as u32);
+
+                    if event.value_mask.contains(ConfigWindow::SIBLING) {
+                        config = config.sibling(event.sibling);
+                    }
+
+                    if event.value_mask.contains(ConfigWindow::STACK_MODE) {
+                        config = config.stack_mode(event.stack_mode);
+                    }
+
+                    self.connection.configure_window(event.window, &config)?;
                 }
             }
             Event::ClientMessage(event) => {
@@ -2496,6 +2783,33 @@ impl WindowManager {
         };
         self.update_geometry_cache(window, cached);
         Ok(cached)
+    }
+
+    fn send_configure_notify(&mut self, window: Window) -> WmResult<()> {
+        let geometry = self.get_or_query_geometry(window)?;
+
+        let event = x11rb::protocol::xproto::ConfigureNotifyEvent {
+            response_type: x11rb::protocol::xproto::CONFIGURE_NOTIFY_EVENT,
+            sequence: 0,
+            event: window,
+            window,
+            above_sibling: x11rb::NONE,
+            x: geometry.x_position,
+            y: geometry.y_position,
+            width: geometry.width,
+            height: geometry.height,
+            border_width: geometry.border_width,
+            override_redirect: false,
+        };
+
+        self.connection.send_event(
+            false,
+            window,
+            x11rb::protocol::xproto::EventMask::STRUCTURE_NOTIFY,
+            event,
+        )?;
+
+        Ok(())
     }
 
     fn remove_window(&mut self, window: Window) -> WmResult<()> {

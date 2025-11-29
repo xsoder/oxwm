@@ -148,6 +148,13 @@ pub fn setup_keybinds(
     let (keysym_to_keycode, _) = build_keysym_maps(connection)?;
     let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
 
+    let ignore_modifiers = [
+        0,
+        u16::from(ModMask::LOCK),
+        u16::from(ModMask::M2),
+        u16::from(ModMask::LOCK | ModMask::M2),
+    ];
+
     for keybinding in keybindings {
         if keybinding.keys.is_empty() {
             continue;
@@ -158,17 +165,20 @@ pub fn setup_keybinds(
 
         if let Some(keycodes) = keysym_to_keycode.get(&first_key.keysym) {
             if let Some(&keycode) = keycodes.first() {
-                let key_tuple = (modifier_mask, keycode);
+                for &ignore_mask in &ignore_modifiers {
+                    let grab_mask = modifier_mask | ignore_mask;
+                    let key_tuple = (grab_mask, keycode);
 
-                if grabbed_keys.insert(key_tuple) {
-                    connection.grab_key(
-                        false,
-                        root,
-                        modifier_mask.into(),
-                        keycode,
-                        GrabMode::ASYNC,
-                        GrabMode::ASYNC,
-                    )?;
+                    if grabbed_keys.insert(key_tuple) {
+                        connection.grab_key(
+                            false,
+                            root,
+                            grab_mask.into(),
+                            keycode,
+                            GrabMode::ASYNC,
+                            GrabMode::ASYNC,
+                        )?;
+                    }
                 }
             }
         }
@@ -209,6 +219,8 @@ fn handle_first_key(
 ) -> KeychordResult {
     let mut candidates = Vec::new();
 
+    let clean_state = event.state & !(u16::from(ModMask::LOCK) | u16::from(ModMask::M2));
+
     for (keybinding_index, keybinding) in keybindings.iter().enumerate() {
         if keybinding.keys.is_empty() {
             continue;
@@ -217,7 +229,7 @@ fn handle_first_key(
         let first_key = &keybinding.keys[0];
         let modifier_mask = modifiers_to_mask(&first_key.modifiers);
 
-        if event_keysym == first_key.keysym && event.state == modifier_mask.into() {
+        if event_keysym == first_key.keysym && clean_state == modifier_mask.into() {
             if keybinding.keys.len() == 1 {
                 return KeychordResult::Completed(keybinding.func, keybinding.arg.clone());
             } else {
@@ -242,6 +254,8 @@ fn handle_next_key(
 ) -> KeychordResult {
     let mut new_candidates = Vec::new();
 
+    let clean_state = event.state & !(u16::from(ModMask::LOCK) | u16::from(ModMask::M2));
+
     for &candidate_index in candidates {
         let keybinding = &keybindings[candidate_index];
 
@@ -251,12 +265,11 @@ fn handle_next_key(
 
         let next_key = &keybinding.keys[keys_pressed];
         let required_mask = modifiers_to_mask(&next_key.modifiers);
-        let event_state: u16 = event.state.into();
 
         let modifiers_match = if next_key.modifiers.is_empty() {
             true
         } else {
-            (event_state & required_mask) == required_mask
+            (clean_state & required_mask) == required_mask.into()
         };
 
         if event_keysym == next_key.keysym && modifiers_match {
@@ -275,7 +288,7 @@ fn handle_next_key(
     }
 }
 
-pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> Result<()> {
+pub fn handle_spawn_action(action: KeyAction, arg: &Arg, selected_monitor: usize) -> Result<()> {
     if let KeyAction::Spawn = action {
         match arg {
             Arg::Str(command) => match Command::new(command.as_str()).spawn() {
@@ -293,7 +306,17 @@ pub fn handle_spawn_action(action: KeyAction, arg: &Arg) -> Result<()> {
                     return Ok(());
                 };
 
-                let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                let mut args_vec: Vec<String> = args.to_vec();
+
+                let is_dmenu = cmd.contains("dmenu");
+                let has_monitor_flag = args.iter().any(|arg| arg == "-m");
+
+                if is_dmenu && !has_monitor_flag {
+                    args_vec.insert(0, selected_monitor.to_string());
+                    args_vec.insert(0, "-m".to_string());
+                }
+
+                let args_str: Vec<&str> = args_vec.iter().map(|s| s.as_str()).collect();
                 match Command::new(cmd.as_str()).args(&args_str).spawn() {
                     Err(error) if error.kind() == ErrorKind::NotFound => {
                         eprintln!(
