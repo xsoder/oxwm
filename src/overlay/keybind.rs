@@ -216,7 +216,6 @@ impl KeybindOverlay {
             KeyAction::ChangeLayout => "Change Layout".to_string(),
             KeyAction::CycleLayout => "Cycle Through Layouts".to_string(),
             KeyAction::FocusMonitor => "Focus Next Monitor".to_string(),
-            KeyAction::SmartMoveWin => "Smart Move Window".to_string(),
             KeyAction::ExchangeClient => "Exchange Client Windows".to_string(),
             KeyAction::None => "No Action".to_string(),
         }

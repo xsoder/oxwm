@@ -252,11 +252,6 @@ fn register_client_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> 
         create_action_table(lua, "SwapDirection", Value::Integer(dir_int))
     })?;
 
-    let smart_move = lua.create_function(|lua, dir: String| {
-        let dir_int = direction_string_to_int(&dir)?;
-        create_action_table(lua, "SmartMoveWin", Value::Integer(dir_int))
-    })?;
-
     let exchange = lua.create_function(|lua, ()| {
         create_action_table(lua, "ExchangeClient", Value::Nil)
     })?;
@@ -267,7 +262,6 @@ fn register_client_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> 
     client_table.set("focus_stack", focus_stack)?;
     client_table.set("focus_direction", focus_direction)?;
     client_table.set("swap_direction", swap_direction)?;
-    client_table.set("smart_move", smart_move)?;
     client_table.set("exchange", exchange)?;
 
     parent.set("client", client_table)?;
@@ -720,7 +714,6 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "CycleLayout" => Ok(KeyAction::CycleLayout),
         "MoveToTag" => Ok(KeyAction::MoveToTag),
         "FocusMonitor" => Ok(KeyAction::FocusMonitor),
-        "SmartMoveWin" => Ok(KeyAction::SmartMoveWin),
         "ExchangeClient" => Ok(KeyAction::ExchangeClient),
         "ShowKeybindOverlay" => Ok(KeyAction::ShowKeybindOverlay),
         _ => Err(mlua::Error::RuntimeError(format!("unknown action '{}'. this is an internal error, please report it", s))),

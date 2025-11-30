@@ -148,11 +148,6 @@ function oxwm.client.focus_direction(direction) end
 ---@return table Action table for keybinding
 function oxwm.client.swap_direction(direction) end
 
----Smart move window (move or swap)
----@param direction "up"|"down"|"left"|"right" Direction to move
----@return table Action table for keybinding
-function oxwm.client.smart_move(direction) end
-
 ---Focus stack (next/previous window)
 ---@param dir integer Direction (1 for next, -1 for previous)
 ---@return table Action table for keybinding
