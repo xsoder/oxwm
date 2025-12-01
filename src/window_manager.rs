@@ -1980,6 +1980,9 @@ impl WindowManager {
         self.apply_rules(window)?;
 
         let updated_monitor_index = self.clients.get(&window).map(|c| c.monitor_index).unwrap_or(monitor_index);
+        let updated_monitor = self.monitors.get(updated_monitor_index).cloned().unwrap_or(monitor.clone());
+        let is_rule_floating = self.clients.get(&window).map(|c| c.is_floating).unwrap_or(false);
+
         self.attach_aside(window, updated_monitor_index);
         self.attach_stack(window, updated_monitor_index);
 
@@ -2032,10 +2035,48 @@ impl WindowManager {
                     .border_width(border_width)
                     .stack_mode(StackMode::ABOVE),
             )?;
+        } else if is_rule_floating && !is_transient && !is_dialog {
+            let mut adjusted_x = window_x;
+            let mut adjusted_y = window_y;
+
+            if adjusted_x + (window_width as i32) + (2 * border_width as i32) > updated_monitor.screen_x + updated_monitor.screen_width as i32 {
+                adjusted_x = updated_monitor.screen_x + updated_monitor.screen_width as i32 - (window_width as i32) - (2 * border_width as i32);
+            }
+            if adjusted_y + (window_height as i32) + (2 * border_width as i32) > updated_monitor.screen_y + updated_monitor.screen_height as i32 {
+                adjusted_y = updated_monitor.screen_y + updated_monitor.screen_height as i32 - (window_height as i32) - (2 * border_width as i32);
+            }
+            adjusted_x = adjusted_x.max(updated_monitor.screen_x);
+            adjusted_y = adjusted_y.max(updated_monitor.screen_y);
+
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.x_position = adjusted_x as i16;
+                client.y_position = adjusted_y as i16;
+                client.width = window_width as u16;
+                client.height = window_height as u16;
+            }
+
+            self.update_geometry_cache(window, CachedGeometry {
+                x_position: adjusted_x as i16,
+                y_position: adjusted_y as i16,
+                width: window_width as u16,
+                height: window_height as u16,
+                border_width: border_width as u16,
+            });
+
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(adjusted_x)
+                    .y(adjusted_y)
+                    .width(window_width)
+                    .height(window_height)
+                    .border_width(border_width)
+                    .stack_mode(StackMode::ABOVE),
+            )?;
         }
 
         let is_normie_layout = self.layout.name() == "normie";
-        if is_normie_layout && !is_transient && !is_dialog {
+        if is_normie_layout && !is_transient && !is_dialog && !is_rule_floating {
             if let Ok(pointer) = self.connection.query_pointer(self.root)?.reply() {
                 let cursor_monitor = self.get_monitor_at_point(pointer.root_x as i32, pointer.root_y as i32)
                     .and_then(|idx| self.monitors.get(idx))

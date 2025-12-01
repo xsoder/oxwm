@@ -48,7 +48,7 @@ oxwm.gaps.set_outer(5, 5)
 
 oxwm.rule.add({ class = "firefox", title = "Library", floating = true })
 oxwm.rule.add({ instance = "gimp", tag = 5 })
-oxwm.rule.add({ class = "mpv", floating = true })
+oxwm.rule.add({ instance = "mpv", floating = true })
 
 oxwm.bar.set_font("JetBrainsMono Nerd Font:style=Bold:size=12")
 
