@@ -48,6 +48,7 @@ struct AtomCache {
     wm_normal_hints: Atom,
     wm_hints: Atom,
     wm_transient_for: Atom,
+    net_active_window: Atom,
 }
 
 impl AtomCache {
@@ -99,6 +100,7 @@ impl AtomCache {
         let wm_normal_hints = AtomEnum::WM_NORMAL_HINTS.into();
         let wm_hints = AtomEnum::WM_HINTS.into();
         let wm_transient_for = AtomEnum::WM_TRANSIENT_FOR.into();
+        let net_active_window = connection.intern_atom(false, b"_NET_ACTIVE_WINDOW")?.reply()?.atom;
 
         Ok(Self {
             net_current_desktop,
@@ -115,6 +117,7 @@ impl AtomCache {
             wm_normal_hints,
             wm_hints,
             wm_transient_for,
+            net_active_window,
         })
     }
 }
@@ -2527,8 +2530,38 @@ impl WindowManager {
                 }
             }
             Event::PropertyNotify(event) => {
-                if !self.windows.contains(&event.window) {
+                if event.state == x11rb::protocol::xproto::Property::DELETE {
                     return Ok(None);
+                }
+
+                if !self.clients.contains_key(&event.window) {
+                    return Ok(None);
+                }
+
+                if event.atom == AtomEnum::WM_TRANSIENT_FOR.into() {
+                    let is_floating = self.clients
+                        .get(&event.window)
+                        .map(|c| c.is_floating)
+                        .unwrap_or(false);
+
+                    if !is_floating {
+                        if let Some(transient_parent) = self.get_transient_parent(event.window) {
+                            if self.clients.contains_key(&transient_parent) {
+                                if let Some(client) = self.clients.get_mut(&event.window) {
+                                    client.is_floating = true;
+                                }
+                                self.floating_windows.insert(event.window);
+                                self.apply_layout()?;
+                            }
+                        }
+                    }
+                } else if event.atom == AtomEnum::WM_NORMAL_HINTS.into() {
+                    if let Some(client) = self.clients.get_mut(&event.window) {
+                        client.hints_valid = false;
+                    }
+                } else if event.atom == AtomEnum::WM_HINTS.into() {
+                    self.update_wm_hints(event.window)?;
+                    self.update_bar()?;
                 }
 
                 if event.atom == self.atoms.wm_name || event.atom == self.atoms.net_wm_name {
@@ -2536,8 +2569,10 @@ impl WindowManager {
                     if self.layout.name() == "tabbed" {
                         self.update_tab_bars()?;
                     }
-                } else if event.atom == self.atoms.wm_normal_hints {
-                    let _ = self.update_size_hints(event.window);
+                }
+
+                if event.atom == self.atoms.net_wm_window_type {
+                    self.update_window_type(event.window)?;
                 }
             }
             Event::EnterNotify(event) => {
@@ -2842,6 +2877,10 @@ impl WindowManager {
                 }
             }
             Event::ClientMessage(event) => {
+                if !self.clients.contains_key(&event.window) {
+                    return Ok(None);
+                }
+
                 if event.type_ == self.atoms.net_wm_state {
                     if let Some(data) = event.data.as_data32().get(1) {
                         if *data == self.atoms.net_wm_state_fullscreen {
@@ -2854,6 +2893,46 @@ impl WindowManager {
                             };
                             self.set_window_fullscreen(event.window, fullscreen)?;
                         }
+                    }
+                } else if event.type_ == self.atoms.net_active_window {
+                    let selected_window = self.monitors
+                        .get(self.selected_monitor)
+                        .and_then(|m| m.selected_client);
+
+                    let is_urgent = self.clients
+                        .get(&event.window)
+                        .map(|c| c.is_urgent)
+                        .unwrap_or(false);
+
+                    if Some(event.window) != selected_window && !is_urgent {
+                        self.set_urgent(event.window, true)?;
+                    }
+                }
+            }
+            Event::FocusIn(event) => {
+                let selected_window = self.monitors
+                    .get(self.selected_monitor)
+                    .and_then(|m| m.selected_client);
+
+                if let Some(sel_win) = selected_window {
+                    if event.event != sel_win {
+                        self.set_focus(sel_win)?;
+                    }
+                }
+            }
+            Event::MappingNotify(event) => {
+                if event.request == x11rb::protocol::xproto::Mapping::KEYBOARD {
+                    keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
+                }
+            }
+            Event::ConfigureNotify(event) => {
+                if event.window == self.root {
+                    let old_width = self.screen.width_in_pixels;
+                    let old_height = self.screen.height_in_pixels;
+
+                    if event.width != old_width || event.height != old_height {
+                        self.screen = self.connection.setup().roots[self.screen_number].clone();
+                        self.apply_layout()?;
                     }
                 }
             }
@@ -3230,6 +3309,90 @@ impl WindowManager {
                 if let Some(client) = self.clients.get_mut(&window) {
                     client.name = title;
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn update_wm_hints(&mut self, window: Window) -> WmResult<()> {
+        let hints_reply = self.connection.get_property(
+            false,
+            window,
+            AtomEnum::WM_HINTS,
+            AtomEnum::WM_HINTS,
+            0,
+            9,
+        )?.reply();
+
+        if let Ok(hints) = hints_reply {
+            if hints.value.len() >= 4 {
+                let flags = u32::from_ne_bytes([
+                    hints.value[0],
+                    hints.value[1],
+                    hints.value[2],
+                    hints.value[3],
+                ]);
+
+                let selected_window = self.monitors
+                    .get(self.selected_monitor)
+                    .and_then(|m| m.selected_client);
+
+                if Some(window) == selected_window && (flags & 256) != 0 {
+                    let new_flags = flags & !256;
+                    let mut new_hints = hints.value.clone();
+                    new_hints[0..4].copy_from_slice(&new_flags.to_ne_bytes());
+
+                    self.connection.change_property(
+                        x11rb::protocol::xproto::PropMode::REPLACE,
+                        window,
+                        AtomEnum::WM_HINTS,
+                        AtomEnum::WM_HINTS,
+                        32,
+                        9,
+                        &new_hints,
+                    )?;
+                } else {
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.is_urgent = (flags & 256) != 0;
+                    }
+                }
+
+                if hints.value.len() >= 8 && (flags & 1) != 0 {
+                    let input = i32::from_ne_bytes([
+                        hints.value[4],
+                        hints.value[5],
+                        hints.value[6],
+                        hints.value[7],
+                    ]);
+
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.never_focus = input == 0;
+                    }
+                } else {
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.never_focus = false;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn update_window_type(&mut self, window: Window) -> WmResult<()> {
+        if let Ok(Some(state_atom)) = self.get_atom_prop(window, self.atoms.net_wm_state) {
+            if state_atom == self.atoms.net_wm_state_fullscreen {
+                self.set_window_fullscreen(window, true)?;
+            }
+        }
+
+        if let Ok(Some(type_atom)) = self.get_atom_prop(window, self.atoms.net_wm_window_type) {
+            if type_atom == self.atoms.net_wm_window_type_dialog {
+                if let Some(client) = self.clients.get_mut(&window) {
+                    client.is_floating = true;
+                }
+                self.floating_windows.insert(window);
             }
         }
 
