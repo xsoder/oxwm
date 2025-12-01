@@ -1824,6 +1824,79 @@ impl WindowManager {
             })
     }
 
+    fn get_window_class_instance(&self, window: Window) -> (String, String) {
+        let reply = self.connection
+            .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok());
+
+        if let Some(reply) = reply {
+            if !reply.value.is_empty() {
+                if let Ok(text) = std::str::from_utf8(&reply.value) {
+                    let parts: Vec<&str> = text.split('\0').collect();
+                    let instance = parts.get(0).unwrap_or(&"").to_string();
+                    let class = parts.get(1).unwrap_or(&"").to_string();
+                    return (instance, class);
+                }
+            }
+        }
+
+        (String::new(), String::new())
+    }
+
+    fn apply_rules(&mut self, window: Window) -> WmResult<()> {
+        let (instance, class) = self.get_window_class_instance(window);
+        let title = self.clients.get(&window).map(|c| c.name.clone()).unwrap_or_default();
+
+        let mut rule_tags: Option<u32> = None;
+        let mut rule_floating: Option<bool> = None;
+        let mut rule_monitor: Option<usize> = None;
+
+        for rule in &self.config.window_rules {
+            if rule.matches(&class, &instance, &title) {
+                if rule.tags.is_some() {
+                    rule_tags = rule.tags;
+                }
+                if rule.is_floating.is_some() {
+                    rule_floating = rule.is_floating;
+                }
+                if rule.monitor.is_some() {
+                    rule_monitor = rule.monitor;
+                }
+            }
+        }
+
+        if let Some(client) = self.clients.get_mut(&window) {
+            if let Some(is_floating) = rule_floating {
+                client.is_floating = is_floating;
+                if is_floating {
+                    self.floating_windows.insert(window);
+                } else {
+                    self.floating_windows.remove(&window);
+                }
+            }
+
+            if let Some(monitor_index) = rule_monitor {
+                if monitor_index < self.monitors.len() {
+                    client.monitor_index = monitor_index;
+                }
+            }
+
+            let tags = rule_tags.unwrap_or_else(|| {
+                self.monitors
+                    .get(client.monitor_index)
+                    .map(|m| m.tagset[m.selected_tags_index])
+                    .unwrap_or(tag_mask(0))
+            });
+
+            client.tags = tags;
+            self.window_tags.insert(window, tags);
+            self.window_monitor.insert(window, client.monitor_index);
+        }
+
+        Ok(())
+    }
+
     fn manage_window(&mut self, window: Window) -> WmResult<()> {
         let geometry = self.connection.get_geometry(window)?.reply()?;
         let mut window_x = geometry.x as i32;
@@ -1904,12 +1977,13 @@ impl WindowManager {
         self.clients.insert(window, client);
         self.update_size_hints(window)?;
         self.update_window_title(window)?;
-        self.attach_aside(window, monitor_index);
-        self.attach_stack(window, monitor_index);
+        self.apply_rules(window)?;
+
+        let updated_monitor_index = self.clients.get(&window).map(|c| c.monitor_index).unwrap_or(monitor_index);
+        self.attach_aside(window, updated_monitor_index);
+        self.attach_stack(window, updated_monitor_index);
 
         self.windows.push(window);
-        self.window_tags.insert(window, window_tags);
-        self.window_monitor.insert(window, monitor_index);
 
         if is_transient || is_dialog {
             self.floating_windows.insert(window);

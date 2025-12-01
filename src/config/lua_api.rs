@@ -26,6 +26,7 @@ pub struct ConfigBuilder {
     pub tags: Vec<String>,
     pub layout_symbols: Vec<crate::LayoutSymbolOverride>,
     pub keybindings: Vec<KeyBinding>,
+    pub window_rules: Vec<crate::WindowRule>,
     pub status_blocks: Vec<BlockConfig>,
     pub scheme_normal: ColorScheme,
     pub scheme_occupied: ColorScheme,
@@ -51,6 +52,7 @@ impl Default for ConfigBuilder {
             tags: vec!["1".into(), "2".into(), "3".into()],
             layout_symbols: Vec::new(),
             keybindings: Vec::new(),
+            window_rules: Vec::new(),
             status_blocks: Vec::new(),
             scheme_normal: ColorScheme {
                 foreground: 0xffffff,
@@ -86,6 +88,7 @@ pub fn register_api(lua: &Lua) -> Result<SharedBuilder, ConfigError> {
     register_client_module(&lua, &oxwm_table)?;
     register_layout_module(&lua, &oxwm_table)?;
     register_tag_module(&lua, &oxwm_table)?;
+    register_rule_module(&lua, &oxwm_table, builder.clone())?;
     register_bar_module(&lua, &oxwm_table, builder.clone())?;
     register_misc(&lua, &oxwm_table, builder.clone())?;
 
@@ -318,6 +321,45 @@ fn register_tag_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
     tag_table.set("move_to", move_to)?;
     tag_table.set("toggletag", toggletag)?;
     parent.set("tag", tag_table)?;
+    Ok(())
+}
+
+fn register_rule_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<(), ConfigError> {
+    let rule_table = lua.create_table()?;
+
+    let builder_clone = builder.clone();
+    let add = lua.create_function(move |_, config: Table| {
+        let class: Option<String> = config.get("class").ok();
+        let instance: Option<String> = config.get("instance").ok();
+        let title: Option<String> = config.get("title").ok();
+        let is_floating: Option<bool> = config.get("floating").ok();
+        let monitor: Option<usize> = config.get("monitor").ok();
+
+        let tags: Option<u32> = if let Ok(tag_index) = config.get::<i32>("tag") {
+            if tag_index > 0 {
+                Some(1 << (tag_index - 1))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let rule = crate::WindowRule {
+            class,
+            instance,
+            title,
+            tags,
+            is_floating,
+            monitor,
+        };
+
+        builder_clone.borrow_mut().window_rules.push(rule);
+        Ok(())
+    })?;
+
+    rule_table.set("add", add)?;
+    parent.set("rule", rule_table)?;
     Ok(())
 }
 

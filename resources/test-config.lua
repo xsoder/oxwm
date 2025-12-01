@@ -46,6 +46,10 @@ oxwm.gaps.set_smart(true)  -- Disable outer gaps when only 1 window (dwm smartga
 oxwm.gaps.set_inner(5, 5)
 oxwm.gaps.set_outer(5, 5)
 
+oxwm.rule.add({ class = "firefox", title = "Library", floating = true })
+oxwm.rule.add({ instance = "gimp", tag = 5 })
+oxwm.rule.add({ class = "mpv", floating = true })
+
 oxwm.bar.set_font("JetBrainsMono Nerd Font:style=Bold:size=12")
 
 oxwm.bar.set_scheme_normal(colors.fg, colors.bg, 0x444444)
