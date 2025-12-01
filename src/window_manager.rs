@@ -128,8 +128,6 @@ pub struct WindowManager {
     windows: Vec<Window>,
     clients: HashMap<Window, Client>,
     layout: LayoutBox,
-    window_tags: HashMap<Window, TagMask>,
-    window_monitor: HashMap<Window, usize>,
     window_geometry_cache: HashMap<Window, CachedGeometry>,
     gaps_enabled: bool,
     floating_windows: HashSet<Window>,
@@ -286,8 +284,6 @@ impl WindowManager {
             windows: Vec::new(),
             clients: HashMap::new(),
             layout: Box::new(TilingLayout),
-            window_tags: HashMap::new(),
-            window_monitor: HashMap::new(),
             window_geometry_cache: HashMap::new(),
             gaps_enabled,
             floating_windows: HashSet::new(),
@@ -390,10 +386,8 @@ impl WindowManager {
             }
 
             if attrs.map_state == MapState::VIEWABLE {
-                let tag = self.get_saved_tag(window, net_client_info)?;
+                let _tag = self.get_saved_tag(window, net_client_info)?;
                 self.windows.push(window);
-                self.window_tags.insert(window, tag);
-                self.window_monitor.insert(window, self.selected_monitor);
                 continue;
             }
 
@@ -415,11 +409,9 @@ impl WindowManager {
                     .is_ok_and(|prop| !prop.value.is_empty());
 
                 if has_wm_class {
-                    let tag = self.get_saved_tag(window, net_client_info)?;
+                    let _tag = self.get_saved_tag(window, net_client_info)?;
                     self.connection.map_window(window)?;
                     self.windows.push(window);
-                    self.window_tags.insert(window, tag);
-                    self.window_monitor.insert(window, self.selected_monitor);
                 }
             }
         }
@@ -537,60 +529,53 @@ impl WindowManager {
     }
 
     fn toggle_floating(&mut self) -> WmResult<()> {
-        if let Some(focused) = self
+        let focused = self
             .monitors
             .get(self.selected_monitor)
-            .and_then(|m| m.selected_client)
-        {
-            if self.floating_windows.contains(&focused) {
-                self.floating_windows.remove(&focused);
-                if let Some(client) = self.clients.get_mut(&focused) {
-                    client.is_floating = false;
-                }
+            .and_then(|m| m.selected_client);
 
-                let selected_tags = self
-                    .monitors
-                    .get(self.selected_monitor)
-                    .map(|m| m.tagset[m.selected_tags_index])
-                    .unwrap_or(tag_mask(0));
+        if focused.is_none() {
+            return Ok(());
+        }
+        let focused = focused.unwrap();
 
-                self.window_tags.insert(focused, selected_tags);
-                self.window_monitor.insert(focused, self.selected_monitor);
-                if let Err(error) = self.save_client_tag(focused, selected_tags) {
-                    eprintln!("Failed to save client tag: {:?}", error);
-                }
-
-                self.apply_layout()?;
-            } else {
-                if let Some(monitor) = self.monitors.get(self.selected_monitor) {
-                    let float_width = (monitor.screen_width as f32 * 0.5) as u32;
-                    let float_height = (monitor.screen_height as f32 * 0.5) as u32;
-
-                    let border_width = self.config.border_width;
-
-                    let center_x = monitor.screen_x + (monitor.screen_width as i32 - float_width as i32) / 2;
-                    let center_y = monitor.screen_y + (monitor.screen_height as i32 - float_height as i32) / 2;
-
-                    self.connection.configure_window(
-                        focused,
-                        &ConfigureWindowAux::new()
-                            .x(center_x)
-                            .y(center_y)
-                            .width(float_width)
-                            .height(float_height)
-                            .border_width(border_width)
-                            .stack_mode(StackMode::ABOVE),
-                    )?;
-
-                    self.floating_windows.insert(focused);
-                    if let Some(client) = self.clients.get_mut(&focused) {
-                        client.is_floating = true;
-                    }
-                    self.apply_layout()?;
-                    self.connection.flush()?;
-                }
+        if let Some(client) = self.clients.get(&focused) {
+            if client.is_fullscreen {
+                return Ok(());
             }
         }
+
+        let (is_fixed, x, y, w, h) = if let Some(client) = self.clients.get(&focused) {
+            (client.is_fixed, client.x_position as i32, client.y_position as i32, client.width as u32, client.height as u32)
+        } else {
+            return Ok(());
+        };
+
+        let was_floating = self.floating_windows.contains(&focused);
+
+        if was_floating {
+            self.floating_windows.remove(&focused);
+            if let Some(client) = self.clients.get_mut(&focused) {
+                client.is_floating = false;
+            }
+        } else {
+            self.floating_windows.insert(focused);
+            if let Some(client) = self.clients.get_mut(&focused) {
+                client.is_floating = is_fixed || !client.is_floating;
+            }
+
+            self.connection.configure_window(
+                focused,
+                &ConfigureWindowAux::new()
+                    .x(x)
+                    .y(y)
+                    .width(w)
+                    .height(h)
+                    .stack_mode(StackMode::ABOVE),
+            )?;
+        }
+
+        self.apply_layout()?;
         Ok(())
     }
 
@@ -1219,8 +1204,6 @@ impl WindowManager {
             client.tags = mask;
         }
 
-        self.window_tags.insert(focused, mask);
-
         if let Err(error) = self.save_client_tag(focused, mask) {
             eprintln!("Failed to save client tag: {:?}", error);
         }
@@ -1257,8 +1240,6 @@ impl WindowManager {
         if let Some(client) = self.clients.get_mut(&focused) {
             client.tags = new_tags;
         }
-
-        self.window_tags.insert(focused, new_tags);
 
         if let Err(error) = self.save_client_tag(focused, new_tags) {
             eprintln!("Failed to save client tag: {:?}", error);
@@ -1678,6 +1659,11 @@ impl WindowManager {
     }
 
     fn set_window_fullscreen(&mut self, window: Window, fullscreen: bool) -> WmResult<()> {
+        let monitor_idx = self.clients.get(&window)
+            .map(|c| c.monitor_index)
+            .unwrap_or(self.selected_monitor);
+        let monitor = &self.monitors[monitor_idx];
+
         if fullscreen && !self.fullscreen_windows.contains(&window) {
             let bytes = self.atoms.net_wm_state_fullscreen.to_ne_bytes().to_vec();
             self.connection.change_property(
@@ -1690,21 +1676,15 @@ impl WindowManager {
                 &bytes,
             )?;
 
-            self.fullscreen_windows.insert(window);
             if let Some(client) = self.clients.get_mut(&window) {
                 client.is_fullscreen = true;
+                client.old_state = client.is_floating;
+                client.old_border_width = client.border_width;
+                client.border_width = 0;
+                client.is_floating = true;
             }
 
-            let monitor_idx = self.clients.get(&window)
-                .map(|c| c.monitor_index)
-                .unwrap_or(self.selected_monitor);
-            let monitor = &self.monitors[monitor_idx];
-
-            if self.show_bar {
-                if let Some(bar) = self.bars.get(monitor_idx) {
-                    self.connection.unmap_window(bar.window())?;
-                }
-            }
+            self.fullscreen_windows.insert(window);
 
             self.connection.configure_window(
                 window,
@@ -1718,7 +1698,6 @@ impl WindowManager {
             )?;
 
             self.connection.flush()?;
-            self.update_bar()?;
         } else if !fullscreen && self.fullscreen_windows.contains(&window) {
             self.connection.change_property(
                 PropMode::REPLACE,
@@ -1731,23 +1710,27 @@ impl WindowManager {
             )?;
 
             self.fullscreen_windows.remove(&window);
+
             if let Some(client) = self.clients.get_mut(&window) {
                 client.is_fullscreen = false;
-            }
+                client.is_floating = client.old_state;
+                client.border_width = client.old_border_width;
 
-            self.connection.configure_window(
-                window,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .border_width(self.config.border_width),
-            )?;
+                let x = client.old_x_position;
+                let y = client.old_y_position;
+                let w = client.old_width;
+                let h = client.old_height;
+                let bw = client.border_width;
 
-            let monitor_idx = self.clients.get(&window)
-                .map(|c| c.monitor_index)
-                .unwrap_or(self.selected_monitor);
-            if self.show_bar {
-                if let Some(bar) = self.bars.get(monitor_idx) {
-                    self.connection.map_window(bar.window())?;
-                }
+                self.connection.configure_window(
+                    window,
+                    &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                        .x(x as i32)
+                        .y(y as i32)
+                        .width(w as u32)
+                        .height(h as u32)
+                        .border_width(bw as u32),
+                )?;
             }
 
             self.apply_layout()?;
@@ -1910,8 +1893,6 @@ impl WindowManager {
             });
 
             client.tags = tags;
-            self.window_tags.insert(window, tags);
-            self.window_monitor.insert(window, client.monitor_index);
         }
 
         Ok(())
@@ -3599,10 +3580,7 @@ impl WindowManager {
                 .map(|m| m.tagset[m.selected_tags_index])
                 .unwrap_or(1);
             client.tags = new_tags;
-            self.window_tags.insert(window, new_tags);
         }
-
-        self.window_monitor.insert(window, target_monitor);
 
         self.attach_aside(window, target_monitor);
         self.attach_stack(window, target_monitor);
@@ -3628,8 +3606,6 @@ impl WindowManager {
         }
 
         self.windows.retain(|&w| w != window);
-        self.window_tags.remove(&window);
-        self.window_monitor.remove(&window);
         self.window_geometry_cache.remove(&window);
         self.floating_windows.remove(&window);
 
