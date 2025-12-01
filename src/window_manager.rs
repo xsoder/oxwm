@@ -930,6 +930,37 @@ impl WindowManager {
         best_monitor
     }
 
+    fn sendmon(&mut self, window: Window, target_monitor_index: usize) -> WmResult<()> {
+        let current_monitor_index = self.clients
+            .get(&window)
+            .map(|c| c.monitor_index);
+
+        if let Some(current_idx) = current_monitor_index {
+            if current_idx == target_monitor_index {
+                return Ok(());
+            }
+        }
+
+        self.unfocus(window)?;
+        self.detach(window);
+        self.detach_stack(window);
+
+        if let Some(client) = self.clients.get_mut(&window) {
+            client.monitor_index = target_monitor_index;
+            if let Some(target_monitor) = self.monitors.get(target_monitor_index) {
+                client.tags = target_monitor.tagset[target_monitor.selected_tags_index];
+            }
+        }
+
+        self.attach_aside(window, target_monitor_index);
+        self.attach_stack(window, target_monitor_index);
+
+        self.focus(None)?;
+        self.apply_layout()?;
+
+        Ok(())
+    }
+
     fn dir_to_monitor(&self, direction: i32) -> Option<usize> {
         if self.monitors.len() <= 1 {
             return None;
@@ -2323,62 +2354,146 @@ impl WindowManager {
     }
 
     fn move_mouse(&mut self, window: Window) -> WmResult<()> {
-        self.floating_windows.insert(window);
+        let is_fullscreen = self.clients
+            .get(&window)
+            .map(|c| c.is_fullscreen)
+            .unwrap_or(false);
 
-        let geometry = self.connection.get_geometry(window)?.reply()?;
+        if is_fullscreen {
+            return Ok(());
+        }
 
-        self.connection
-            .grab_pointer(
-                false,
-                self.root,
-                (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE).into(),
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-                x11rb::NONE,
-                x11rb::NONE,
-                x11rb::CURRENT_TIME,
-            )?
-            .reply()?;
+        let client_info = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height, c.is_floating, c.monitor_index)
+        });
+
+        let Some((orig_x, orig_y, width, height, was_floating, monitor_idx)) = client_info else {
+            return Ok(());
+        };
+
+        let monitor = self.monitors.get(monitor_idx).cloned();
+        let Some(monitor) = monitor else {
+            return Ok(());
+        };
+
+        let snap = 32;
+        let is_normie = self.layout.name() == "normie";
+
+        self.connection.grab_pointer(
+            false,
+            self.root,
+            (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE |
+             EventMask::BUTTON_PRESS).into(),
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            x11rb::CURRENT_TIME,
+        )?.reply()?;
 
         let pointer = self.connection.query_pointer(self.root)?.reply()?;
-        let (start_x, start_y) = (pointer.root_x, pointer.root_y);
+        let (start_x, start_y) = (pointer.root_x as i32, pointer.root_y as i32);
 
-        self.connection.configure_window(
-            window,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        )?;
+        let mut last_time = 0u32;
 
         loop {
             let event = self.connection.wait_for_event()?;
             match event {
+                Event::ConfigureRequest(_) | Event::MapRequest(_) | Event::Expose(_) => {}
                 Event::MotionNotify(e) => {
-                    let new_x = geometry.x + (e.root_x - start_x);
-                    let new_y = geometry.y + (e.root_y - start_y);
-                    self.connection.configure_window(
-                        window,
-                        &ConfigureWindowAux::new().x(new_x as i32).y(new_y as i32),
-                    )?;
-                    self.connection.flush()?;
+                    if e.time.wrapping_sub(last_time) <= 16 {
+                        continue;
+                    }
+                    last_time = e.time;
+
+                    let mut new_x = orig_x as i32 + (e.root_x as i32 - start_x);
+                    let mut new_y = orig_y as i32 + (e.root_y as i32 - start_y);
+
+                    if (monitor.window_area_x - new_x).abs() < snap {
+                        new_x = monitor.window_area_x;
+                    } else if ((monitor.window_area_x + monitor.window_area_width) - (new_x + width as i32)).abs() < snap {
+                        new_x = monitor.window_area_x + monitor.window_area_width - width as i32;
+                    }
+
+                    if (monitor.window_area_y - new_y).abs() < snap {
+                        new_y = monitor.window_area_y;
+                    } else if ((monitor.window_area_y + monitor.window_area_height) - (new_y + height as i32)).abs() < snap {
+                        new_y = monitor.window_area_y + monitor.window_area_height - height as i32;
+                    }
+
+                    if !was_floating && !is_normie &&
+                       ((new_x - orig_x as i32).abs() > snap || (new_y - orig_y as i32).abs() > snap) {
+                        self.toggle_floating()?;
+                    }
+
+                    let should_resize = is_normie || self.clients
+                        .get(&window)
+                        .map(|c| c.is_floating)
+                        .unwrap_or(false);
+
+                    if should_resize {
+                        if let Some(client) = self.clients.get_mut(&window) {
+                            client.x_position = new_x as i16;
+                            client.y_position = new_y as i16;
+                        }
+
+                        self.connection.configure_window(
+                            window,
+                            &ConfigureWindowAux::new()
+                                .x(new_x)
+                                .y(new_y),
+                        )?;
+                        self.connection.flush()?;
+                    }
                 }
                 Event::ButtonRelease(_) => break,
                 _ => {}
             }
         }
 
-        self.connection
-            .ungrab_pointer(x11rb::CURRENT_TIME)?
-            .check()?;
-        self.connection
-            .allow_events(Allow::REPLAY_POINTER, x11rb::CURRENT_TIME)?
-            .check()?;
+        self.connection.ungrab_pointer(x11rb::CURRENT_TIME)?.check()?;
+
+        let final_client = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height)
+        });
+
+        if let Some((x, y, w, h)) = final_client {
+            let new_monitor = self.rect_to_monitor(x as i32, y as i32, w as i32, h as i32);
+            if new_monitor != monitor_idx {
+                self.sendmon(window, new_monitor)?;
+                self.selected_monitor = new_monitor;
+                self.focus(None)?;
+            }
+        }
 
         Ok(())
     }
 
     fn resize_mouse(&mut self, window: Window) -> WmResult<()> {
-        self.floating_windows.insert(window);
+        let is_fullscreen = self.clients
+            .get(&window)
+            .map(|c| c.is_fullscreen)
+            .unwrap_or(false);
 
-        let geometry = self.connection.get_geometry(window)?.reply()?;
+        if is_fullscreen {
+            return Ok(());
+        }
+
+        let client_info = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height, c.border_width, c.is_floating, c.monitor_index)
+        });
+
+        let Some((orig_x, orig_y, orig_width, orig_height, border_width, was_floating, monitor_idx)) = client_info else {
+            return Ok(());
+        };
+
+        let monitor = self.monitors.get(monitor_idx).cloned();
+        let Some(monitor) = monitor else {
+            return Ok(());
+        };
+
+        let snap = 32;
+        let is_normie = self.layout.name() == "normie";
 
         self.connection.warp_pointer(
             x11rb::NONE,
@@ -2387,54 +2502,115 @@ impl WindowManager {
             0,
             0,
             0,
-            geometry.width as i16,
-            geometry.height as i16,
+            (orig_width + border_width - 1) as i16,
+            (orig_height + border_width - 1) as i16,
         )?;
 
-        self.connection
-            .grab_pointer(
-                false,
-                self.root,
-                (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE).into(),
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-                x11rb::NONE,
-                x11rb::NONE,
-                x11rb::CURRENT_TIME,
-            )?
-            .reply()?;
+        self.connection.grab_pointer(
+            false,
+            self.root,
+            (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE |
+             EventMask::BUTTON_PRESS).into(),
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            x11rb::CURRENT_TIME,
+        )?.reply()?;
 
-        self.connection.configure_window(
-            window,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        )?;
+        let mut last_time = 0u32;
 
         loop {
             let event = self.connection.wait_for_event()?;
             match event {
+                Event::ConfigureRequest(_) | Event::MapRequest(_) | Event::Expose(_) => {}
                 Event::MotionNotify(e) => {
-                    let new_width = (e.root_x - geometry.x).max(1) as u32;
-                    let new_height = (e.root_y - geometry.y).max(1) as u32;
+                    if e.time.wrapping_sub(last_time) <= 16 {
+                        continue;
+                    }
+                    last_time = e.time;
 
-                    self.connection.configure_window(
-                        window,
-                        &ConfigureWindowAux::new()
-                            .width(new_width)
-                            .height(new_height),
-                    )?;
-                    self.connection.flush()?;
+                    let new_width = ((e.root_x as i32 - orig_x as i32 - 2 * border_width as i32 + 1).max(1)) as u32;
+                    let new_height = ((e.root_y as i32 - orig_y as i32 - 2 * border_width as i32 + 1).max(1)) as u32;
+
+                    let in_monitor_bounds =
+                        monitor.window_area_x + new_width as i32 >= monitor.window_area_x &&
+                        monitor.window_area_x + new_width as i32 <= monitor.window_area_x + monitor.window_area_width &&
+                        monitor.window_area_y + new_height as i32 >= monitor.window_area_y &&
+                        monitor.window_area_y + new_height as i32 <= monitor.window_area_y + monitor.window_area_height;
+
+                    if in_monitor_bounds {
+                        if !was_floating && !is_normie &&
+                           ((new_width as i32 - orig_width as i32).abs() > snap ||
+                            (new_height as i32 - orig_height as i32).abs() > snap) {
+                            self.toggle_floating()?;
+                        }
+                    }
+
+                    let should_resize = is_normie || self.clients
+                        .get(&window)
+                        .map(|c| c.is_floating)
+                        .unwrap_or(false);
+
+                    if should_resize {
+                        if let Some(client) = self.clients.get(&window) {
+                            let (hint_width, hint_height) = self.apply_size_hints(
+                                client,
+                                new_width as i32,
+                                new_height as i32,
+                            );
+
+                            if let Some(client_mut) = self.clients.get_mut(&window) {
+                                client_mut.width = hint_width as u16;
+                                client_mut.height = hint_height as u16;
+                            }
+
+                            self.connection.configure_window(
+                                window,
+                                &ConfigureWindowAux::new()
+                                    .width(hint_width as u32)
+                                    .height(hint_height as u32),
+                            )?;
+                            self.connection.flush()?;
+                        }
+                    }
                 }
                 Event::ButtonRelease(_) => break,
                 _ => {}
             }
         }
 
-        self.connection
-            .ungrab_pointer(x11rb::CURRENT_TIME)?
-            .check()?;
-        self.connection
-            .allow_events(Allow::REPLAY_POINTER, x11rb::CURRENT_TIME)?
-            .check()?;
+        let final_client = self.clients.get(&window).map(|c| {
+            (c.width, c.border_width)
+        });
+
+        if let Some((w, bw)) = final_client {
+            self.connection.warp_pointer(
+                x11rb::NONE,
+                window,
+                0,
+                0,
+                0,
+                0,
+                (w + bw - 1) as i16,
+                (w + bw - 1) as i16,
+            )?;
+        }
+
+        self.connection.ungrab_pointer(x11rb::CURRENT_TIME)?.check()?;
+
+        let final_client_pos = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height)
+        });
+
+        if let Some((x, y, w, h)) = final_client_pos {
+            let new_monitor = self.rect_to_monitor(x as i32, y as i32, w as i32, h as i32);
+            if new_monitor != monitor_idx {
+                self.sendmon(window, new_monitor)?;
+                self.selected_monitor = new_monitor;
+                self.focus(None)?;
+            }
+        }
 
         Ok(())
     }
