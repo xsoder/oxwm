@@ -77,13 +77,17 @@ oxwm.key.bind({ modkey }, "N", oxwm.layout.cycle())
 
 oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps())
 
--- Master area controls (dwm-style)
--- NOTE: Mod+H/L are currently used for directional focus
--- Using Comma/Period instead. To match dwm exactly, replace H/L bindings above
-oxwm.key.bind({ modkey }, "Comma", oxwm.set_master_factor(-5))   -- Decrease master area
-oxwm.key.bind({ modkey }, "Period", oxwm.set_master_factor(5))    -- Increase master area
-oxwm.key.bind({ modkey }, "I", oxwm.inc_num_master(1))             -- More master windows
-oxwm.key.bind({ modkey }, "P", oxwm.inc_num_master(-1))            -- Fewer master windows
+-- Master area controls
+oxwm.key.bind({ modkey }, "BracketLeft", oxwm.set_master_factor(-5))   -- Decrease master area
+oxwm.key.bind({ modkey }, "BracketRight", oxwm.set_master_factor(5))   -- Increase master area
+oxwm.key.bind({ modkey }, "I", oxwm.inc_num_master(1))                 -- More master windows
+oxwm.key.bind({ modkey }, "P", oxwm.inc_num_master(-1))                -- Fewer master windows
+
+-- Multi-monitor controls (dwm-style)
+oxwm.key.bind({ modkey }, "Comma", oxwm.monitor.focus(-1))              -- Focus previous monitor
+oxwm.key.bind({ modkey }, "Period", oxwm.monitor.focus(1))              -- Focus next monitor
+oxwm.key.bind({ modkey, "Shift" }, "Comma", oxwm.monitor.tag(-1))      -- Send window to previous monitor
+oxwm.key.bind({ modkey, "Shift" }, "Period", oxwm.monitor.tag(1))      -- Send window to next monitor
 
 oxwm.key.bind({ modkey, "Shift" }, "Q", oxwm.quit())
 oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart())

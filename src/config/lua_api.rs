@@ -88,6 +88,7 @@ pub fn register_api(lua: &Lua) -> Result<SharedBuilder, ConfigError> {
     register_client_module(&lua, &oxwm_table)?;
     register_layout_module(&lua, &oxwm_table)?;
     register_tag_module(&lua, &oxwm_table)?;
+    register_monitor_module(&lua, &oxwm_table)?;
     register_rule_module(&lua, &oxwm_table, builder.clone())?;
     register_bar_module(&lua, &oxwm_table, builder.clone())?;
     register_misc(&lua, &oxwm_table, builder.clone())?;
@@ -321,6 +322,23 @@ fn register_tag_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
     tag_table.set("move_to", move_to)?;
     tag_table.set("toggletag", toggletag)?;
     parent.set("tag", tag_table)?;
+    Ok(())
+}
+
+fn register_monitor_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
+    let monitor_table = lua.create_table()?;
+
+    let focus = lua.create_function(|lua, direction: i64| {
+        create_action_table(lua, "FocusMonitor", Value::Integer(direction))
+    })?;
+
+    let tag = lua.create_function(|lua, direction: i64| {
+        create_action_table(lua, "TagMonitor", Value::Integer(direction))
+    })?;
+
+    monitor_table.set("focus", focus)?;
+    monitor_table.set("tag", tag)?;
+    parent.set("monitor", monitor_table)?;
     Ok(())
 }
 
@@ -789,6 +807,7 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "ChangeLayout" => Ok(KeyAction::ChangeLayout),
         "CycleLayout" => Ok(KeyAction::CycleLayout),
         "FocusMonitor" => Ok(KeyAction::FocusMonitor),
+        "TagMonitor" => Ok(KeyAction::TagMonitor),
         "ExchangeClient" => Ok(KeyAction::ExchangeClient),
         "ShowKeybindOverlay" => Ok(KeyAction::ShowKeybindOverlay),
         _ => Err(mlua::Error::RuntimeError(format!("unknown action '{}'. this is an internal error, please report it", s))),

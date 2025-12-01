@@ -221,6 +221,7 @@ impl KeybindOverlay {
             KeyAction::ChangeLayout => "Change Layout".to_string(),
             KeyAction::CycleLayout => "Cycle Through Layouts".to_string(),
             KeyAction::FocusMonitor => "Focus Next Monitor".to_string(),
+            KeyAction::TagMonitor => "Send Window to Monitor".to_string(),
             KeyAction::ExchangeClient => "Exchange Client Windows".to_string(),
             KeyAction::SetMasterFactor => "Adjust Master Area Size".to_string(),
             KeyAction::IncNumMaster => "Adjust Number of Master Windows".to_string(),

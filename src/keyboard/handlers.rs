@@ -30,6 +30,7 @@ pub enum KeyAction {
     ChangeLayout,
     CycleLayout,
     FocusMonitor,
+    TagMonitor,
     ExchangeClient,
     ShowKeybindOverlay,
     SetMasterFactor,
