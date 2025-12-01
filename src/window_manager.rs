@@ -1544,6 +1544,120 @@ impl WindowManager {
         Ok(true)
     }
 
+    fn set_urgent(&mut self, window: Window, urgent: bool) -> WmResult<()> {
+        if let Some(client) = self.clients.get_mut(&window) {
+            client.is_urgent = urgent;
+        }
+
+        let hints_reply = self.connection.get_property(
+            false,
+            window,
+            AtomEnum::WM_HINTS,
+            AtomEnum::WM_HINTS,
+            0,
+            9,
+        )?.reply();
+
+        if let Ok(hints) = hints_reply {
+            if hints.value.len() >= 4 {
+                let mut flags = u32::from_ne_bytes([
+                    hints.value[0],
+                    hints.value[1],
+                    hints.value[2],
+                    hints.value[3],
+                ]);
+
+                if urgent {
+                    flags |= 256;
+                } else {
+                    flags &= !256;
+                }
+
+                let mut new_hints = hints.value.clone();
+                new_hints[0..4].copy_from_slice(&flags.to_ne_bytes());
+
+                self.connection.change_property(
+                    PropMode::REPLACE,
+                    window,
+                    AtomEnum::WM_HINTS,
+                    AtomEnum::WM_HINTS,
+                    32,
+                    new_hints.len() as u32 / 4,
+                    &new_hints,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_state(&self, window: Window) -> WmResult<i32> {
+        let reply = self.connection.get_property(
+            false,
+            window,
+            self.atoms.wm_state,
+            self.atoms.wm_state,
+            0,
+            2,
+        )?.reply();
+
+        match reply {
+            Ok(prop) if !prop.value.is_empty() && prop.value.len() >= 4 => {
+                let state = u32::from_ne_bytes([
+                    prop.value[0],
+                    prop.value[1],
+                    prop.value[2],
+                    prop.value[3],
+                ]);
+                Ok(state as i32)
+            }
+            _ => Ok(-1),
+        }
+    }
+
+    fn get_atom_prop(&self, window: Window, property: Atom) -> WmResult<Option<Atom>> {
+        let reply = self.connection.get_property(
+            false,
+            window,
+            property,
+            AtomEnum::ATOM,
+            0,
+            1,
+        )?.reply();
+
+        match reply {
+            Ok(prop) if !prop.value.is_empty() && prop.value.len() >= 4 => {
+                let atom = u32::from_ne_bytes([
+                    prop.value[0],
+                    prop.value[1],
+                    prop.value[2],
+                    prop.value[3],
+                ]);
+                Ok(Some(atom))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn get_text_prop(&self, window: Window, atom: Atom) -> WmResult<Option<String>> {
+        let reply = self.connection.get_property(
+            false,
+            window,
+            atom,
+            AtomEnum::ANY,
+            0,
+            1024,
+        )?.reply();
+
+        match reply {
+            Ok(prop) if !prop.value.is_empty() => {
+                let text = String::from_utf8_lossy(&prop.value).to_string();
+                Ok(Some(text.trim_end_matches('\0').to_string()))
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn fullscreen(&mut self) -> WmResult<()> {
         if self.show_bar {
             let windows: Vec<Window> = self.windows.iter()
