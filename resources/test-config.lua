@@ -94,13 +94,6 @@ oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart())
 
 oxwm.key.bind({ modkey }, "J", oxwm.client.focus_stack(1))
 oxwm.key.bind({ modkey }, "K", oxwm.client.focus_stack(-1))
-oxwm.key.bind({ modkey }, "H", oxwm.client.focus_direction("left"))
-oxwm.key.bind({ modkey }, "L", oxwm.client.focus_direction("right"))
-
-oxwm.key.bind({ modkey, "Shift" }, "H", oxwm.client.swap_direction("left"))
-oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.swap_direction("down"))
-oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.swap_direction("up"))
-oxwm.key.bind({ modkey, "Shift" }, "L", oxwm.client.swap_direction("right"))
 
 -- View tag (switch workspace)
 oxwm.key.bind({ modkey }, "1", oxwm.tag.view(0))

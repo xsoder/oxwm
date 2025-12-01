@@ -175,30 +175,6 @@ impl Default for Config {
                     Arg::Int(1),
                 ),
                 KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_K,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(0), // UP
-                ),
-                KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_J,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(1), // DOWN
-                ),
-                KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_H,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(2), // LEFT
-                ),
-                KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_L,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(3), // RIGHT
-                ),
-                KeyBinding::single_key(
                     vec![MODKEY],
                     keysyms::XK_1,
                     KeyAction::ViewTag,

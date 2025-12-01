@@ -203,8 +203,6 @@ impl KeybindOverlay {
             },
             KeyAction::SpawnTerminal => "Launch Terminal".to_string(),
             KeyAction::FocusStack => "Focus Next/Previous Window".to_string(),
-            KeyAction::FocusDirection => "Focus Window in Direction".to_string(),
-            KeyAction::SwapDirection => "Swap Window in Direction".to_string(),
             KeyAction::ViewTag => match &binding.arg {
                 Arg::Int(n) => format!("View Workspace {}", n),
                 _ => "View Workspace".to_string(),
@@ -222,7 +220,6 @@ impl KeybindOverlay {
             KeyAction::CycleLayout => "Cycle Through Layouts".to_string(),
             KeyAction::FocusMonitor => "Focus Next Monitor".to_string(),
             KeyAction::TagMonitor => "Send Window to Monitor".to_string(),
-            KeyAction::ExchangeClient => "Exchange Client Windows".to_string(),
             KeyAction::SetMasterFactor => "Adjust Master Area Size".to_string(),
             KeyAction::IncNumMaster => "Adjust Number of Master Windows".to_string(),
             KeyAction::None => "No Action".to_string(),

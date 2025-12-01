@@ -255,27 +255,10 @@ fn register_client_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> 
         create_action_table(lua, "FocusStack", Value::Integer(dir as i64))
     })?;
 
-    let focus_direction = lua.create_function(|lua, dir: String| {
-        let dir_int = direction_string_to_int(&dir)?;
-        create_action_table(lua, "FocusDirection", Value::Integer(dir_int))
-    })?;
-
-    let swap_direction = lua.create_function(|lua, dir: String| {
-        let dir_int = direction_string_to_int(&dir)?;
-        create_action_table(lua, "SwapDirection", Value::Integer(dir_int))
-    })?;
-
-    let exchange = lua.create_function(|lua, ()| {
-        create_action_table(lua, "ExchangeClient", Value::Nil)
-    })?;
-
     client_table.set("kill", kill)?;
     client_table.set("toggle_fullscreen", toggle_fullscreen)?;
     client_table.set("toggle_floating", toggle_floating)?;
     client_table.set("focus_stack", focus_stack)?;
-    client_table.set("focus_direction", focus_direction)?;
-    client_table.set("swap_direction", swap_direction)?;
-    client_table.set("exchange", exchange)?;
 
     parent.set("client", client_table)?;
     Ok(())
@@ -790,8 +773,6 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "SpawnTerminal" => Ok(KeyAction::SpawnTerminal),
         "KillClient" => Ok(KeyAction::KillClient),
         "FocusStack" => Ok(KeyAction::FocusStack),
-        "FocusDirection" => Ok(KeyAction::FocusDirection),
-        "SwapDirection" => Ok(KeyAction::SwapDirection),
         "Quit" => Ok(KeyAction::Quit),
         "Restart" => Ok(KeyAction::Restart),
         "Recompile" => Ok(KeyAction::Recompile),
@@ -808,7 +789,6 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "CycleLayout" => Ok(KeyAction::CycleLayout),
         "FocusMonitor" => Ok(KeyAction::FocusMonitor),
         "TagMonitor" => Ok(KeyAction::TagMonitor),
-        "ExchangeClient" => Ok(KeyAction::ExchangeClient),
         "ShowKeybindOverlay" => Ok(KeyAction::ShowKeybindOverlay),
         _ => Err(mlua::Error::RuntimeError(format!("unknown action '{}'. this is an internal error, please report it", s))),
     }

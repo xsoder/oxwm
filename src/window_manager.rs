@@ -597,75 +597,6 @@ impl WindowManager {
         Ok(())
     }
 
-    fn exchange_client(&mut self, direction: i32) -> WmResult<()> {
-        let focused = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|m| m.selected_client)
-        {
-            Some(win) => win,
-            None => return Ok(()),
-        };
-
-        if self.floating_windows.contains(&focused) {
-            return Ok(());
-        }
-
-        let visible = self.visible_windows();
-        if visible.len() < 2 {
-            return Ok(());
-        }
-
-        let current_idx = match visible.iter().position(|&w| w == focused) {
-            Some(idx) => idx,
-            None => return Ok(()),
-        };
-
-        let target_idx = match direction {
-            0 | 2 => {
-                // UP or LEFT - previous in stack
-                if current_idx == 0 {
-                    visible.len() - 1
-                } else {
-                    current_idx - 1
-                }
-            }
-            1 | 3 => {
-                // DOWN or RIGHT - next in stack
-                (current_idx + 1) % visible.len()
-            }
-            _ => return Ok(()),
-        };
-
-        let target = visible[target_idx];
-
-        let focused_pos = self.windows.iter().position(|&w| w == focused);
-        let target_pos = self.windows.iter().position(|&w| w == target);
-
-        if let (Some(f_pos), Some(t_pos)) = (focused_pos, target_pos) {
-            self.windows.swap(f_pos, t_pos);
-
-            self.apply_layout()?;
-
-            self.focus(Some(focused))?;
-
-            if let Ok(geometry) = self.connection.get_geometry(focused)?.reply() {
-                self.connection.warp_pointer(
-                    x11rb::NONE,
-                    focused,
-                    0,
-                    0,
-                    0,
-                    0,
-                    geometry.width as i16 / 2,
-                    geometry.height as i16 / 2,
-                )?;
-            }
-        }
-
-        Ok(())
-    }
-
 
     fn get_layout_symbol(&self) -> String {
         let layout_name = self.layout.name();
@@ -846,25 +777,9 @@ impl WindowManager {
                 self.restack()?;
             }
 
-            KeyAction::ExchangeClient => {
-                if let Arg::Int(direction) = arg {
-                    self.exchange_client(*direction)?;
-                }
-            }
-
             KeyAction::FocusStack => {
                 if let Arg::Int(direction) = arg {
                     self.focusstack(*direction)?;
-                }
-            }
-            KeyAction::FocusDirection => {
-                if let Arg::Int(direction) = arg {
-                    self.focus_direction(*direction)?;
-                }
-            }
-            KeyAction::SwapDirection => {
-                if let Arg::Int(direction) = arg {
-                    self.swap_direction(*direction)?;
                 }
             }
             KeyAction::Quit | KeyAction::Restart => {
@@ -1291,104 +1206,6 @@ impl WindowManager {
 
         if is_tabbed {
             self.update_tab_bars()?;
-        }
-
-        Ok(())
-    }
-
-    fn find_directional_window_candidate(&mut self, focused_window: Window, direction: i32) -> Option<Window> {
-        let visible_windows = self.visible_windows();
-        if visible_windows.len() < 2 {
-            return None;
-        }
-
-        let focused_geometry = self.get_or_query_geometry(focused_window).ok()?;
-        let focused_center_x = focused_geometry.x_position + (focused_geometry.width as i16 / 2);
-        let focused_center_y = focused_geometry.y_position + (focused_geometry.height as i16 / 2);
-
-        let mut candidates = Vec::new();
-
-        for &window in &visible_windows {
-            if window == focused_window {
-                continue;
-            }
-
-            let geometry = match self.get_or_query_geometry(window) {
-                Ok(geometry) => geometry,
-                Err(_) => continue,
-            };
-
-            let center_x = geometry.x_position + (geometry.width as i16 / 2);
-            let center_y = geometry.y_position + (geometry.height as i16 / 2);
-
-            let is_valid_direction = match direction {
-                0 => center_y < focused_center_y,
-                1 => center_y > focused_center_y,
-                2 => center_x < focused_center_x,
-                3 => center_x > focused_center_x,
-                _ => false,
-            };
-
-            if is_valid_direction {
-                let delta_x = (center_x - focused_center_x) as i32;
-                let delta_y = (center_y - focused_center_y) as i32;
-                let distance_squared = delta_x * delta_x + delta_y * delta_y;
-                candidates.push((window, distance_squared));
-            }
-        }
-
-        candidates.iter().min_by_key(|&(_window, distance)| distance).map(|&(window, _distance)| window)
-    }
-
-    pub fn focus_direction(&mut self, direction: i32) -> WmResult<()> {
-        let focused_window = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|monitor| monitor.selected_client)
-        {
-            Some(window) => window,
-            None => return Ok(()),
-        };
-
-        if let Some(target_window) = self.find_directional_window_candidate(focused_window, direction) {
-            self.focus(Some(target_window))?;
-        }
-
-        Ok(())
-    }
-
-    pub fn swap_direction(&mut self, direction: i32) -> WmResult<()> {
-        let focused_window = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|monitor| monitor.selected_client)
-        {
-            Some(window) => window,
-            None => return Ok(()),
-        };
-
-        if let Some(target_window) = self.find_directional_window_candidate(focused_window, direction) {
-            let focused_position = self.windows.iter().position(|&window| window == focused_window);
-            let target_position = self.windows.iter().position(|&window| window == target_window);
-
-            if let (Some(focused_index), Some(target_index)) = (focused_position, target_position) {
-                self.windows.swap(focused_index, target_index);
-                self.apply_layout()?;
-                self.focus(Some(focused_window))?;
-
-                if let Ok(geometry) = self.get_or_query_geometry(focused_window) {
-                    self.connection.warp_pointer(
-                        x11rb::NONE,
-                        focused_window,
-                        0,
-                        0,
-                        0,
-                        0,
-                        geometry.width as i16 / 2,
-                        geometry.height as i16 / 2,
-                    )?;
-                }
-            }
         }
 
         Ok(())
@@ -2189,43 +2006,6 @@ impl WindowManager {
                     .border_width(border_width)
                     .stack_mode(StackMode::ABOVE),
             )?;
-        }
-
-        let is_normie_layout = self.layout.name() == "normie";
-        if is_normie_layout && !is_transient && !is_dialog && !is_rule_floating {
-            if let Ok(pointer) = self.connection.query_pointer(self.root)?.reply() {
-                let cursor_monitor = self.get_monitor_at_point(pointer.root_x as i32, pointer.root_y as i32)
-                    .and_then(|idx| self.monitors.get(idx))
-                    .unwrap_or(&monitor);
-
-                let float_width = (cursor_monitor.screen_width as f32 * 0.6) as u32;
-                let float_height = (cursor_monitor.screen_height as f32 * 0.6) as u32;
-                let spawn_x = pointer.root_x as i32 - (float_width as i32 / 2);
-                let spawn_y = pointer.root_y as i32 - (float_height as i32 / 2);
-
-                let clamped_x = spawn_x
-                    .max(cursor_monitor.screen_x)
-                    .min(cursor_monitor.screen_x + cursor_monitor.screen_width as i32 - float_width as i32);
-                let clamped_y = spawn_y
-                    .max(cursor_monitor.screen_y)
-                    .min(cursor_monitor.screen_y + cursor_monitor.screen_height as i32 - float_height as i32);
-
-                self.connection.configure_window(
-                    window,
-                    &ConfigureWindowAux::new()
-                        .x(clamped_x)
-                        .y(clamped_y)
-                        .width(float_width)
-                        .height(float_height)
-                        .border_width(border_width)
-                        .stack_mode(StackMode::ABOVE),
-                )?;
-
-                if let Some(client) = self.clients.get_mut(&window) {
-                    client.is_floating = true;
-                }
-                self.floating_windows.insert(window);
-            }
         }
 
         self.set_wm_state(window, 1)?;
@@ -3083,12 +2863,11 @@ impl WindowManager {
     }
 
     fn apply_layout(&mut self) -> WmResult<()> {
-        if self.layout.name() == LayoutType::Normie.as_str() {
-            return Ok(());
-        }
+        let is_normie = self.layout.name() == LayoutType::Normie.as_str();
 
-        let monitor_count = self.monitors.len();
-        for monitor_index in 0..monitor_count {
+        if !is_normie {
+            let monitor_count = self.monitors.len();
+            for monitor_index in 0..monitor_count {
             let monitor = &self.monitors[monitor_index];
             let border_width = self.config.border_width;
 
@@ -3190,6 +2969,7 @@ impl WindowManager {
                     height: adjusted_height as u16,
                     border_width: border_width as u16,
                 });
+            }
             }
         }
 
