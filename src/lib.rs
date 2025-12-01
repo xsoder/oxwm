@@ -33,6 +33,7 @@ pub struct Config {
 
     // Gaps
     pub gaps_enabled: bool,
+    pub smartgaps_enabled: bool,
     pub gap_inner_horizontal: u32,
     pub gap_inner_vertical: u32,
     pub gap_outer_horizontal: u32,
@@ -87,6 +88,7 @@ impl Default for Config {
             border_unfocused: 0xbbbbbb,
             font: "monospace:size=10".to_string(),
             gaps_enabled: false,
+            smartgaps_enabled: true,
             gap_inner_horizontal: 0,
             gap_inner_vertical: 0,
             gap_outer_horizontal: 0,

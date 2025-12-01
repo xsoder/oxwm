@@ -2698,6 +2698,7 @@ impl WindowManager {
             let usable_height = monitor_height.saturating_sub(bar_height as i32);
             let master_factor = monitor.master_factor;
             let num_master = monitor.num_master;
+            let smartgaps_enabled = self.config.smartgaps_enabled;
 
             let geometries = self.layout.arrange(
                 &visible,
@@ -2706,11 +2707,24 @@ impl WindowManager {
                 &gaps,
                 master_factor,
                 num_master,
+                smartgaps_enabled,
             );
 
             for (window, geometry) in visible.iter().zip(geometries.iter()) {
-                let adjusted_width = geometry.width.saturating_sub(2 * border_width);
-                let adjusted_height = geometry.height.saturating_sub(2 * border_width);
+                let mut adjusted_width = geometry.width.saturating_sub(2 * border_width);
+                let mut adjusted_height = geometry.height.saturating_sub(2 * border_width);
+
+                if let Some(client) = self.clients.get(window) {
+                    if !client.is_floating {
+                        let (hint_width, hint_height) = self.apply_size_hints(
+                            client,
+                            adjusted_width as i32,
+                            adjusted_height as i32,
+                        );
+                        adjusted_width = hint_width as u32;
+                        adjusted_height = hint_height as u32;
+                    }
+                }
 
                 let adjusted_x = geometry.x_coordinate + monitor_x;
                 let adjusted_y = geometry.y_coordinate + monitor_y + bar_height as i32;

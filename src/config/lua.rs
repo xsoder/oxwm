@@ -32,6 +32,7 @@ pub fn parse_lua_config(
         border_unfocused: builder_data.border_unfocused,
         font: builder_data.font,
         gaps_enabled: builder_data.gaps_enabled,
+        smartgaps_enabled: builder_data.smartgaps_enabled,
         gap_inner_horizontal: builder_data.gap_inner_horizontal,
         gap_inner_vertical: builder_data.gap_inner_vertical,
         gap_outer_horizontal: builder_data.gap_outer_horizontal,

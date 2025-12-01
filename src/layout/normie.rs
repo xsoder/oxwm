@@ -21,6 +21,7 @@ impl Layout for NormieLayout {
         _gaps: &GapConfig,
         _master_factor: f32,
         _num_master: i32,
+        _smartgaps_enabled: bool,
     ) -> Vec<WindowGeometry> {
         const DEFAULT_WIDTH_RATIO: f32 = 0.6;
         const DEFAULT_HEIGHT_RATIO: f32 = 0.6;

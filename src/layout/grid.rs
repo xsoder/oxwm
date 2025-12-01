@@ -20,6 +20,7 @@ impl Layout for GridLayout {
         gaps: &GapConfig,
         _master_factor: f32,
         _num_master: i32,
+        _smartgaps_enabled: bool,
     ) -> Vec<WindowGeometry> {
         let window_count = windows.len();
         if window_count == 0 {

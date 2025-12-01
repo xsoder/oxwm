@@ -16,6 +16,7 @@ pub struct ConfigBuilder {
     pub border_unfocused: u32,
     pub font: String,
     pub gaps_enabled: bool,
+    pub smartgaps_enabled: bool,
     pub gap_inner_horizontal: u32,
     pub gap_inner_vertical: u32,
     pub gap_outer_horizontal: u32,
@@ -40,6 +41,7 @@ impl Default for ConfigBuilder {
             border_unfocused: 0xbbbbbb,
             font: "monospace:style=Bold:size=10".to_string(),
             gaps_enabled: true,
+            smartgaps_enabled: true,
             gap_inner_horizontal: 5,
             gap_inner_vertical: 5,
             gap_outer_horizontal: 5,
@@ -184,11 +186,18 @@ fn register_gaps_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Re
         Ok(())
     })?;
 
+    let builder_clone = builder.clone();
+    let set_smart = lua.create_function(move |_, enabled: bool| {
+        builder_clone.borrow_mut().smartgaps_enabled = enabled;
+        Ok(())
+    })?;
+
     gaps_table.set("set_enabled", set_enabled)?;
     gaps_table.set("enable", enable)?;
     gaps_table.set("disable", disable)?;
     gaps_table.set("set_inner", set_inner)?;
     gaps_table.set("set_outer", set_outer)?;
+    gaps_table.set("set_smart", set_smart)?;
     parent.set("gaps", gaps_table)?;
     Ok(())
 }

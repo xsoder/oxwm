@@ -87,13 +87,13 @@ impl Layout for TilingLayout {
         gaps: &GapConfig,
         master_factor: f32,
         num_master: i32,
+        smartgaps_enabled: bool,
     ) -> Vec<WindowGeometry> {
         let window_count = windows.len();
         if window_count == 0 {
             return Vec::new();
         }
 
-        let smartgaps_enabled = true;
         let gap_values = Self::getgaps(gaps, window_count, smartgaps_enabled);
 
         let outer_gap_horizontal = gap_values.outer_horizontal;

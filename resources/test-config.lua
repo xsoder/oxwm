@@ -42,6 +42,7 @@ oxwm.border.set_focused_color(colors.blue)
 oxwm.border.set_unfocused_color(colors.grey)
 
 oxwm.gaps.set_enabled(true)
+oxwm.gaps.set_smart(true)  -- Disable outer gaps when only 1 window (dwm smartgaps)
 oxwm.gaps.set_inner(5, 5)
 oxwm.gaps.set_outer(5, 5)
 
