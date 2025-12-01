@@ -301,12 +301,22 @@ fn register_tag_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
         create_action_table(lua, "ViewTag", Value::Integer(idx as i64))
     })?;
 
+    let toggleview = lua.create_function(|lua, idx: i32| {
+        create_action_table(lua, "ToggleView", Value::Integer(idx as i64))
+    })?;
+
     let move_to = lua.create_function(|lua, idx: i32| {
         create_action_table(lua, "MoveToTag", Value::Integer(idx as i64))
     })?;
 
+    let toggletag = lua.create_function(|lua, idx: i32| {
+        create_action_table(lua, "ToggleTag", Value::Integer(idx as i64))
+    })?;
+
     tag_table.set("view", view)?;
+    tag_table.set("toggleview", toggleview)?;
     tag_table.set("move_to", move_to)?;
+    tag_table.set("toggletag", toggletag)?;
     parent.set("tag", tag_table)?;
     Ok(())
 }
@@ -726,6 +736,9 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "Restart" => Ok(KeyAction::Restart),
         "Recompile" => Ok(KeyAction::Recompile),
         "ViewTag" => Ok(KeyAction::ViewTag),
+        "ToggleView" => Ok(KeyAction::ToggleView),
+        "MoveToTag" => Ok(KeyAction::MoveToTag),
+        "ToggleTag" => Ok(KeyAction::ToggleTag),
         "ToggleGaps" => Ok(KeyAction::ToggleGaps),
         "SetMasterFactor" => Ok(KeyAction::SetMasterFactor),
         "IncNumMaster" => Ok(KeyAction::IncNumMaster),
@@ -733,7 +746,6 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "ToggleFloating" => Ok(KeyAction::ToggleFloating),
         "ChangeLayout" => Ok(KeyAction::ChangeLayout),
         "CycleLayout" => Ok(KeyAction::CycleLayout),
-        "MoveToTag" => Ok(KeyAction::MoveToTag),
         "FocusMonitor" => Ok(KeyAction::FocusMonitor),
         "ExchangeClient" => Ok(KeyAction::ExchangeClient),
         "ShowKeybindOverlay" => Ok(KeyAction::ShowKeybindOverlay),

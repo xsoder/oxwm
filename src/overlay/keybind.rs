@@ -209,7 +209,12 @@ impl KeybindOverlay {
                 Arg::Int(n) => format!("View Workspace {}", n),
                 _ => "View Workspace".to_string(),
             },
+            KeyAction::ToggleView => match &binding.arg {
+                Arg::Int(n) => format!("Toggle View Workspace {}", n),
+                _ => "Toggle View Workspace".to_string(),
+            },
             KeyAction::MoveToTag => "Move Window to Workspace".to_string(),
+            KeyAction::ToggleTag => "Toggle Window on Workspace".to_string(),
             KeyAction::ToggleGaps => "Toggle Window Gaps".to_string(),
             KeyAction::ToggleFullScreen => "Toggle Fullscreen Mode".to_string(),
             KeyAction::ToggleFloating => "Toggle Floating Mode".to_string(),

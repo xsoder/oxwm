@@ -900,9 +900,19 @@ impl WindowManager {
                     self.view_tag(*tag_index as usize)?;
                 }
             }
+            KeyAction::ToggleView => {
+                if let Arg::Int(tag_index) = arg {
+                    self.toggleview(*tag_index as usize)?;
+                }
+            }
             KeyAction::MoveToTag => {
                 if let Arg::Int(tag_index) = arg {
                     self.move_to_tag(*tag_index as usize)?;
+                }
+            }
+            KeyAction::ToggleTag => {
+                if let Arg::Int(tag_index) = arg {
+                    self.toggletag(*tag_index as usize)?;
                 }
             }
             KeyAction::ToggleGaps => {
@@ -1041,24 +1051,111 @@ impl WindowManager {
         Ok(())
     }
 
+    fn showhide(&mut self, window: Option<Window>) -> WmResult<()> {
+        let Some(window) = window else {
+            return Ok(());
+        };
+
+        let Some(client) = self.clients.get(&window).cloned() else {
+            return Ok(());
+        };
+
+        let monitor = match self.monitors.get(client.monitor_index) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let is_visible = (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0;
+
+        if is_visible {
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(client.x_position as i32)
+                    .y(client.y_position as i32),
+            )?;
+
+            let is_floating = client.is_floating;
+            let is_fullscreen = client.is_fullscreen;
+            let has_no_layout = self.layout.name() == LayoutType::Normie.as_str();
+
+            if (has_no_layout || is_floating) && !is_fullscreen {
+                self.connection.configure_window(
+                    window,
+                    &ConfigureWindowAux::new()
+                        .x(client.x_position as i32)
+                        .y(client.y_position as i32)
+                        .width(client.width as u32)
+                        .height(client.height as u32),
+                )?;
+            }
+
+            self.showhide(client.stack_next)?;
+        } else {
+            self.showhide(client.stack_next)?;
+
+            let width = client.width_with_border() as i32;
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(width * -2)
+                    .y(client.y_position as i32),
+            )?;
+        }
+
+        Ok(())
+    }
+
     pub fn view_tag(&mut self, tag_index: usize) -> WmResult<()> {
         if tag_index >= self.config.tags.len() {
             return Ok(());
         }
 
-        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
-            monitor.tagset[monitor.selected_tags_index] = tag_mask(tag_index);
+        let monitor = match self.monitors.get_mut(self.selected_monitor) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let new_tagset = tag_mask(tag_index);
+
+        if new_tagset == monitor.tagset[monitor.selected_tags_index] {
+            return Ok(());
         }
+
+        monitor.selected_tags_index ^= 1;
+        monitor.tagset[monitor.selected_tags_index] = new_tagset;
 
         self.save_selected_tags()?;
-        self.update_window_visibility()?;
-        self.apply_layout()?;
+        self.focus(None)?;
+        self.apply_layout()?;  
         self.update_bar()?;
 
-        let visible = self.visible_windows_on_monitor(self.selected_monitor);
-        if let Some(&win) = visible.first() {
-            self.focus(Some(win))?;
+        Ok(())
+    }
+
+    pub fn toggleview(&mut self, tag_index: usize) -> WmResult<()> {
+        if tag_index >= self.config.tags.len() {
+            return Ok(());
         }
+
+        let monitor = match self.monitors.get_mut(self.selected_monitor) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let mask = tag_mask(tag_index);
+        let new_tagset = monitor.tagset[monitor.selected_tags_index] ^ mask;
+
+        if new_tagset == 0 {
+            return Ok(());
+        }
+
+        monitor.tagset[monitor.selected_tags_index] = new_tagset;
+
+        self.save_selected_tags()?;
+        self.focus(None)?;
+        self.apply_layout()?;
+        self.update_bar()?;
 
         Ok(())
     }
@@ -1093,22 +1190,69 @@ impl WindowManager {
             return Ok(());
         }
 
-        if let Some(focused) = self
+        let focused = match self
             .monitors
             .get(self.selected_monitor)
             .and_then(|m| m.selected_client)
         {
-            let mask = tag_mask(tag_index);
-            self.window_tags.insert(focused, mask);
+            Some(win) => win,
+            None => return Ok(()),
+        };
 
-            if let Err(error) = self.save_client_tag(focused, mask) {
-                eprintln!("Failed to save client tag: {:?}", error);
-            }
+        let mask = tag_mask(tag_index);
 
-            self.update_window_visibility()?;
-            self.apply_layout()?;
-            self.update_bar()?;
+        if let Some(client) = self.clients.get_mut(&focused) {
+            client.tags = mask;
         }
+
+        self.window_tags.insert(focused, mask);
+
+        if let Err(error) = self.save_client_tag(focused, mask) {
+            eprintln!("Failed to save client tag: {:?}", error);
+        }
+
+        self.focus(None)?;
+        self.apply_layout()?;
+        self.update_bar()?;
+
+        Ok(())
+    }
+
+    pub fn toggletag(&mut self, tag_index: usize) -> WmResult<()> {
+        if tag_index >= self.config.tags.len() {
+            return Ok(());
+        }
+
+        let focused = match self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.selected_client)
+        {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let mask = tag_mask(tag_index);
+        let current_tags = self.clients.get(&focused).map(|c| c.tags).unwrap_or(0);
+        let new_tags = current_tags ^ mask;
+
+        if new_tags == 0 {
+            return Ok(());
+        }
+
+        if let Some(client) = self.clients.get_mut(&focused) {
+            client.tags = new_tags;
+        }
+
+        self.window_tags.insert(focused, new_tags);
+
+        if let Err(error) = self.save_client_tag(focused, new_tags) {
+            eprintln!("Failed to save client tag: {:?}", error);
+        }
+
+        self.focus(None)?;
+        self.apply_layout()?;
+        self.update_bar()?;
 
         Ok(())
     }
@@ -2729,6 +2873,13 @@ impl WindowManager {
                 let adjusted_x = geometry.x_coordinate + monitor_x;
                 let adjusted_y = geometry.y_coordinate + monitor_y + bar_height as i32;
 
+                if let Some(client) = self.clients.get_mut(window) {
+                    client.x_position = adjusted_x as i16;
+                    client.y_position = adjusted_y as i16;
+                    client.width = adjusted_width as u16;
+                    client.height = adjusted_height as u16;
+                }
+
                 self.connection.configure_window(
                     *window,
                     &ConfigureWindowAux::new()
@@ -2747,6 +2898,11 @@ impl WindowManager {
                     border_width: border_width as u16,
                 });
             }
+        }
+
+        for monitor_index in 0..self.monitors.len() {
+            let stack_head = self.monitors[monitor_index].stack_head;
+            self.showhide(stack_head)?;
         }
 
         self.connection.flush()?;
