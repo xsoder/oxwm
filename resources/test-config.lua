@@ -75,9 +75,9 @@ oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps())
 oxwm.key.bind({ modkey, "Shift" }, "Q", oxwm.quit())
 oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart())
 
+oxwm.key.bind({ modkey }, "J", oxwm.client.focus_stack(1))
+oxwm.key.bind({ modkey }, "K", oxwm.client.focus_stack(-1))
 oxwm.key.bind({ modkey }, "H", oxwm.client.focus_direction("left"))
-oxwm.key.bind({ modkey }, "J", oxwm.client.focus_direction("down"))
-oxwm.key.bind({ modkey }, "K", oxwm.client.focus_direction("up"))
 oxwm.key.bind({ modkey }, "L", oxwm.client.focus_direction("right"))
 
 oxwm.key.bind({ modkey, "Shift" }, "H", oxwm.client.swap_direction("left"))
