@@ -594,6 +594,24 @@ impl WindowManager {
         Ok(())
     }
 
+    fn set_master_factor(&mut self, delta: f32) -> WmResult<()> {
+        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+            let new_mfact = (monitor.master_factor + delta).max(0.05).min(0.95);
+            monitor.master_factor = new_mfact;
+            self.apply_layout()?;
+        }
+        Ok(())
+    }
+
+    fn inc_num_master(&mut self, delta: i32) -> WmResult<()> {
+        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+            let new_nmaster = (monitor.num_master + delta).max(0);
+            monitor.num_master = new_nmaster;
+            self.apply_layout()?;
+        }
+        Ok(())
+    }
+
     fn exchange_client(&mut self, direction: i32) -> WmResult<()> {
         let focused = match self
             .monitors
@@ -906,6 +924,16 @@ impl WindowManager {
                     monitor.screen_width as u16,
                     monitor.screen_height as u16,
                 )?;
+            }
+            KeyAction::SetMasterFactor => {
+                if let Arg::Int(delta) = arg {
+                    self.set_master_factor(*delta as f32 / 100.0)?;
+                }
+            }
+            KeyAction::IncNumMaster => {
+                if let Arg::Int(delta) = arg {
+                    self.inc_num_master(*delta)?;
+                }
             }
             KeyAction::None => {}
         }
@@ -1732,7 +1760,7 @@ impl WindowManager {
         self.clients.insert(window, client);
         self.update_size_hints(window)?;
         self.update_window_title(window)?;
-        self.attach(window, monitor_index);
+        self.attach_aside(window, monitor_index);
         self.attach_stack(window, monitor_index);
 
         self.windows.push(window);
@@ -2668,10 +2696,17 @@ impl WindowManager {
                 0
             };
             let usable_height = monitor_height.saturating_sub(bar_height as i32);
+            let master_factor = monitor.master_factor;
+            let num_master = monitor.num_master;
 
-            let geometries = self
-                .layout
-                .arrange(&visible, monitor_width as u32, usable_height as u32, &gaps);
+            let geometries = self.layout.arrange(
+                &visible,
+                monitor_width as u32,
+                usable_height as u32,
+                &gaps,
+                master_factor,
+                num_master,
+            );
 
             for (window, geometry) in visible.iter().zip(geometries.iter()) {
                 let adjusted_width = geometry.width.saturating_sub(2 * border_width);
@@ -3041,6 +3076,49 @@ impl WindowManager {
                 client.next = monitor.clients_head;
                 monitor.clients_head = Some(window);
             }
+        }
+    }
+
+    fn attach_aside(&mut self, window: Window, monitor_index: usize) {
+        let monitor = match self.monitors.get(monitor_index) {
+            Some(m) => m,
+            None => return,
+        };
+
+        if monitor.clients_head.is_none() {
+            self.attach(window, monitor_index);
+            return;
+        }
+
+        let num_master = monitor.num_master.max(1) as usize;
+        let mut current = monitor.clients_head;
+        let mut position = 0;
+
+        while position < num_master - 1 {
+            if let Some(current_window) = current {
+                if let Some(current_client) = self.clients.get(&current_window) {
+                    current = current_client.next;
+                    position += 1;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        if let Some(insert_after) = current {
+            if let Some(after_client) = self.clients.get(&insert_after) {
+                let old_next = after_client.next;
+                if let Some(new_client) = self.clients.get_mut(&window) {
+                    new_client.next = old_next;
+                }
+                if let Some(after_client_mut) = self.clients.get_mut(&insert_after) {
+                    after_client_mut.next = Some(window);
+                }
+            }
+        } else {
+            self.attach(window, monitor_index);
         }
     }
 

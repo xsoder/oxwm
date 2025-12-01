@@ -30,6 +30,8 @@ pub enum KeyAction {
     FocusMonitor,
     ExchangeClient,
     ShowKeybindOverlay,
+    SetMasterFactor,
+    IncNumMaster,
     None,
 }
 
