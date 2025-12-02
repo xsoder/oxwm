@@ -106,7 +106,7 @@ impl TabBar {
         &mut self,
         connection: &RustConnection,
         font: &Font,
-        windows: &[Window],
+        windows: &[(Window, String)],
         focused_window: Option<Window>,
     ) -> Result<(), X11Error> {
         connection.change_gc(
@@ -142,7 +142,7 @@ impl TabBar {
         let tab_width = self.width / windows.len() as u16;
         let mut x_position: i16 = 0;
 
-        for (index, &window) in windows.iter().enumerate() {
+        for (index, &(window, ref title)) in windows.iter().enumerate() {
             let is_focused = Some(window) == focused_window;
             let scheme = if is_focused {
                 &self.scheme_selected
@@ -150,11 +150,10 @@ impl TabBar {
                 &self.scheme_normal
             };
 
-            let title = self.get_window_title(connection, window);
             let display_title = if title.is_empty() {
                 format!("Window {}", index + 1)
             } else {
-                title
+                title.clone()
             };
 
             let text_width = font.text_width(&display_title);
@@ -213,24 +212,9 @@ impl TabBar {
         }
     }
 
-    fn get_window_title(&self, connection: &RustConnection, window: Window) -> String {
-        connection
-            .get_property(false, window, AtomEnum::WM_NAME, AtomEnum::STRING, 0, 1024)
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-            .and_then(|reply| {
-                if reply.value.is_empty() {
-                    None
-                } else {
-                    std::str::from_utf8(&reply.value).ok().map(|s| s.to_string())
-                }
-            })
-            .unwrap_or_default()
-    }
-
     pub fn get_clicked_window(
         &self,
-        windows: &[Window],
+        windows: &[(Window, String)],
         click_x: i16,
     ) -> Option<Window> {
         if windows.is_empty() {
@@ -240,7 +224,7 @@ impl TabBar {
         let tab_width = self.width / windows.len() as u16;
         let tab_index = (click_x as u16 / tab_width) as usize;
 
-        windows.get(tab_index).copied()
+        windows.get(tab_index).map(|&(win, _)| win)
     }
 
     pub fn reposition(

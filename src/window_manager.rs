@@ -42,6 +42,7 @@ struct AtomCache {
     net_wm_window_type_dialog: Atom,
     wm_name: Atom,
     net_wm_name: Atom,
+    utf8_string: Atom,
     wm_normal_hints: Atom,
     wm_hints: Atom,
     wm_transient_for: Atom,
@@ -94,6 +95,7 @@ impl AtomCache {
 
         let wm_name = AtomEnum::WM_NAME.into();
         let net_wm_name = connection.intern_atom(false, b"_NET_WM_NAME")?.reply()?.atom;
+        let utf8_string = connection.intern_atom(false, b"UTF8_STRING")?.reply()?.atom;
         let wm_normal_hints = AtomEnum::WM_NORMAL_HINTS.into();
         let wm_hints = AtomEnum::WM_HINTS.into();
         let wm_transient_for = AtomEnum::WM_TRANSIENT_FOR.into();
@@ -111,6 +113,7 @@ impl AtomCache {
             net_wm_window_type_dialog,
             wm_name,
             net_wm_name,
+            utf8_string,
             wm_normal_hints,
             wm_hints,
             wm_transient_for,
@@ -690,23 +693,23 @@ impl WindowManager {
     fn update_tab_bars(&mut self) -> WmResult<()> {
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
             if let Some(tab_bar) = self.tab_bars.get_mut(monitor_index) {
-                let visible_windows: Vec<Window> = self
+                let visible_windows: Vec<(Window, String)> = self
                     .windows
                     .iter()
-                    .filter(|&&window| {
+                    .filter_map(|&window| {
                         if let Some(client) = self.clients.get(&window) {
                             if client.monitor_index != monitor_index
                                 || self.floating_windows.contains(&window)
                                 || self.fullscreen_windows.contains(&window)
                             {
-                                return false;
+                                return None;
                             }
-                            (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0
-                        } else {
-                            false
+                            if (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0 {
+                                return Some((window, client.name.clone()));
+                            }
                         }
+                        None
                     })
-                    .copied()
                     .collect();
 
                 let focused_window = monitor.selected_client;
@@ -2274,6 +2277,7 @@ impl WindowManager {
         };
 
         self.focus(Some(next_window))?;
+        self.update_tab_bars()?;
 
         Ok(())
     }
@@ -2768,6 +2772,7 @@ impl WindowManager {
                         }
                     }
                     self.focus(Some(event.event))?;
+                    self.update_tab_bars()?;
                 }
             }
             Event::MotionNotify(event) => {
@@ -2785,6 +2790,7 @@ impl WindowManager {
                         let visible = self.visible_windows_on_monitor(monitor_index);
                         if let Some(&win) = visible.first() {
                             self.focus(Some(win))?;
+                            self.update_tab_bars()?;
                         }
                     }
                 }
@@ -2885,24 +2891,24 @@ impl WindowManager {
                             self.selected_monitor = monitor_index;
                         }
 
-                        let visible_windows: Vec<Window> = self
+                        let visible_windows: Vec<(Window, String)> = self
                             .windows
                             .iter()
-                            .filter(|&&window| {
+                            .filter_map(|&window| {
                                 if let Some(client) = self.clients.get(&window) {
                                     if client.monitor_index != monitor_index
                                         || self.floating_windows.contains(&window)
                                         || self.fullscreen_windows.contains(&window)
                                     {
-                                        return false;
+                                        return None;
                                     }
                                     let monitor_tags = self.monitors.get(monitor_index).map(|m| m.tagset[m.selected_tags_index]).unwrap_or(0);
-                                    (client.tags & monitor_tags) != 0
-                                } else {
-                                    false
+                                    if (client.tags & monitor_tags) != 0 {
+                                        return Some((window, client.name.clone()));
+                                    }
                                 }
+                                None
                             })
-                            .copied()
                             .collect();
 
                         if let Some(clicked_window) = tab_bar.get_clicked_window(&visible_windows, event.event_x) {
@@ -2915,6 +2921,7 @@ impl WindowManager {
                         }
                     } else if event.child != x11rb::NONE {
                         self.focus(Some(event.child))?;
+                        self.update_tab_bars()?;
 
                         if event.detail == ButtonIndex::M1.into() {
                             self.drag_window(event.child)?;
@@ -3474,19 +3481,42 @@ impl WindowManager {
     }
 
     fn update_window_title(&mut self, window: Window) -> WmResult<()> {
-        let name = self.connection
+        let net_name = self.connection
             .get_property(
                 false,
                 window,
-                x11rb::protocol::xproto::AtomEnum::WM_NAME,
+                self.atoms.net_wm_name,
+                self.atoms.utf8_string,
+                0,
+                256,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok());
+
+        if let Some(name) = net_name {
+            if !name.value.is_empty() {
+                if let Ok(title) = String::from_utf8(name.value.clone()) {
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.name = title;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        let wm_name = self.connection
+            .get_property(
+                false,
+                window,
+                self.atoms.wm_name,
                 x11rb::protocol::xproto::AtomEnum::STRING,
                 0,
                 256,
             )?
             .reply()?;
 
-        if !name.value.is_empty() {
-            if let Ok(title) = String::from_utf8(name.value.clone()) {
+        if !wm_name.value.is_empty() {
+            if let Ok(title) = String::from_utf8(wm_name.value.clone()) {
                 if let Some(client) = self.clients.get_mut(&window) {
                     client.name = title;
                 }
