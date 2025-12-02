@@ -42,6 +42,14 @@ function oxwm.set_tags(tags) end
 ---@param symbol string Symbol to display (e.g., "[T]", "[F]", "[=]")
 function oxwm.set_layout_symbol(name, symbol) end
 
+---Window rule module
+---@class oxwm.rule
+oxwm.rule = {}
+
+---Add a window rule
+---@param rule {class: string?, instance: string?, title: string?, role: string?, floating: boolean?, tag: integer?, fullscreen: boolean?} Rule configuration
+function oxwm.rule.add(rule) end
+
 ---Quit the window manager
 ---@return table Action table for keybinding
 function oxwm.quit() end
@@ -62,10 +70,15 @@ function oxwm.toggle_gaps() end
 ---@return table Action table for keybinding
 function oxwm.show_keybinds() end
 
----Focus monitor by index
----@param index integer Monitor index (-1 for previous, 1 for next)
+---Set master area factor (adjust master window width in tiling layout)
+---@param delta integer Delta to adjust by (negative to decrease, positive to increase)
 ---@return table Action table for keybinding
-function oxwm.focus_monitor(index) end
+function oxwm.set_master_factor(delta) end
+
+---Increment/decrement number of master windows
+---@param delta integer Delta to adjust by (negative to decrease, positive to increase)
+---@return table Action table for keybinding
+function oxwm.inc_num_master(delta) end
 
 ---Keybinding module
 ---@class oxwm.key
@@ -106,6 +119,10 @@ function oxwm.gaps.set_inner(horizontal, vertical) end
 ---@param vertical integer Vertical outer gap in pixels
 function oxwm.gaps.set_outer(horizontal, vertical) end
 
+---Set smart gaps (disable outer gaps when only one window visible)
+---@param enabled boolean Enable or disable smart gaps
+function oxwm.gaps.set_smart(enabled) end
+
 ---Border configuration module
 ---@class oxwm.border
 oxwm.border = {}
@@ -138,24 +155,24 @@ function oxwm.client.toggle_fullscreen() end
 ---@return table Action table for keybinding
 function oxwm.client.toggle_floating() end
 
----Focus window in direction
----@param direction "up"|"down"|"left"|"right" Direction to focus
----@return table Action table for keybinding
-function oxwm.client.focus_direction(direction) end
-
----Swap window in direction
----@param direction "up"|"down"|"left"|"right" Direction to swap
----@return table Action table for keybinding
-function oxwm.client.swap_direction(direction) end
-
 ---Focus stack (next/previous window)
 ---@param dir integer Direction (1 for next, -1 for previous)
 ---@return table Action table for keybinding
 function oxwm.client.focus_stack(dir) end
 
----Exchange client positions
+---Monitor management module
+---@class oxwm.monitor
+oxwm.monitor = {}
+
+---Focus monitor
+---@param dir integer Direction (-1 for previous, 1 for next)
 ---@return table Action table for keybinding
-function oxwm.client.exchange() end
+function oxwm.monitor.focus(dir) end
+
+---Send focused window to monitor
+---@param dir integer Direction (-1 for previous, 1 for next)
+---@return table Action table for keybinding
+function oxwm.monitor.tag(dir) end
 
 ---Layout management module
 ---@class oxwm.layout
@@ -183,6 +200,16 @@ function oxwm.tag.view(index) end
 ---@param index integer Tag index (0-based)
 ---@return table Action table for keybinding
 function oxwm.tag.move_to(index) end
+
+---Toggle viewing a tag (allows viewing multiple tags at once)
+---@param index integer Tag index (0-based)
+---@return table Action table for keybinding
+function oxwm.tag.toggleview(index) end
+
+---Toggle tag on focused window (allows window to appear on multiple tags)
+---@param index integer Tag index (0-based)
+---@return table Action table for keybinding
+function oxwm.tag.toggletag(index) end
 
 ---Status bar configuration module
 ---@class oxwm.bar

@@ -317,9 +317,14 @@ impl WindowManager {
     }
 
     pub fn show_migration_overlay(&mut self) {
-        let message = "Your config.lua uses legacy syntax or has errors.\n\n\
-                       You are now running with default configuration.\n\n\
-                       Press Mod+Shift+/ to see default keybinds\n\
+        let message = "We are on version 0.8.0 now.\n\n\
+                       Your config file has been deprecated once again.\n\
+                       We apologize for this, but we have provided you\n\
+                       with a new default config.\n\n\
+                       Please reach out to Tony, or check out the\n\
+                       documentation for help with migration.\n\n\
+                       We appreciate you testing oxwm!\n\n\
+                       Press Mod+Shift+/ to see keybinds\n\
                        Press Mod+Shift+R to reload after fixing your config";
 
         let screen_width = self.screen.width_in_pixels;
@@ -2380,6 +2385,10 @@ impl WindowManager {
         let snap = 32;
         let is_normie = self.layout.name() == "normie";
 
+        if !was_floating && !is_normie {
+            self.toggle_floating()?;
+        }
+
         self.connection.grab_pointer(
             false,
             self.root,
@@ -2420,11 +2429,6 @@ impl WindowManager {
                         new_y = monitor.window_area_y;
                     } else if ((monitor.window_area_y + monitor.window_area_height) - (new_y + height as i32)).abs() < snap {
                         new_y = monitor.window_area_y + monitor.window_area_height - height as i32;
-                    }
-
-                    if !was_floating && !is_normie &&
-                       ((new_x - orig_x as i32).abs() > snap || (new_y - orig_y as i32).abs() > snap) {
-                        self.toggle_floating()?;
                     }
 
                     let should_resize = is_normie || self.clients

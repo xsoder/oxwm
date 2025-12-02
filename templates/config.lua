@@ -124,6 +124,26 @@ oxwm.gaps.set_inner(5, 5)   -- Inner gaps (horizontal, vertical) in pixels
 oxwm.gaps.set_outer(5, 5)   -- Outer gaps (horizontal, vertical) in pixels
 
 -------------------------------------------------------------------------------
+-- Window Rules
+-------------------------------------------------------------------------------
+-- Rules allow you to automatically configure windows based on their properties
+-- You can match windows by class, instance, title, or role
+-- Available properties: floating, tag, fullscreen, etc.
+--
+-- Common use cases:
+-- - Force floating for certain applications (dialogs, utilities)
+-- - Send specific applications to specific workspaces
+-- - Configure window behavior based on title or class
+
+-- Examples (uncomment to use):
+-- oxwm.rule.add({ class = "firefox", title = "Library", floating = true })  -- Make Firefox Library window floating
+-- oxwm.rule.add({ instance = "gimp", tag = 5 })                             -- Send GIMP to workspace 6 (0-indexed)
+-- oxwm.rule.add({ instance = "mpv", floating = true })                      -- Make mpv always float
+
+-- To find window properties, use xprop and click on the window
+-- WM_CLASS(STRING) shows both instance and class (instance, class)
+
+-------------------------------------------------------------------------------
 -- Status Bar Configuration
 -------------------------------------------------------------------------------
 -- Font configuration
@@ -167,6 +187,12 @@ oxwm.key.bind({ modkey }, "F", oxwm.layout.set("normie")) -- Set floating layout
 oxwm.key.bind({ modkey }, "C", oxwm.layout.set("tiling")) -- Set tiling layout
 oxwm.key.bind({ modkey }, "N", oxwm.layout.cycle())       -- Cycle through layouts
 
+-- Master area controls (tiling layout)
+oxwm.key.bind({ modkey }, "H", oxwm.set_master_factor(-5))   -- Decrease master area width
+oxwm.key.bind({ modkey }, "L", oxwm.set_master_factor(5))    -- Increase master area width
+oxwm.key.bind({ modkey }, "I", oxwm.inc_num_master(1))       -- Increment number of master windows
+oxwm.key.bind({ modkey }, "P", oxwm.inc_num_master(-1))      -- Decrement number of master windows
+
 -- Gaps toggle
 oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps()) -- Toggle gaps on/off
 
@@ -174,15 +200,15 @@ oxwm.key.bind({ modkey }, "A", oxwm.toggle_gaps()) -- Toggle gaps on/off
 oxwm.key.bind({ modkey, "Shift" }, "Q", oxwm.quit())    -- Quit OXWM
 oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart()) -- Restart OXWM (reloads config)
 
--- Focus movement (vim keys)
-oxwm.key.bind({ modkey }, "H", oxwm.client.focus_direction("left"))  -- Focus window to the left
-oxwm.key.bind({ modkey }, "J", oxwm.client.focus_direction("down"))  -- Focus window below
-oxwm.key.bind({ modkey }, "K", oxwm.client.focus_direction("up"))    -- Focus window above
-oxwm.key.bind({ modkey }, "L", oxwm.client.focus_direction("right")) -- Focus window to the right
+-- Focus movement (stack cycling)
+oxwm.key.bind({ modkey }, "J", oxwm.client.focus_stack(1))  -- Focus next window in stack
+oxwm.key.bind({ modkey }, "K", oxwm.client.focus_stack(-1)) -- Focus previous window in stack
 
 -- Multi-monitor support
-oxwm.key.bind({ modkey }, "Comma", oxwm.focus_monitor(-1)) -- Focus previous monitor
-oxwm.key.bind({ modkey }, "Period", oxwm.focus_monitor(1)) -- Focus next monitor
+oxwm.key.bind({ modkey }, "Comma", oxwm.monitor.focus(-1))       -- Focus previous monitor
+oxwm.key.bind({ modkey }, "Period", oxwm.monitor.focus(1))       -- Focus next monitor
+oxwm.key.bind({ modkey, "Shift" }, "Comma", oxwm.monitor.tag(-1))  -- Send window to previous monitor
+oxwm.key.bind({ modkey, "Shift" }, "Period", oxwm.monitor.tag(1))  -- Send window to next monitor
 
 -- Workspace (tag) navigation
 -- Switch to workspace N (tags are 0-indexed, so tag "1" is index 0)
@@ -207,12 +233,6 @@ oxwm.key.bind({ modkey, "Shift" }, "7", oxwm.tag.move_to(6))
 oxwm.key.bind({ modkey, "Shift" }, "8", oxwm.tag.move_to(7))
 oxwm.key.bind({ modkey, "Shift" }, "9", oxwm.tag.move_to(8))
 
--- Swap windows in direction (vim keys with Shift)
-oxwm.key.bind({ modkey, "Shift" }, "H", oxwm.client.swap_direction("left"))  -- Swap with window to the left
-oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.swap_direction("down"))  -- Swap with window below
-oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.swap_direction("up"))    -- Swap with window above
-oxwm.key.bind({ modkey, "Shift" }, "L", oxwm.client.swap_direction("right")) -- Swap with window to the right
-
 -------------------------------------------------------------------------------
 -- Advanced: Keychords
 -------------------------------------------------------------------------------
@@ -223,70 +243,6 @@ oxwm.key.chord({
     { { modkey }, "Space" },
     { {},         "T" }
 }, oxwm.spawn_terminal())
-
--------------------------------------------------------------------------------
--- Status Bar Blocks
--------------------------------------------------------------------------------
--- Add informational blocks to the status bar using block constructors
--- Each block is created with oxwm.bar.block.<type>() and configured with a table:
---   format: Display format with {} placeholders
---   interval: Seconds between updates
---   color: Text color (from color palette)
---   underline: Whether to underline the block
---
--- Available block types:
---   ram(config)         - Memory usage
---   datetime(config)    - Date and time (requires date_format field)
---   shell(config)       - Shell command output (requires command field)
---   static(config)      - Static text (requires text field)
---   battery(config)     - Battery status (requires charging, discharging, full fields)
-
-oxwm.bar.set_blocks({
-    oxwm.bar.block.ram({
-        format = "Ram: {used}/{total} GB",
-        interval = 5,
-        color = colors.light_blue,
-        underline = true,
-    }),
-    oxwm.bar.block.static({
-        format = "{}",
-        text = " │  ",
-        interval = 999999999,
-        color = colors.lavender,
-        underline = false,
-    }),
-    oxwm.bar.block.shell({
-        format = "Kernel: {}",
-        command = "uname -r",
-        interval = 999999999,
-        color = colors.red,
-        underline = true,
-    }),
-    oxwm.bar.block.static({
-        format = "{}",
-        text = " │  ",
-        interval = 999999999,
-        color = colors.lavender,
-        underline = false,
-    }),
-    oxwm.bar.block.datetime({
-        format = "{}",
-        date_format = "%a, %b %d - %-I:%M %P",
-        interval = 1,
-        color = colors.cyan,
-        underline = true,
-    }),
-    -- Uncomment to add battery status (useful for laptops)
-    -- oxwm.bar.block.battery({
-    --     format = "Bat: {}%",
-    --     charging = "⚡ Bat: {}%",
-    --     discharging = "🔋 Bat: {}%",
-    --     full = "✓ Bat: {}%",
-    --     interval = 30,
-    --     color = colors.green,
-    --     underline = true,
-    -- }),
-})
 
 -------------------------------------------------------------------------------
 -- Autostart
