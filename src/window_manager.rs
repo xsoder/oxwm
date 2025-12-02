@@ -17,9 +17,6 @@ use x11rb::protocol::Event;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-const DEFAULT_FLOAT_WIDTH_RATIO: f32 = 0.5;
-const DEFAULT_FLOAT_HEIGHT_RATIO: f32 = 0.5;
-
 #[derive(Debug, Clone, Copy)]
 pub struct CachedGeometry {
     pub x_position: i16,
@@ -829,7 +826,7 @@ impl WindowManager {
             }
             KeyAction::TagMonitor => {
                 if let Arg::Int(direction) = arg {
-                    self.tag_monitor(*direction)?;
+                    self.send_window_to_adjacent_monitor(*direction)?;
                 }
             }
             KeyAction::ShowKeybindOverlay => {
@@ -912,7 +909,7 @@ impl WindowManager {
             .position(|mon| mon.contains_point(x, y))
     }
 
-    fn rect_to_monitor(&self, x: i32, y: i32, w: i32, h: i32) -> usize {
+    fn get_monitor_for_rect(&self, x: i32, y: i32, w: i32, h: i32) -> usize {
         let mut best_monitor = self.selected_monitor;
         let mut max_area = 0;
 
@@ -930,7 +927,7 @@ impl WindowManager {
         best_monitor
     }
 
-    fn sendmon(&mut self, window: Window, target_monitor_index: usize) -> WmResult<()> {
+    fn move_window_to_monitor(&mut self, window: Window, target_monitor_index: usize) -> WmResult<()> {
         let current_monitor_index = self.clients
             .get(&window)
             .map(|c| c.monitor_index);
@@ -961,7 +958,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn dir_to_monitor(&self, direction: i32) -> Option<usize> {
+    fn get_adjacent_monitor(&self, direction: i32) -> Option<usize> {
         if self.monitors.len() <= 1 {
             return None;
         }
@@ -981,22 +978,16 @@ impl WindowManager {
         }
     }
 
-    // Dwm's g-loaded approach to handling the spam alternating crash.
-    fn update_window_visibility(&self) -> WmResult<()> {
-        for &window in &self.windows {
-            if !self.is_window_visible(window) {
-                if let Ok(geom) = self.connection.get_geometry(window)?.reply() {
-                    self.connection.configure_window(
-                        window,
-                        &ConfigureWindowAux::new()
-                            .x(-(geom.width as i32 * 2))
-                            .y(geom.y as i32),
-                    )?;
-                }
-            }
-        }
-        self.connection.flush()?;
-        Ok(())
+    fn is_visible(&self, window: Window) -> bool {
+        let Some(client) = self.clients.get(&window) else {
+            return false;
+        };
+
+        let Some(monitor) = self.monitors.get(client.monitor_index) else {
+            return false;
+        };
+
+        (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0
     }
 
     fn showhide(&mut self, window: Option<Window>) -> WmResult<()> {
@@ -1442,7 +1433,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn get_state(&self, window: Window) -> WmResult<i32> {
+    fn get_window_state(&self, window: Window) -> WmResult<i32> {
         let reply = self.connection.get_property(
             false,
             window,
@@ -1466,7 +1457,7 @@ impl WindowManager {
         }
     }
 
-    fn get_atom_prop(&self, window: Window, property: Atom) -> WmResult<Option<Atom>> {
+    fn get_window_atom_property(&self, window: Window, property: Atom) -> WmResult<Option<Atom>> {
         let reply = self.connection.get_property(
             false,
             window,
@@ -1490,7 +1481,7 @@ impl WindowManager {
         }
     }
 
-    fn get_text_prop(&self, window: Window, atom: Atom) -> WmResult<Option<String>> {
+    fn get_window_text_property(&self, window: Window, atom: Atom) -> WmResult<Option<String>> {
         let reply = self.connection.get_property(
             false,
             window,
@@ -1744,10 +1735,6 @@ impl WindowManager {
                     None
                 }
             })
-    }
-
-    fn is_transient_window(&self, window: Window) -> bool {
-        self.get_transient_parent(window).is_some()
     }
 
     fn is_dialog_window(&self, window: Window) -> bool {
@@ -2115,7 +2102,21 @@ impl WindowManager {
             }
         }
 
-        if let Some(win) = window {
+        let mut win = window;
+        if win.is_none() || !self.is_visible(win.unwrap()) {
+            let mut current = self.monitors.get(self.selected_monitor)
+                .and_then(|m| m.stack_head);
+
+            while let Some(w) = current {
+                if self.is_visible(w) {
+                    win = Some(w);
+                    break;
+                }
+                current = self.clients.get(&w).and_then(|c| c.stack_next);
+            }
+        }
+
+        if let Some(win) = win {
             if !self.windows.contains(&win) {
                 return Ok(());
             }
@@ -2277,7 +2278,7 @@ impl WindowManager {
             return Ok(());
         }
 
-        let target_monitor = match self.dir_to_monitor(direction) {
+        let target_monitor = match self.get_adjacent_monitor(direction) {
             Some(idx) if idx != self.selected_monitor => idx,
             _ => return Ok(()),
         };
@@ -2296,7 +2297,7 @@ impl WindowManager {
         Ok(())
     }
 
-    pub fn tag_monitor(&mut self, direction: i32) -> WmResult<()> {
+    pub fn send_window_to_adjacent_monitor(&mut self, direction: i32) -> WmResult<()> {
         if self.monitors.len() <= 1 {
             return Ok(());
         }
@@ -2310,12 +2311,12 @@ impl WindowManager {
             None => return Ok(()),
         };
 
-        let target_monitor = match self.dir_to_monitor(direction) {
+        let target_monitor = match self.get_adjacent_monitor(direction) {
             Some(idx) => idx,
             None => return Ok(()),
         };
 
-        self.send_to_monitor(window, target_monitor)?;
+        self.move_window_to_monitor(window, target_monitor)?;
 
         Ok(())
     }
@@ -2353,7 +2354,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn move_mouse(&mut self, window: Window) -> WmResult<()> {
+    fn drag_window(&mut self, window: Window) -> WmResult<()> {
         let is_fullscreen = self.clients
             .get(&window)
             .map(|c| c.is_fullscreen)
@@ -2458,9 +2459,9 @@ impl WindowManager {
         });
 
         if let Some((x, y, w, h)) = final_client {
-            let new_monitor = self.rect_to_monitor(x as i32, y as i32, w as i32, h as i32);
+            let new_monitor = self.get_monitor_for_rect(x as i32, y as i32, w as i32, h as i32);
             if new_monitor != monitor_idx {
-                self.sendmon(window, new_monitor)?;
+                self.move_window_to_monitor(window, new_monitor)?;
                 self.selected_monitor = new_monitor;
                 self.focus(None)?;
             }
@@ -2469,7 +2470,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn resize_mouse(&mut self, window: Window) -> WmResult<()> {
+    fn resize_window_with_mouse(&mut self, window: Window) -> WmResult<()> {
         let is_fullscreen = self.clients
             .get(&window)
             .map(|c| c.is_fullscreen)
@@ -2604,9 +2605,9 @@ impl WindowManager {
         });
 
         if let Some((x, y, w, h)) = final_client_pos {
-            let new_monitor = self.rect_to_monitor(x as i32, y as i32, w as i32, h as i32);
+            let new_monitor = self.get_monitor_for_rect(x as i32, y as i32, w as i32, h as i32);
             if new_monitor != monitor_idx {
-                self.sendmon(window, new_monitor)?;
+                self.move_window_to_monitor(window, new_monitor)?;
                 self.selected_monitor = new_monitor;
                 self.focus(None)?;
             }
@@ -2736,7 +2737,7 @@ impl WindowManager {
                         client.hints_valid = false;
                     }
                 } else if event.atom == AtomEnum::WM_HINTS.into() {
-                    self.update_wm_hints(event.window)?;
+                    self.update_window_hints(event.window)?;
                     self.update_bar()?;
                 }
 
@@ -2912,9 +2913,9 @@ impl WindowManager {
                         self.focus(Some(event.child))?;
 
                         if event.detail == ButtonIndex::M1.into() {
-                            self.move_mouse(event.child)?;
+                            self.drag_window(event.child)?;
                         } else if event.detail == ButtonIndex::M3.into() {
-                            self.resize_mouse(event.child)?;
+                            self.resize_window_with_mouse(event.child)?;
                         }
                     }
                 }
@@ -3024,10 +3025,10 @@ impl WindowManager {
                         });
 
                         if is_floating {
-                            let new_monitor = self.rect_to_monitor(final_x as i32, final_y as i32, final_width as i32, final_height as i32);
+                            let new_monitor = self.get_monitor_for_rect(final_x as i32, final_y as i32, final_width as i32, final_height as i32);
 
                             if new_monitor != monitor_index {
-                                self.send_to_monitor(event.window, new_monitor)?;
+                                self.move_window_to_monitor(event.window, new_monitor)?;
                             }
                         }
                     } else {
@@ -3491,7 +3492,7 @@ impl WindowManager {
         Ok(())
     }
 
-    fn update_wm_hints(&mut self, window: Window) -> WmResult<()> {
+    fn update_window_hints(&mut self, window: Window) -> WmResult<()> {
         let hints_reply = self.connection.get_property(
             false,
             window,
@@ -3557,13 +3558,13 @@ impl WindowManager {
     }
 
     fn update_window_type(&mut self, window: Window) -> WmResult<()> {
-        if let Ok(Some(state_atom)) = self.get_atom_prop(window, self.atoms.net_wm_state) {
+        if let Ok(Some(state_atom)) = self.get_window_atom_property(window, self.atoms.net_wm_state) {
             if state_atom == self.atoms.net_wm_state_fullscreen {
                 self.set_window_fullscreen(window, true)?;
             }
         }
 
-        if let Ok(Some(type_atom)) = self.get_atom_prop(window, self.atoms.net_wm_window_type) {
+        if let Ok(Some(type_atom)) = self.get_window_atom_property(window, self.atoms.net_wm_window_type) {
             if type_atom == self.atoms.net_wm_window_type_dialog {
                 if let Some(client) = self.clients.get_mut(&window) {
                     client.is_floating = true;
@@ -3632,23 +3633,6 @@ impl WindowManager {
             }
         }
         None
-    }
-
-    fn count_tiled(&self, monitor: &Monitor) -> usize {
-        let mut count = 0;
-        let mut current = monitor.clients_head;
-        while let Some(window) = current {
-            if let Some(client) = self.clients.get(&window) {
-                let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
-                if visible_tags != 0 && !client.is_floating {
-                    count += 1;
-                }
-                current = client.next;
-            } else {
-                break;
-            }
-        }
-        count
     }
 
     fn attach(&mut self, window: Window, monitor_index: usize) {
@@ -3789,39 +3773,6 @@ impl WindowManager {
                 }
             }
         }
-    }
-
-    fn send_to_monitor(&mut self, window: Window, target_monitor: usize) -> WmResult<()> {
-        if target_monitor >= self.monitors.len() {
-            return Ok(());
-        }
-
-        let current_monitor = self.clients.get(&window).map(|c| c.monitor_index);
-        if current_monitor == Some(target_monitor) {
-            return Ok(());
-        }
-
-        self.unfocus(window)?;
-
-        self.detach(window);
-        self.detach_stack(window);
-
-        if let Some(client) = self.clients.get_mut(&window) {
-            client.monitor_index = target_monitor;
-            let new_tags = self.monitors
-                .get(target_monitor)
-                .map(|m| m.tagset[m.selected_tags_index])
-                .unwrap_or(1);
-            client.tags = new_tags;
-        }
-
-        self.attach_aside(window, target_monitor);
-        self.attach_stack(window, target_monitor);
-
-        self.focus(None)?;
-        self.apply_layout()?;
-
-        Ok(())
     }
 
     fn remove_window(&mut self, window: Window) -> WmResult<()> {

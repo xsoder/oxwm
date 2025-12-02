@@ -819,18 +819,6 @@ fn create_action_table(lua: &Lua, action_name: &str, arg: Value) -> mlua::Result
     Ok(table)
 }
 
-fn direction_string_to_int(dir: &str) -> mlua::Result<i64> {
-    match dir {
-        "up" => Ok(0),
-        "down" => Ok(1),
-        "left" => Ok(2),
-        "right" => Ok(3),
-        _ => Err(mlua::Error::RuntimeError(
-            format!("invalid direction '{}'. must be one of: up, down, left, right", dir)
-        )),
-    }
-}
-
 fn parse_color_value(value: Value) -> mlua::Result<u32> {
     match value {
         Value::Integer(i) => Ok(i as u32),
