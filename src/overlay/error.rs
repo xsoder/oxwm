@@ -48,6 +48,8 @@ impl ErrorOverlay {
         connection: &RustConnection,
         font: &Font,
         error_text: &str,
+        monitor_x: i16,
+        monitor_y: i16,
         screen_width: u16,
         screen_height: u16,
     ) -> Result<(), X11Error> {
@@ -67,8 +69,8 @@ impl ErrorOverlay {
         let line_height = font.height() + LINE_SPACING as u16;
         let height = (self.lines.len() as u16 * line_height) + (PADDING as u16 * 2);
 
-        let x = ((screen_width - width) / 2) as i16;
-        let y = ((screen_height - height) / 2) as i16;
+        let x = monitor_x + ((screen_width - width) / 2) as i16;
+        let y = monitor_y + ((screen_height - height) / 2) as i16;
 
         self.base.configure(connection, x, y, width, height)?;
         self.base.show(connection)?;

@@ -329,13 +329,18 @@ impl WindowManager {
                        Press Mod+Shift+/ to see keybinds\n\
                        Press Mod+Shift+R to reload after fixing your config";
 
-        let screen_width = self.screen.width_in_pixels;
-        let screen_height = self.screen.height_in_pixels;
+        let monitor = &self.monitors[self.selected_monitor];
+        let monitor_x = monitor.screen_x as i16;
+        let monitor_y = monitor.screen_y as i16;
+        let screen_width = monitor.screen_width as u16;
+        let screen_height = monitor.screen_height as u16;
 
         if let Err(e) = self.overlay.show_error(
             &self.connection,
             &self.font,
             message,
+            monitor_x,
+            monitor_y,
             screen_width,
             screen_height,
         ) {
@@ -2961,12 +2966,17 @@ impl WindowManager {
                                 Err(err) => {
                                     eprintln!("Config reload error: {}", err);
                                     self.error_message = Some(err.clone());
-                                    let screen_width = self.screen.width_in_pixels;
-                                    let screen_height = self.screen.height_in_pixels;
+                                    let monitor = &self.monitors[self.selected_monitor];
+                                    let monitor_x = monitor.screen_x as i16;
+                                    let monitor_y = monitor.screen_y as i16;
+                                    let screen_width = monitor.screen_width as u16;
+                                    let screen_height = monitor.screen_height as u16;
                                     match self.overlay.show_error(
                                         &self.connection,
                                         &self.font,
                                         &err,
+                                        monitor_x,
+                                        monitor_y,
                                         screen_width,
                                         screen_height,
                                     ) {
