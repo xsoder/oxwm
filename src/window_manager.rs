@@ -322,8 +322,7 @@ impl WindowManager {
     pub fn show_migration_overlay(&mut self) {
         let message = "We are on version 0.8.0 now.\n\n\
                        Your config file has been deprecated once again.\n\
-                       We apologize for this, but we have provided you\n\
-                       with a new default config.\n\n\
+                       Backup your current config, and run oxwm --init to generate a new one with correct values.\n\n\
                        Please reach out to Tony, or check out the\n\
                        documentation for help with migration.\n\n\
                        We appreciate you testing oxwm!\n\n\
@@ -788,6 +787,11 @@ impl WindowManager {
             KeyAction::FocusStack => {
                 if let Arg::Int(direction) = arg {
                     self.focusstack(*direction)?;
+                }
+            }
+            KeyAction::MoveStack => {
+                if let Arg::Int(direction) = arg {
+                    self.move_stack(*direction)?;
                 }
             }
             KeyAction::Quit | KeyAction::Restart => {
@@ -2282,6 +2286,139 @@ impl WindowManager {
         Ok(())
     }
 
+    pub fn move_stack(&mut self, direction: i32) -> WmResult<()> {
+        let monitor_index = self.selected_monitor;
+        let monitor = match self.monitors.get(monitor_index) {
+            Some(m) => m.clone(),
+            None => return Ok(()),
+        };
+
+        let selected = match monitor.selected_client {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let selected_client = match self.clients.get(&selected) {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let target = if direction > 0 {
+            let next = self.next_tiled(selected_client.next, &monitor);
+            if next.is_some() {
+                next
+            } else {
+                self.next_tiled(monitor.clients_head, &monitor)
+            }
+        } else {
+            let mut previous = None;
+            let mut current = monitor.clients_head;
+            while let Some(window) = current {
+                if window == selected {
+                    break;
+                }
+                if let Some(client) = self.clients.get(&window) {
+                    let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
+                    if visible_tags != 0 && !client.is_floating {
+                        previous = Some(window);
+                    }
+                    current = client.next;
+                } else {
+                    break;
+                }
+            }
+            if previous.is_none() {
+                let mut last = None;
+                let mut current = monitor.clients_head;
+                while let Some(window) = current {
+                    if let Some(client) = self.clients.get(&window) {
+                        let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
+                        if visible_tags != 0 && !client.is_floating {
+                            last = Some(window);
+                        }
+                        current = client.next;
+                    } else {
+                        break;
+                    }
+                }
+                last
+            } else {
+                previous
+            }
+        };
+
+        let target = match target {
+            Some(t) if t != selected => t,
+            _ => return Ok(()),
+        };
+
+        let mut prev_selected = None;
+        let mut prev_target = None;
+        let mut current = monitor.clients_head;
+
+        while let Some(window) = current {
+            if let Some(client) = self.clients.get(&window) {
+                if client.next == Some(selected) {
+                    prev_selected = Some(window);
+                }
+                if client.next == Some(target) {
+                    prev_target = Some(window);
+                }
+                current = client.next;
+            } else {
+                break;
+            }
+        }
+
+        let selected_next = self.clients.get(&selected).and_then(|c| c.next);
+        let target_next = self.clients.get(&target).and_then(|c| c.next);
+
+        let temp = if selected_next == Some(target) {
+            Some(selected)
+        } else {
+            selected_next
+        };
+
+        if let Some(client) = self.clients.get_mut(&selected) {
+            client.next = if target_next == Some(selected) {
+                Some(target)
+            } else {
+                target_next
+            };
+        }
+
+        if let Some(client) = self.clients.get_mut(&target) {
+            client.next = temp;
+        }
+
+        if let Some(prev) = prev_selected {
+            if prev != target {
+                if let Some(client) = self.clients.get_mut(&prev) {
+                    client.next = Some(target);
+                }
+            }
+        }
+
+        if let Some(prev) = prev_target {
+            if prev != selected {
+                if let Some(client) = self.clients.get_mut(&prev) {
+                    client.next = Some(selected);
+                }
+            }
+        }
+
+        if let Some(monitor) = self.monitors.get_mut(monitor_index) {
+            if monitor.clients_head == Some(selected) {
+                monitor.clients_head = Some(target);
+            } else if monitor.clients_head == Some(target) {
+                monitor.clients_head = Some(selected);
+            }
+        }
+
+        self.apply_layout()?;
+        Ok(())
+    }
+
     pub fn focus_monitor(&mut self, direction: i32) -> WmResult<()> {
         if self.monitors.len() <= 1 {
             return Ok(());
@@ -3669,6 +3806,22 @@ impl WindowManager {
         None
     }
 
+    fn next_tagged(&self, start: Option<Window>, tags: u32) -> Option<Window> {
+        let mut current = start;
+        while let Some(window) = current {
+            if let Some(client) = self.clients.get(&window) {
+                let visible_on_tags = (client.tags & tags) != 0;
+                if !client.is_floating && visible_on_tags {
+                    return Some(window);
+                }
+                current = client.next;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
     fn attach(&mut self, window: Window, monitor_index: usize) {
         if let Some(monitor) = self.monitors.get_mut(monitor_index) {
             if let Some(client) = self.clients.get_mut(&window) {
@@ -3684,40 +3837,24 @@ impl WindowManager {
             None => return,
         };
 
-        if monitor.clients_head.is_none() {
+        let new_window_tags = self.clients.get(&window).map(|c| c.tags).unwrap_or(0);
+        let first_tagged = self.next_tagged(monitor.clients_head, new_window_tags);
+
+        if first_tagged.is_none() {
             self.attach(window, monitor_index);
             return;
         }
 
-        let num_master = monitor.num_master.max(1) as usize;
-        let mut current = monitor.clients_head;
-        let mut position = 0;
-
-        while position < num_master - 1 {
-            if let Some(current_window) = current {
-                if let Some(current_client) = self.clients.get(&current_window) {
-                    current = current_client.next;
-                    position += 1;
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-
-        if let Some(insert_after) = current {
-            if let Some(after_client) = self.clients.get(&insert_after) {
+        if let Some(insert_after_window) = first_tagged {
+            if let Some(after_client) = self.clients.get(&insert_after_window) {
                 let old_next = after_client.next;
                 if let Some(new_client) = self.clients.get_mut(&window) {
                     new_client.next = old_next;
                 }
-                if let Some(after_client_mut) = self.clients.get_mut(&insert_after) {
+                if let Some(after_client_mut) = self.clients.get_mut(&insert_after_window) {
                     after_client_mut.next = Some(window);
                 }
             }
-        } else {
-            self.attach(window, monitor_index);
         }
     }
 

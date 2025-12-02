@@ -95,6 +95,9 @@ oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart())
 oxwm.key.bind({ modkey }, "J", oxwm.client.focus_stack(1))
 oxwm.key.bind({ modkey }, "K", oxwm.client.focus_stack(-1))
 
+oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.move_stack(1))
+oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.move_stack(-1))
+
 -- View tag (switch workspace)
 oxwm.key.bind({ modkey }, "1", oxwm.tag.view(0))
 oxwm.key.bind({ modkey }, "2", oxwm.tag.view(1))

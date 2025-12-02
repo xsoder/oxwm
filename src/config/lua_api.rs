@@ -255,10 +255,15 @@ fn register_client_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> 
         create_action_table(lua, "FocusStack", Value::Integer(dir as i64))
     })?;
 
+    let move_stack = lua.create_function(|lua, dir: i32| {
+        create_action_table(lua, "MoveStack", Value::Integer(dir as i64))
+    })?;
+
     client_table.set("kill", kill)?;
     client_table.set("toggle_fullscreen", toggle_fullscreen)?;
     client_table.set("toggle_floating", toggle_floating)?;
     client_table.set("focus_stack", focus_stack)?;
+    client_table.set("move_stack", move_stack)?;
 
     parent.set("client", client_table)?;
     Ok(())
@@ -773,6 +778,7 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "SpawnTerminal" => Ok(KeyAction::SpawnTerminal),
         "KillClient" => Ok(KeyAction::KillClient),
         "FocusStack" => Ok(KeyAction::FocusStack),
+        "MoveStack" => Ok(KeyAction::MoveStack),
         "Quit" => Ok(KeyAction::Quit),
         "Restart" => Ok(KeyAction::Restart),
         "Recompile" => Ok(KeyAction::Recompile),

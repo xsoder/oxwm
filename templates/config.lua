@@ -204,6 +204,10 @@ oxwm.key.bind({ modkey, "Shift" }, "R", oxwm.restart()) -- Restart OXWM (reloads
 oxwm.key.bind({ modkey }, "J", oxwm.client.focus_stack(1))  -- Focus next window in stack
 oxwm.key.bind({ modkey }, "K", oxwm.client.focus_stack(-1)) -- Focus previous window in stack
 
+-- Window movement (swap position in stack)
+oxwm.key.bind({ modkey, "Shift" }, "J", oxwm.client.move_stack(1))  -- Move window down in stack
+oxwm.key.bind({ modkey, "Shift" }, "K", oxwm.client.move_stack(-1)) -- Move window up in stack
+
 -- Multi-monitor support
 oxwm.key.bind({ modkey }, "Comma", oxwm.monitor.focus(-1))       -- Focus previous monitor
 oxwm.key.bind({ modkey }, "Period", oxwm.monitor.focus(1))       -- Focus next monitor

@@ -203,6 +203,7 @@ impl KeybindOverlay {
             },
             KeyAction::SpawnTerminal => "Launch Terminal".to_string(),
             KeyAction::FocusStack => "Focus Next/Previous Window".to_string(),
+            KeyAction::MoveStack => "Move Window Up/Down Stack".to_string(),
             KeyAction::ViewTag => match &binding.arg {
                 Arg::Int(n) => format!("View Workspace {}", n),
                 _ => "View Workspace".to_string(),
