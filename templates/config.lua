@@ -64,6 +64,7 @@ local blocks = {
         underline = false,
     }),
     oxwm.bar.block.shell({
+        format = "{}",
         command = "uname -r",
         interval = 999999999,
         color = colors.red,
@@ -76,6 +77,7 @@ local blocks = {
         underline = false,
     }),
     oxwm.bar.block.datetime({
+        format = "{}",
         date_format = "%a, %b %d - %-I:%M %P",
         interval = 1,
         color = colors.cyan,
