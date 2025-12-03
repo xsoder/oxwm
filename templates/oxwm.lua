@@ -160,6 +160,11 @@ function oxwm.client.toggle_floating() end
 ---@return table Action table for keybinding
 function oxwm.client.focus_stack(dir) end
 
+---Move stack (next/previous window)
+---@param dir integer Direction (1 for next, -1 for previous)
+---@return table Action table for keybinding
+function oxwm.client.move_stack(dir) end
+
 ---Monitor management module
 ---@class oxwm.monitor
 oxwm.monitor = {}
