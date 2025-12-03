@@ -20,6 +20,9 @@ impl Layout for TabbedLayout {
         screen_width: u32,
         screen_height: u32,
         gaps: &GapConfig,
+        _master_factor: f32,
+        _num_master: i32,
+        _smartgaps_enabled: bool,
     ) -> Vec<WindowGeometry> {
         let window_count = windows.len();
         if window_count == 0 {

@@ -11,22 +11,26 @@
   - [[#building-from-source][Building from Source]]
   - [[#setting-up-oxwm][Setting up OXWM]]
 - [[#configuration][Configuration]]
+  - [[#quick-example][Quick Example]]
+  - [[#features][Features]]
+  - [[#key-configuration-areas][Key Configuration Areas]]
+  - [[#creating-your-config][Creating Your Config]]
 - [[#contributing][Contributing]]
 - [[#key-bindings][Key Bindings]]
-- [[#features][Features]]
+- [[#features-1][Features]]
 - [[#testing-with-xephyr][Testing with Xephyr]]
 - [[#project-structure][Project Structure]]
 - [[#architecture-notes][Architecture Notes]]
+  - [[#lua-configuration-system][Lua Configuration System]]
   - [[#tag-system][Tag System]]
   - [[#status-bar][Status Bar]]
   - [[#layout-system][Layout System]]
 - [[#current-todo-list][Current Todo List:]]
-  - [[#priority-high-02][PRIORITY High]]
-  - [[#priority-medium-14][PRIORITY Medium]]
-  - [[#priority-low-11][PRIORITY Low]]
+  - [[#priority-high-04][PRIORITY High]]
 - [[#development-roadmap][Development Roadmap]]
-  - [[#current-focus][Current Focus]]
-  - [[#future-enhancements][Future Enhancements]]
+  - [[#current-focus-v080][Current Focus (v0.8.0)]]
+  - [[#completed-features-88][Completed Features]]
+  - [[#future-enhancements-][Future Enhancements]]
 - [[#license][License]]
 
 * OXWM — DWM but Better (and oxidized)
@@ -181,8 +185,21 @@ oxwm.key.bind({ "Mod4" }, "Q", oxwm.client.kill())
 oxwm.key.bind({ "Mod4", "Shift" }, "Q", oxwm.quit())
 
 -- Add status bar blocks
-oxwm.bar.add_block("{}", "DateTime", "%H:%M", 60, "#0db9d7", true)
-oxwm.bar.add_block("RAM: {used}/{total} GB", "Ram", nil, 5, "#7aa2f7", true)
+oxwm.bar.set_blocks({
+    oxwm.bar.block.datetime({
+        format = "{}",
+        date_format = "%H:%M",
+        interval = 60,
+        color = "#0db9d7",
+        underline = true,
+    }),
+    oxwm.bar.block.ram({
+        format = "RAM: {used}/{total} GB",
+        interval = 5,
+        color = "#7aa2f7",
+        underline = true,
+    }),
+})
 #+end_src
 
 ** Features
@@ -220,38 +237,75 @@ When contributing to OXWM:
 4. Document any new features or keybindings
 
 * Key Bindings
-Default keybindings (customizable in config.rs):
+Default keybindings (fully customizable in =~/.config/oxwm/config.lua=):
 
-| Binding           | Action                  |
-|-------------------+-------------------------|
-| Super+Return      | Spawn terminal          |
-| Super+J/K         | Cycle focus down/up     |
-| Super+Q           | Kill focused window     |
-| Super+Shift+Q     | Quit WM                 |
-| Super+Shift+R     | Hot reload WM           |
-| Super+1-9         | View tag 1-9            |
-| Super+Shift+1-9   | Move window to tag 1-9  |
-| Super+S           | Screenshot (maim)       |
-| Super+D           | dmenu launcher          |
-| Super+A           | Toggle gaps             |
-| Super+Shift+F     | Toggle fullscreen       |
-| Super+Shift+Space | Toggle floating         |
+| Binding                | Action                            |
+|------------------------+-----------------------------------|
+| Super+Return           | Spawn terminal                    |
+| Super+J/K              | Cycle focus through stack         |
+| Super+Q                | Kill focused window               |
+| Super+Shift+Q          | Quit WM                           |
+| Super+Shift+R          | Hot reload WM                     |
+| Super+1-9              | View tag 1-9                      |
+| Super+Shift+1-9        | Move window to tag 1-9            |
+| Super+Ctrl+1-9         | Toggle tag view (multi-tag)       |
+| Super+Ctrl+Shift+1-9   | Toggle window tag (sticky)        |
+| Super+S                | Screenshot (maim)                 |
+| Super+D                | dmenu launcher                    |
+| Super+A                | Toggle gaps                       |
+| Super+Shift+F          | Toggle fullscreen                 |
+| Super+Shift+Space      | Toggle floating                   |
+| Super+F                | Set normie (floating) layout      |
+| Super+C                | Set tiling layout                 |
+| Super+N                | Cycle layouts                     |
+| Super+Comma/Period     | Focus prev/next monitor           |
+| Super+Shift+Comma/.    | Send window to prev/next monitor  |
+| Super+[/]              | Decrease/increase master area     |
+| Super+I/P              | Inc/dec number of master windows  |
+| Super+Shift+/          | Show keybinds overlay             |
+| Super+Button1 (drag)   | Move window (floating)            |
+| Super+Button3 (drag)   | Resize window (floating)          |
 
 * Features
-- Dynamic tiling layout with master/stack
-- Tag-based workspaces (9 tags by default)
-- Configurable gaps between windows
-- Status bar with modular block system
-  - Battery, RAM, datetime, shell commands
-  - Custom colors and update intervals
+- *Dynamic Tiling Layout* with adjustable master/stack split
+  - Master area resizing (mfact)
+  - Multiple master windows support (nmaster)
+- *Tag-Based Workspaces* (9 tags by default)
+  - Multi-tag viewing (see multiple tags at once)
+  - Sticky windows (window visible on multiple tags)
+- *Multiple Layouts*
+  - Tiling (master/stack)
+  - Normie (floating-by-default)
+  - Monocle (fullscreen stacking)
+  - Grid (equal-sized grid)
+  - Tabbed (tabbed windows)
+- *Lua Configuration System*
+  - Hot reload without restarting X (=Mod+Shift+R=)
+  - LSP support with type definitions and autocomplete
+  - No compilation needed - instant config changes
+- *Built-in Status Bar* with modular block system
+  - Battery, RAM, datetime, shell commands, static text
+  - Custom colors, update intervals, and underlines
   - Click-to-switch tags
-- Window focus cycling
-- Hot reload without restarting X
-- Persistent window tags across restarts
-- Mouse hover to focus
-- Border indicators for focused windows
-- Fullscreen mode
-- Move Windows with Super HJKL
+  - Multi-monitor support (one bar per monitor)
+- *Advanced Window Management*
+  - Window focus cycling through stack
+  - Fullscreen mode
+  - Floating window support
+  - Mouse hover to focus (follow mouse)
+  - Border indicators for focused windows
+  - Configurable gaps (smartgaps support)
+  - Window rules (auto-tag, auto-float by class/title)
+- *Multi-Monitor Support*
+  - RandR multi-monitor detection
+  - Independent tags per monitor
+  - Move windows between monitors
+- *Keychord Support*
+  - Multi-key sequences (Emacs/Vim style)
+  - Example: =Mod+Space= then =T= to spawn terminal
+- *Persistent State*
+  - Window tags persist across WM restarts
+  - Uses X11 properties for state storage
 
 * Testing with Xephyr
 Test OXWM in a nested X server without affecting your current session:
@@ -340,7 +394,11 @@ src/
 │
 ├── layout/
 │   ├── mod.rs                           [Layout trait definition]
-│   └── tiling.rs                        [Tiling layout implementation]
+│   ├── tiling.rs                        [Tiling layout with master/stack]
+│   ├── monocle.rs                       [Fullscreen stacking layout]
+│   ├── grid.rs                          [Equal-sized grid layout]
+│   ├── tabbed.rs                        [Tabbed container layout]
+│   └── normie.rs                        [Floating-by-default layout]
 │
 └── errors.rs                            [Error types: WmError, ConfigError, etc.]
 
@@ -373,48 +431,43 @@ The bar uses a performance-optimized approach with a modular block system:
 The tiling layout divides the screen into a master area (left half) and stack area (right half). The master window occupies the full height of the master area, while stack windows split the stack area vertically. Gaps are configurable and can be toggled at runtime.
 
 * TODO Current Todo List:
-** PRIORITY High [0/2]
-- [ ] Convert keycodes to keysyms for cross-keyboard compatibility
-  - Current hardcoded keycodes only work on specific keyboards
-  - Need to use XKeysymToKeycode() for runtime conversion
-  - Follow DWM's approach: keysym → keycode conversion
-- [ ] Fix fullscreen to persist across tags
-  - Fullscreen state should be maintained when switching tags
-  - Window should remain fullscreen when returning to its tag
-
-** PRIORITY Medium [2/4]
-- [ ] Add keybindings to increase/decrease window size
-  - Master area resize (Mod+H / Mod+L)
-  - Individual window resize for floating windows
-- [X] Keychords
-  - Implemented with =oxwm.key.chord()= in the functional API
-  - Example: =oxwm.key.chord({ { {"Mod4"}, "Space" }, { {}, "T" } }, oxwm.spawn("st"))=
-- [X] Fix cursor on hover for bar
-  - Bar should show pointer cursor on hover
-  - Indicate clickable tag areas
-- [ ] Add auto-detect terminal to default config
-  - Auto-detect available terminal emulator
-  - Priority order: st → alacritty → kitty → wezterm → xterm
-  - Fallback to xterm if none found
-
-** PRIORITY Low [1/1]
-- [X] Create AUR package
-  - Write PKGBUILD
-  - Submit to AUR
-  - Add installation instructions to README
+** PRIORITY High [0/4]
+- [ ] Add Window Titles to Bar
+  - Show focused window title in status bar
+  - Truncate if too long
+  - Update on window focus change
+- [ ] Add Horizontal Scroll Layout
+  - Master window on left, stack scrolls horizontally
+  - Alternative to vertical tiling
+- [ ] Add Hide Empty Tag Numbers Option
+  - Option to hide tags with no windows
+  - Configurable via =oxwm.bar.set_hide_empty_tags(bool)=
+- [ ] Add Swap Stack Bind
+  - Keybind to swap focused window with master
+  - Similar to dwm's zoom function (=Mod+Return=)
+  - Should work bidirectionally
 * Development Roadmap
-** Current Focus
-- Multi-monitor support
-- Additional layouts (monocle, floating)
-- Master area resizing
-- Window swapping in layout
+** Current Focus (v0.8.0)
+- Refactoring to align with dwm's proven patterns
+- Improving core window management reliability
+- Maintaining Lua config and bar features while simplifying internals
 
-** Future Enhancements
-- Per-window floating behavior
-- Per-program rules (auto-tag assignment, floating rules)
-- External bar support (polybar, etc)
-- Scratchpad functionality
-- Window minimize/restore
+** Completed Features [8/8]
+- [X] Multi-monitor support with RandR
+- [X] Multiple layouts (tiling, monocle, grid, tabbed, normie)
+- [X] Master area resizing (mfact) and nmaster support
+- [X] Window rules (per-program auto-tag, floating)
+- [X] Lua configuration with hot-reload
+- [X] Built-in status bar with modular blocks
+- [X] Keychord support (multi-key sequences)
+- [X] Tag persistence across restarts
+
+** Future Enhancements [/]
+- [ ] Scratchpad functionality
+- [ ] Dynamic monitor hotplugging (currently only on startup)
+- [ ] External bar support (polybar, waybar compatibility)
+- [ ] Additional layouts (deck, spiral, dwindle)
+- [ ] Window minimize/restore
 
 * License
 [[https://www.gnu.org/licenses/gpl-3.0.en.html][GPL v3]]

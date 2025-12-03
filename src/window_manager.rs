@@ -1,5 +1,6 @@
 use crate::Config;
 use crate::bar::Bar;
+use crate::client::{Client, TagMask};
 use crate::errors::WmError;
 use crate::keyboard::{self, Arg, KeyAction, handlers};
 use crate::layout::GapConfig;
@@ -7,7 +8,7 @@ use crate::layout::tiling::TilingLayout;
 use crate::layout::{Layout, LayoutBox, LayoutType, layout_from_str, next_layout};
 use crate::monitor::{Monitor, detect_monitors};
 use crate::overlay::{ErrorOverlay, KeybindOverlay, Overlay};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::process::Command;
 use x11rb::cursor::Handle as CursorHandle;
 
@@ -15,11 +16,6 @@ use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
-
-const DEFAULT_FLOAT_WIDTH_RATIO: f32 = 0.5;
-const DEFAULT_FLOAT_HEIGHT_RATIO: f32 = 0.5;
-const SMART_MOVE_STEP_RATIO_VERTICAL: i32 = 4;
-const SMART_MOVE_STEP_RATIO_HORIZONTAL: i32 = 6;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CachedGeometry {
@@ -30,7 +26,6 @@ pub struct CachedGeometry {
     pub border_width: u16,
 }
 
-pub type TagMask = u32;
 pub fn tag_mask(tag: usize) -> TagMask {
     1 << tag
 }
@@ -43,6 +38,15 @@ struct AtomCache {
     wm_delete_window: Atom,
     net_wm_state: Atom,
     net_wm_state_fullscreen: Atom,
+    net_wm_window_type: Atom,
+    net_wm_window_type_dialog: Atom,
+    wm_name: Atom,
+    net_wm_name: Atom,
+    utf8_string: Atom,
+    wm_normal_hints: Atom,
+    wm_hints: Atom,
+    wm_transient_for: Atom,
+    net_active_window: Atom,
 }
 
 impl AtomCache {
@@ -79,6 +83,24 @@ impl AtomCache {
             .reply()?
             .atom;
 
+        let net_wm_window_type = connection
+            .intern_atom(false, b"_NET_WM_WINDOW_TYPE")?
+            .reply()?
+            .atom;
+
+        let net_wm_window_type_dialog = connection
+            .intern_atom(false, b"_NET_WM_WINDOW_TYPE_DIALOG")?
+            .reply()?
+            .atom;
+
+        let wm_name = AtomEnum::WM_NAME.into();
+        let net_wm_name = connection.intern_atom(false, b"_NET_WM_NAME")?.reply()?.atom;
+        let utf8_string = connection.intern_atom(false, b"UTF8_STRING")?.reply()?.atom;
+        let wm_normal_hints = AtomEnum::WM_NORMAL_HINTS.into();
+        let wm_hints = AtomEnum::WM_HINTS.into();
+        let wm_transient_for = AtomEnum::WM_TRANSIENT_FOR.into();
+        let net_active_window = connection.intern_atom(false, b"_NET_ACTIVE_WINDOW")?.reply()?.atom;
+
         Ok(Self {
             net_current_desktop,
             net_client_info,
@@ -87,6 +109,15 @@ impl AtomCache {
             wm_delete_window,
             net_wm_state,
             net_wm_state_fullscreen,
+            net_wm_window_type,
+            net_wm_window_type_dialog,
+            wm_name,
+            net_wm_name,
+            utf8_string,
+            wm_normal_hints,
+            wm_hints,
+            wm_transient_for,
+            net_active_window,
         })
     }
 }
@@ -98,14 +129,13 @@ pub struct WindowManager {
     root: Window,
     screen: Screen,
     windows: Vec<Window>,
+    clients: HashMap<Window, Client>,
     layout: LayoutBox,
-    window_tags: std::collections::HashMap<Window, TagMask>,
-    window_monitor: std::collections::HashMap<Window, usize>,
-    window_geometry_cache: std::collections::HashMap<Window, CachedGeometry>,
+    window_geometry_cache: HashMap<Window, CachedGeometry>,
     gaps_enabled: bool,
     floating_windows: HashSet<Window>,
     fullscreen_windows: HashSet<Window>,
-    floating_geometry_before_fullscreen: std::collections::HashMap<Window, (i16, i16, u16, u16, u16)>,
+    floating_geometry_before_fullscreen: HashMap<Window, (i16, i16, u16, u16, u16)>,
     bars: Vec<Bar>,
     tab_bars: Vec<crate::tab_bar::TabBar>,
     show_bar: bool,
@@ -154,29 +184,40 @@ impl WindowManager {
             )?
             .check()?;
 
-        connection.grab_button(
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
-            GrabMode::SYNC,
-            GrabMode::ASYNC,
-            x11rb::NONE,
-            x11rb::NONE,
-            ButtonIndex::M1,
-            u16::from(config.modkey).into(),
-        )?;
+        let ignore_modifiers = [
+            0,
+            u16::from(ModMask::LOCK),
+            u16::from(ModMask::M2),
+            u16::from(ModMask::LOCK | ModMask::M2),
+        ];
 
-        connection.grab_button(
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
-            GrabMode::SYNC,
-            GrabMode::ASYNC,
-            x11rb::NONE,
-            x11rb::NONE,
-            ButtonIndex::M3,
-            u16::from(config.modkey).into(),
-        )?;
+        for &ignore_mask in &ignore_modifiers {
+            let grab_mask = u16::from(config.modkey) | ignore_mask;
+
+            connection.grab_button(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
+                GrabMode::SYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                x11rb::NONE,
+                ButtonIndex::M1,
+                grab_mask.into(),
+            )?;
+
+            connection.grab_button(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
+                GrabMode::SYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                x11rb::NONE,
+                ButtonIndex::M3,
+                grab_mask.into(),
+            )?;
+        }
 
         let monitors = detect_monitors(&connection, &screen, root)?;
 
@@ -196,9 +237,9 @@ impl WindowManager {
                 &config,
                 display,
                 &font,
-                monitor.x as i16,
-                monitor.y as i16,
-                monitor.width as u16,
+                monitor.screen_x as i16,
+                monitor.screen_y as i16,
+                monitor.screen_width as u16,
             )?;
             bars.push(bar);
         }
@@ -212,9 +253,9 @@ impl WindowManager {
                 screen_number,
                 display,
                 &font,
-                (monitor.x + config.gap_outer_horizontal as i32) as i16,
-                (monitor.y as f32 + bar_height + config.gap_outer_vertical as f32) as i16,
-                monitor.width.saturating_sub(2 * config.gap_outer_horizontal) as u16,
+                (monitor.screen_x + config.gap_outer_horizontal as i32) as i16,
+                (monitor.screen_y as f32 + bar_height + config.gap_outer_vertical as f32) as i16,
+                monitor.screen_width.saturating_sub(2 * config.gap_outer_horizontal as i32) as u16,
                 config.scheme_occupied,
                 config.scheme_selected,
             )?;
@@ -244,14 +285,13 @@ impl WindowManager {
             root,
             screen,
             windows: Vec::new(),
+            clients: HashMap::new(),
             layout: Box::new(TilingLayout),
-            window_tags: std::collections::HashMap::new(),
-            window_monitor: std::collections::HashMap::new(),
-            window_geometry_cache: std::collections::HashMap::new(),
+            window_geometry_cache: HashMap::new(),
             gaps_enabled,
             floating_windows: HashSet::new(),
             fullscreen_windows: HashSet::new(),
-            floating_geometry_before_fullscreen: std::collections::HashMap::new(),
+            floating_geometry_before_fullscreen: HashMap::new(),
             bars,
             tab_bars,
             show_bar: true,
@@ -280,18 +320,27 @@ impl WindowManager {
     }
 
     pub fn show_migration_overlay(&mut self) {
-        let message = "Your config.lua uses legacy syntax or has errors.\n\n\
-                       You are now running with default configuration.\n\n\
-                       Press Mod+Shift+/ to see default keybinds\n\
+        let message = "We are on version 0.8.0 now.\n\n\
+                       Your config file has been deprecated once again.\n\
+                       Backup your current config, and run oxwm --init to generate a new one with correct values.\n\n\
+                       Please reach out to Tony, or check out the\n\
+                       documentation for help with migration.\n\n\
+                       We appreciate you testing oxwm!\n\n\
+                       Press Mod+Shift+/ to see keybinds\n\
                        Press Mod+Shift+R to reload after fixing your config";
 
-        let screen_width = self.screen.width_in_pixels;
-        let screen_height = self.screen.height_in_pixels;
+        let monitor = &self.monitors[self.selected_monitor];
+        let monitor_x = monitor.screen_x as i16;
+        let monitor_y = monitor.screen_y as i16;
+        let screen_width = monitor.screen_width as u16;
+        let screen_height = monitor.screen_height as u16;
 
         if let Err(e) = self.overlay.show_error(
             &self.connection,
             &self.font,
             message,
+            monitor_x,
+            monitor_y,
             screen_width,
             screen_height,
         ) {
@@ -349,10 +398,8 @@ impl WindowManager {
             }
 
             if attrs.map_state == MapState::VIEWABLE {
-                let tag = self.get_saved_tag(window, net_client_info)?;
+                let _tag = self.get_saved_tag(window, net_client_info)?;
                 self.windows.push(window);
-                self.window_tags.insert(window, tag);
-                self.window_monitor.insert(window, self.selected_monitor);
                 continue;
             }
 
@@ -374,17 +421,15 @@ impl WindowManager {
                     .is_ok_and(|prop| !prop.value.is_empty());
 
                 if has_wm_class {
-                    let tag = self.get_saved_tag(window, net_client_info)?;
+                    let _tag = self.get_saved_tag(window, net_client_info)?;
                     self.connection.map_window(window)?;
                     self.windows.push(window);
-                    self.window_tags.insert(window, tag);
-                    self.window_monitor.insert(window, self.selected_monitor);
                 }
             }
         }
 
         if let Some(&first) = self.windows.first() {
-            self.set_focus(first)?;
+            self.focus(Some(first))?;
         }
 
         self.apply_layout()?;
@@ -418,7 +463,7 @@ impl WindowManager {
         Ok(self
             .monitors
             .get(self.selected_monitor)
-            .map(|m| m.selected_tags)
+            .map(|m| m.tagset[m.selected_tags_index])
             .unwrap_or(tag_mask(0)))
     }
 
@@ -496,350 +541,71 @@ impl WindowManager {
     }
 
     fn toggle_floating(&mut self) -> WmResult<()> {
-        if let Some(focused) = self
+        let focused = self
             .monitors
             .get(self.selected_monitor)
-            .and_then(|m| m.focused_window)
-        {
-            if self.floating_windows.contains(&focused) {
-                self.floating_windows.remove(&focused);
+            .and_then(|m| m.selected_client);
 
-                let selected_tags = self
-                    .monitors
-                    .get(self.selected_monitor)
-                    .map(|m| m.selected_tags)
-                    .unwrap_or(tag_mask(0));
+        if focused.is_none() {
+            return Ok(());
+        }
+        let focused = focused.unwrap();
 
-                self.window_tags.insert(focused, selected_tags);
-                self.window_monitor.insert(focused, self.selected_monitor);
-                if let Err(error) = self.save_client_tag(focused, selected_tags) {
-                    eprintln!("Failed to save client tag: {:?}", error);
-                }
-
-                self.apply_layout()?;
-            } else {
-                let float_width = (self.screen.width_in_pixels / 2) as u32;
-                let float_height = (self.screen.height_in_pixels / 2) as u32;
-
-                let border_width = self.config.border_width;
-
-                let center_width = ((self.screen.width_in_pixels - float_width as u16) / 2) as i32;
-                let center_height =
-                    ((self.screen.height_in_pixels - float_height as u16) / 2) as i32;
-
-                self.connection.configure_window(
-                    focused,
-                    &ConfigureWindowAux::new()
-                        .x(center_width)
-                        .y(center_height)
-                        .width(float_width)
-                        .height(float_height)
-                        .border_width(border_width)
-                        .stack_mode(StackMode::ABOVE),
-                )?;
-
-                self.floating_windows.insert(focused);
-                self.apply_layout()?;
-                self.connection.flush()?;
+        if let Some(client) = self.clients.get(&focused) {
+            if client.is_fullscreen {
+                return Ok(());
             }
         }
-        Ok(())
-    }
 
-    fn collect_visible_floating_geometries(&mut self) -> Vec<(Window, CachedGeometry)> {
-        let focused_window = self.monitors.get(self.selected_monitor)
-            .and_then(|monitor| monitor.focused_window)
-            .unwrap_or(0);
-        let selected_monitor_index = self.selected_monitor;
-
-        let candidate_windows: Vec<Window> = self.windows.iter()
-            .filter(|&&window| {
-                window != focused_window
-                    && self.floating_windows.contains(&window)
-                    && self.is_window_visible(window)
-                    && self.window_monitor.get(&window).copied().unwrap_or(0) == selected_monitor_index
-            })
-            .copied()
-            .collect();
-
-        candidate_windows.into_iter()
-            .filter_map(|window| {
-                self.get_or_query_geometry(window).ok().map(|geometry| (window, geometry))
-            })
-            .collect()
-    }
-
-    fn calculate_smart_move_position(
-        &self,
-        current_x: i32,
-        current_y: i32,
-        current_width: i32,
-        current_height: i32,
-        direction: i32,
-        monitor: &Monitor,
-        other_geometries: &[(Window, CachedGeometry)],
-    ) -> (i32, i32) {
-        let (gap_inner_horizontal, gap_inner_vertical, gap_outer_horizontal, gap_outer_vertical) = if self.gaps_enabled {
-            (
-                self.config.gap_inner_horizontal as i32,
-                self.config.gap_inner_vertical as i32,
-                self.config.gap_outer_horizontal as i32,
-                self.config.gap_outer_vertical as i32,
-            )
+        let (is_fixed, x, y, w, h) = if let Some(client) = self.clients.get(&focused) {
+            (client.is_fixed, client.x_position as i32, client.y_position as i32, client.width as u32, client.height as u32)
         } else {
-            (0, 0, 0, 0)
+            return Ok(());
         };
 
-        match direction {
-            0 => {
-                let mut target_position = i32::MIN;
-                let current_top = current_y;
-                let mut new_y_position = current_y - (monitor.height as i32 / SMART_MOVE_STEP_RATIO_VERTICAL);
+        let was_floating = self.floating_windows.contains(&focused);
 
-                for (_other_window, other_geometry) in other_geometries {
-                    let other_x = other_geometry.x_position as i32;
-                    let other_y = other_geometry.y_position as i32;
-                    let other_width = other_geometry.width as i32;
-                    let other_height = other_geometry.height as i32;
-
-                    if current_x + current_width < other_x || current_x > other_x + other_width {
-                        continue;
-                    }
-
-                    let other_bottom = other_y + other_height + gap_inner_vertical;
-                    if current_top > other_bottom && new_y_position < other_bottom {
-                        target_position = target_position.max(other_bottom);
-                    }
-                }
-
-                if target_position != i32::MIN {
-                    new_y_position = target_position;
-                }
-                new_y_position = new_y_position.max(monitor.y as i32 + gap_outer_vertical);
-                (current_x, new_y_position)
+        if was_floating {
+            self.floating_windows.remove(&focused);
+            if let Some(client) = self.clients.get_mut(&focused) {
+                client.is_floating = false;
             }
-            1 => {
-                let mut target_position = i32::MAX;
-                let current_bottom = current_y + current_height;
-                let mut new_y_position = current_y + (monitor.height as i32 / SMART_MOVE_STEP_RATIO_VERTICAL);
-
-                for (_other_window, other_geometry) in other_geometries {
-                    let other_x = other_geometry.x_position as i32;
-                    let other_y = other_geometry.y_position as i32;
-                    let other_width = other_geometry.width as i32;
-
-                    if current_x + current_width < other_x || current_x > other_x + other_width {
-                        continue;
-                    }
-
-                    let other_top = other_y - gap_inner_vertical;
-                    if current_bottom < other_top && (new_y_position + current_height) > other_top {
-                        target_position = target_position.min(other_top - current_height);
-                    }
-                }
-
-                if target_position != i32::MAX {
-                    new_y_position = target_position;
-                }
-                new_y_position = new_y_position.min(monitor.y as i32 + monitor.height as i32 - current_height - gap_outer_vertical);
-                (current_x, new_y_position)
+        } else {
+            self.floating_windows.insert(focused);
+            if let Some(client) = self.clients.get_mut(&focused) {
+                client.is_floating = is_fixed || !client.is_floating;
             }
-            2 => {
-                let mut target_position = i32::MIN;
-                let current_left = current_x;
-                let mut new_x_position = current_x - (monitor.width as i32 / SMART_MOVE_STEP_RATIO_HORIZONTAL);
-
-                for (_other_window, other_geometry) in other_geometries {
-                    let other_x = other_geometry.x_position as i32;
-                    let other_y = other_geometry.y_position as i32;
-                    let other_width = other_geometry.width as i32;
-                    let other_height = other_geometry.height as i32;
-
-                    if current_y + current_height < other_y || current_y > other_y + other_height {
-                        continue;
-                    }
-
-                    let other_right = other_x + other_width + gap_inner_horizontal;
-                    if current_left > other_right && new_x_position < other_right {
-                        target_position = target_position.max(other_right);
-                    }
-                }
-
-                if target_position != i32::MIN {
-                    new_x_position = target_position;
-                }
-                new_x_position = new_x_position.max(monitor.x as i32 + gap_outer_horizontal);
-                (new_x_position, current_y)
-            }
-            3 => {
-                let mut target_position = i32::MAX;
-                let current_right = current_x + current_width;
-                let mut new_x_position = current_x + (monitor.width as i32 / SMART_MOVE_STEP_RATIO_HORIZONTAL);
-
-                for (_other_window, other_geometry) in other_geometries {
-                    let other_x = other_geometry.x_position as i32;
-                    let other_y = other_geometry.y_position as i32;
-                    let other_height = other_geometry.height as i32;
-
-                    if current_y + current_height < other_y || current_y > other_y + other_height {
-                        continue;
-                    }
-
-                    let other_left = other_x - gap_inner_horizontal;
-                    if current_right < other_left && (new_x_position + current_width) > other_left {
-                        target_position = target_position.min(other_left - current_width);
-                    }
-                }
-
-                if target_position != i32::MAX {
-                    new_x_position = target_position;
-                }
-                new_x_position = new_x_position.min(monitor.x as i32 + monitor.width as i32 - current_width - gap_outer_horizontal);
-                (new_x_position, current_y)
-            }
-            _ => (current_x, current_y),
-        }
-    }
-
-    fn smart_move_window(&mut self, direction: i32) -> WmResult<()> {
-        let focused = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|monitor| monitor.focused_window)
-        {
-            Some(window) => window,
-            None => return Ok(()),
-        };
-
-        if !self.floating_windows.contains(&focused) {
-            let float_width = (self.screen.width_in_pixels as f32 * DEFAULT_FLOAT_WIDTH_RATIO) as u32;
-            let float_height = (self.screen.height_in_pixels as f32 * DEFAULT_FLOAT_HEIGHT_RATIO) as u32;
-            let border_width = self.config.border_width;
-            let center_x_position = ((self.screen.width_in_pixels - float_width as u16) / 2) as i32;
-            let center_y_position = ((self.screen.height_in_pixels - float_height as u16) / 2) as i32;
 
             self.connection.configure_window(
                 focused,
                 &ConfigureWindowAux::new()
-                    .x(center_x_position)
-                    .y(center_y_position)
-                    .width(float_width)
-                    .height(float_height)
-                    .border_width(border_width)
+                    .x(x)
+                    .y(y)
+                    .width(w)
+                    .height(h)
                     .stack_mode(StackMode::ABOVE),
             )?;
-            self.floating_windows.insert(focused);
         }
 
-        let current_geometry = self.get_or_query_geometry(focused)?;
-        let current_x = current_geometry.x_position as i32;
-        let current_y = current_geometry.y_position as i32;
-        let current_width = current_geometry.width as i32;
-        let current_height = current_geometry.height as i32;
-
-        let other_geometries = self.collect_visible_floating_geometries();
-
-        let monitor = match self.monitors.get(self.selected_monitor) {
-            Some(monitor) => monitor,
-            None => return Ok(()),
-        };
-
-        let (new_x_position, new_y_position) = self.calculate_smart_move_position(
-            current_x,
-            current_y,
-            current_width,
-            current_height,
-            direction,
-            monitor,
-            &other_geometries,
-        );
-
-        self.connection.configure_window(
-            focused,
-            &ConfigureWindowAux::new()
-                .x(new_x_position)
-                .y(new_y_position)
-                .stack_mode(StackMode::ABOVE),
-        )?;
-
-        self.update_geometry_cache(focused, CachedGeometry {
-            x_position: new_x_position as i16,
-            y_position: new_y_position as i16,
-            width: current_width as u16,
-            height: current_height as u16,
-            border_width: current_geometry.border_width,
-        });
-
-        self.connection.flush()?;
+        self.apply_layout()?;
         Ok(())
     }
 
-    fn exchange_client(&mut self, direction: i32) -> WmResult<()> {
-        let focused = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|m| m.focused_window)
-        {
-            Some(win) => win,
-            None => return Ok(()),
-        };
-
-        if self.floating_windows.contains(&focused) {
-            return Ok(());
-        }
-
-        let visible = self.visible_windows();
-        if visible.len() < 2 {
-            return Ok(());
-        }
-
-        let current_idx = match visible.iter().position(|&w| w == focused) {
-            Some(idx) => idx,
-            None => return Ok(()),
-        };
-
-        let target_idx = match direction {
-            0 | 2 => {
-                // UP or LEFT - previous in stack
-                if current_idx == 0 {
-                    visible.len() - 1
-                } else {
-                    current_idx - 1
-                }
-            }
-            1 | 3 => {
-                // DOWN or RIGHT - next in stack
-                (current_idx + 1) % visible.len()
-            }
-            _ => return Ok(()),
-        };
-
-        let target = visible[target_idx];
-
-        let focused_pos = self.windows.iter().position(|&w| w == focused);
-        let target_pos = self.windows.iter().position(|&w| w == target);
-
-        if let (Some(f_pos), Some(t_pos)) = (focused_pos, target_pos) {
-            self.windows.swap(f_pos, t_pos);
-
+    fn set_master_factor(&mut self, delta: f32) -> WmResult<()> {
+        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+            let new_mfact = (monitor.master_factor + delta).max(0.05).min(0.95);
+            monitor.master_factor = new_mfact;
             self.apply_layout()?;
-
-            self.set_focus(focused)?;
-
-            if let Ok(geometry) = self.connection.get_geometry(focused)?.reply() {
-                self.connection.warp_pointer(
-                    x11rb::NONE,
-                    focused,
-                    0,
-                    0,
-                    0,
-                    0,
-                    geometry.width as i16 / 2,
-                    geometry.height as i16 / 2,
-                )?;
-            }
         }
+        Ok(())
+    }
 
+    fn inc_num_master(&mut self, delta: i32) -> WmResult<()> {
+        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+            let new_nmaster = (monitor.num_master + delta).max(0);
+            monitor.num_master = new_nmaster;
+            self.apply_layout()?;
+        }
         Ok(())
     }
 
@@ -905,9 +671,9 @@ impl WindowManager {
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
             if let Some(bar) = self.bars.get_mut(monitor_index) {
                 let mut occupied_tags: TagMask = 0;
-                for (&window, &tags) in &self.window_tags {
-                    if self.window_monitor.get(&window).copied().unwrap_or(0) == monitor_index {
-                        occupied_tags |= tags;
+                for client in self.clients.values() {
+                    if client.monitor_index == monitor_index {
+                        occupied_tags |= client.tags;
                     }
                 }
 
@@ -917,7 +683,7 @@ impl WindowManager {
                     &self.connection,
                     &self.font,
                     self.display,
-                    monitor.selected_tags,
+                    monitor.tagset[monitor.selected_tags_index],
                     occupied_tags,
                     draw_blocks,
                     &layout_symbol,
@@ -931,27 +697,26 @@ impl WindowManager {
     fn update_tab_bars(&mut self) -> WmResult<()> {
         for (monitor_index, monitor) in self.monitors.iter().enumerate() {
             if let Some(tab_bar) = self.tab_bars.get_mut(monitor_index) {
-                let visible_windows: Vec<Window> = self
+                let visible_windows: Vec<(Window, String)> = self
                     .windows
                     .iter()
-                    .filter(|&&window| {
-                        let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                        if window_monitor_index != monitor_index
-                            || self.floating_windows.contains(&window)
-                            || self.fullscreen_windows.contains(&window)
-                        {
-                            return false;
+                    .filter_map(|&window| {
+                        if let Some(client) = self.clients.get(&window) {
+                            if client.monitor_index != monitor_index
+                                || self.floating_windows.contains(&window)
+                                || self.fullscreen_windows.contains(&window)
+                            {
+                                return None;
+                            }
+                            if (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0 {
+                                return Some((window, client.name.clone()));
+                            }
                         }
-                        if let Some(&tags) = self.window_tags.get(&window) {
-                            (tags & monitor.selected_tags) != 0
-                        } else {
-                            false
-                        }
+                        None
                     })
-                    .copied()
                     .collect();
 
-                let focused_window = monitor.focused_window;
+                let focused_window = monitor.selected_client;
 
                 tab_bar.draw(
                     &self.connection,
@@ -966,7 +731,7 @@ impl WindowManager {
 
     fn handle_key_action(&mut self, action: KeyAction, arg: &Arg) -> WmResult<()> {
         match action {
-            KeyAction::Spawn => handlers::handle_spawn_action(action, arg)?,
+            KeyAction::Spawn => handlers::handle_spawn_action(action, arg, self.selected_monitor)?,
             KeyAction::SpawnTerminal => {
                 use std::process::Command;
                 let terminal = &self.config.terminal;
@@ -978,13 +743,14 @@ impl WindowManager {
                 if let Some(focused) = self
                     .monitors
                     .get(self.selected_monitor)
-                    .and_then(|m| m.focused_window)
+                    .and_then(|m| m.selected_client)
                 {
                     self.kill_client(focused)?;
                 }
             }
             KeyAction::ToggleFullScreen => {
                 self.fullscreen()?;
+                self.restack()?;
             }
             KeyAction::ChangeLayout => {
                 if let Arg::Str(layout_name) = arg {
@@ -996,6 +762,7 @@ impl WindowManager {
                             }
                             self.apply_layout()?;
                             self.update_bar()?;
+                            self.restack()?;
                         }
                         Err(e) => eprintln!("Failed to change layout: {}", e),
                     }
@@ -1012,39 +779,24 @@ impl WindowManager {
                         }
                         self.apply_layout()?;
                         self.update_bar()?;
+                        self.restack()?;
                     }
                     Err(e) => eprintln!("Failed to cycle layout: {}", e),
                 }
             }
             KeyAction::ToggleFloating => {
                 self.toggle_floating()?;
-            }
-
-            KeyAction::SmartMoveWin => {
-                if let Arg::Int(direction) = arg {
-                    self.smart_move_window(*direction)?;
-                }
-            }
-
-            KeyAction::ExchangeClient => {
-                if let Arg::Int(direction) = arg {
-                    self.exchange_client(*direction)?;
-                }
+                self.restack()?;
             }
 
             KeyAction::FocusStack => {
                 if let Arg::Int(direction) = arg {
-                    self.cycle_focus(*direction)?;
+                    self.focusstack(*direction)?;
                 }
             }
-            KeyAction::FocusDirection => {
+            KeyAction::MoveStack => {
                 if let Arg::Int(direction) = arg {
-                    self.focus_direction(*direction)?;
-                }
-            }
-            KeyAction::SwapDirection => {
-                if let Arg::Int(direction) = arg {
-                    self.swap_direction(*direction)?;
+                    self.move_stack(*direction)?;
                 }
             }
             KeyAction::Quit | KeyAction::Restart => {
@@ -1064,18 +816,34 @@ impl WindowManager {
                     self.view_tag(*tag_index as usize)?;
                 }
             }
+            KeyAction::ToggleView => {
+                if let Arg::Int(tag_index) = arg {
+                    self.toggleview(*tag_index as usize)?;
+                }
+            }
             KeyAction::MoveToTag => {
                 if let Arg::Int(tag_index) = arg {
                     self.move_to_tag(*tag_index as usize)?;
                 }
             }
+            KeyAction::ToggleTag => {
+                if let Arg::Int(tag_index) = arg {
+                    self.toggletag(*tag_index as usize)?;
+                }
+            }
             KeyAction::ToggleGaps => {
                 self.gaps_enabled = !self.gaps_enabled;
                 self.apply_layout()?;
+                self.restack()?;
             }
             KeyAction::FocusMonitor => {
                 if let Arg::Int(direction) = arg {
                     self.focus_monitor(*direction)?;
+                }
+            }
+            KeyAction::TagMonitor => {
+                if let Arg::Int(direction) = arg {
+                    self.send_window_to_adjacent_monitor(*direction)?;
                 }
             }
             KeyAction::ShowKeybindOverlay => {
@@ -1084,80 +852,72 @@ impl WindowManager {
                     &self.connection,
                     &self.font,
                     &self.config.keybindings,
-                    monitor.width as u16,
-                    monitor.height as u16,
+                    monitor.screen_width as u16,
+                    monitor.screen_height as u16,
                 )?;
+            }
+            KeyAction::SetMasterFactor => {
+                if let Arg::Int(delta) = arg {
+                    self.set_master_factor(*delta as f32 / 100.0)?;
+                }
+            }
+            KeyAction::IncNumMaster => {
+                if let Arg::Int(delta) = arg {
+                    self.inc_num_master(*delta)?;
+                }
             }
             KeyAction::None => {}
         }
         Ok(())
     }
 
-    fn focus_monitor(&mut self, direction: i32) -> WmResult<()> {
-        if self.monitors.is_empty() {
-            return Ok(());
-        }
-
-        let new_monitor = if direction > 0 {
-            (self.selected_monitor + 1) % self.monitors.len()
-        } else {
-            (self.selected_monitor + self.monitors.len() - 1) % self.monitors.len()
-        };
-
-        if new_monitor == self.selected_monitor {
-            return Ok(());
-        }
-
-        self.selected_monitor = new_monitor;
-
-        self.update_bar()?;
-
-        let visible = self.visible_windows_on_monitor(new_monitor);
-        if let Some(&win) = visible.first() {
-            self.set_focus(win)?;
-        }
-
-        Ok(())
-    }
 
     fn is_window_visible(&self, window: Window) -> bool {
-        let window_mon = self.window_monitor.get(&window).copied().unwrap_or(0);
-
-        if let Some(&tags) = self.window_tags.get(&window) {
-            let monitor = self.monitors.get(window_mon);
-            let selected_tags = monitor.map(|m| m.selected_tags).unwrap_or(0);
-            (tags & selected_tags) != 0
+        if let Some(client) = self.clients.get(&window) {
+            let monitor = self.monitors.get(client.monitor_index);
+            let selected_tags = monitor.map(|m| m.tagset[m.selected_tags_index]).unwrap_or(0);
+            (client.tags & selected_tags) != 0
         } else {
             false
         }
     }
 
     fn visible_windows(&self) -> Vec<Window> {
-        self.windows
-            .iter()
-            .filter(|&&w| self.is_window_visible(w))
-            .copied()
-            .collect()
+        let mut result = Vec::new();
+        for monitor in &self.monitors {
+            let mut current = monitor.clients_head;
+            while let Some(window) = current {
+                if let Some(client) = self.clients.get(&window) {
+                    let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
+                    if visible_tags != 0 {
+                        result.push(window);
+                    }
+                    current = client.next;
+                } else {
+                    break;
+                }
+            }
+        }
+        result
     }
 
     fn visible_windows_on_monitor(&self, monitor_index: usize) -> Vec<Window> {
-        self.windows
-            .iter()
-            .filter(|&&w| {
-                let window_mon = self.window_monitor.get(&w).copied().unwrap_or(0);
-                if window_mon != monitor_index {
-                    return false;
-                }
-                if let Some(&tags) = self.window_tags.get(&w) {
-                    let monitor = self.monitors.get(monitor_index);
-                    let selected_tags = monitor.map(|m| m.selected_tags).unwrap_or(0);
-                    (tags & selected_tags) != 0
+        let mut result = Vec::new();
+        if let Some(monitor) = self.monitors.get(monitor_index) {
+            let mut current = monitor.clients_head;
+            while let Some(window) = current {
+                if let Some(client) = self.clients.get(&window) {
+                    let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
+                    if visible_tags != 0 {
+                        result.push(window);
+                    }
+                    current = client.next;
                 } else {
-                    false
+                    break;
                 }
-            })
-            .copied()
-            .collect()
+            }
+        }
+        result
     }
 
     fn get_monitor_at_point(&self, x: i32, y: i32) -> Option<usize> {
@@ -1166,21 +926,139 @@ impl WindowManager {
             .position(|mon| mon.contains_point(x, y))
     }
 
-    // Dwm's g-loaded approach to handling the spam alternating crash.
-    fn update_window_visibility(&self) -> WmResult<()> {
-        for &window in &self.windows {
-            if !self.is_window_visible(window) {
-                if let Ok(geom) = self.connection.get_geometry(window)?.reply() {
-                    self.connection.configure_window(
-                        window,
-                        &ConfigureWindowAux::new()
-                            .x(-(geom.width as i32 * 2))
-                            .y(geom.y as i32),
-                    )?;
-                }
+    fn get_monitor_for_rect(&self, x: i32, y: i32, w: i32, h: i32) -> usize {
+        let mut best_monitor = self.selected_monitor;
+        let mut max_area = 0;
+
+        for (idx, monitor) in self.monitors.iter().enumerate() {
+            let intersect_width = 0.max((x + w).min(monitor.window_area_x + monitor.window_area_width) - x.max(monitor.window_area_x));
+            let intersect_height = 0.max((y + h).min(monitor.window_area_y + monitor.window_area_height) - y.max(monitor.window_area_y));
+            let area = intersect_width * intersect_height;
+
+            if area > max_area {
+                max_area = area;
+                best_monitor = idx;
             }
         }
-        self.connection.flush()?;
+
+        best_monitor
+    }
+
+    fn move_window_to_monitor(&mut self, window: Window, target_monitor_index: usize) -> WmResult<()> {
+        let current_monitor_index = self.clients
+            .get(&window)
+            .map(|c| c.monitor_index);
+
+        if let Some(current_idx) = current_monitor_index {
+            if current_idx == target_monitor_index {
+                return Ok(());
+            }
+        }
+
+        self.unfocus(window)?;
+        self.detach(window);
+        self.detach_stack(window);
+
+        if let Some(client) = self.clients.get_mut(&window) {
+            client.monitor_index = target_monitor_index;
+            if let Some(target_monitor) = self.monitors.get(target_monitor_index) {
+                client.tags = target_monitor.tagset[target_monitor.selected_tags_index];
+            }
+        }
+
+        self.attach_aside(window, target_monitor_index);
+        self.attach_stack(window, target_monitor_index);
+
+        self.focus(None)?;
+        self.apply_layout()?;
+
+        Ok(())
+    }
+
+    fn get_adjacent_monitor(&self, direction: i32) -> Option<usize> {
+        if self.monitors.len() <= 1 {
+            return None;
+        }
+
+        if direction > 0 {
+            if self.selected_monitor + 1 < self.monitors.len() {
+                Some(self.selected_monitor + 1)
+            } else {
+                Some(0)
+            }
+        } else {
+            if self.selected_monitor == 0 {
+                Some(self.monitors.len() - 1)
+            } else {
+                Some(self.selected_monitor - 1)
+            }
+        }
+    }
+
+    fn is_visible(&self, window: Window) -> bool {
+        let Some(client) = self.clients.get(&window) else {
+            return false;
+        };
+
+        let Some(monitor) = self.monitors.get(client.monitor_index) else {
+            return false;
+        };
+
+        (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0
+    }
+
+    fn showhide(&mut self, window: Option<Window>) -> WmResult<()> {
+        let Some(window) = window else {
+            return Ok(());
+        };
+
+        let Some(client) = self.clients.get(&window).cloned() else {
+            return Ok(());
+        };
+
+        let monitor = match self.monitors.get(client.monitor_index) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let is_visible = (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0;
+
+        if is_visible {
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(client.x_position as i32)
+                    .y(client.y_position as i32),
+            )?;
+
+            let is_floating = client.is_floating;
+            let is_fullscreen = client.is_fullscreen;
+            let has_no_layout = self.layout.name() == LayoutType::Normie.as_str();
+
+            if (has_no_layout || is_floating) && !is_fullscreen {
+                self.connection.configure_window(
+                    window,
+                    &ConfigureWindowAux::new()
+                        .x(client.x_position as i32)
+                        .y(client.y_position as i32)
+                        .width(client.width as u32)
+                        .height(client.height as u32),
+                )?;
+            }
+
+            self.showhide(client.stack_next)?;
+        } else {
+            self.showhide(client.stack_next)?;
+
+            let width = client.width_with_border() as i32;
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(width * -2)
+                    .y(client.y_position as i32),
+            )?;
+        }
+
         Ok(())
     }
 
@@ -1189,19 +1067,51 @@ impl WindowManager {
             return Ok(());
         }
 
-        if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
-            monitor.selected_tags = tag_mask(tag_index);
+        let monitor = match self.monitors.get_mut(self.selected_monitor) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let new_tagset = tag_mask(tag_index);
+
+        if new_tagset == monitor.tagset[monitor.selected_tags_index] {
+            return Ok(());
         }
+
+        monitor.selected_tags_index ^= 1;
+        monitor.tagset[monitor.selected_tags_index] = new_tagset;
 
         self.save_selected_tags()?;
-        self.update_window_visibility()?;
-        self.apply_layout()?;
+        self.focus(None)?;
+        self.apply_layout()?;  
         self.update_bar()?;
 
-        let visible = self.visible_windows_on_monitor(self.selected_monitor);
-        if let Some(&win) = visible.first() {
-            self.set_focus(win)?;
+        Ok(())
+    }
+
+    pub fn toggleview(&mut self, tag_index: usize) -> WmResult<()> {
+        if tag_index >= self.config.tags.len() {
+            return Ok(());
         }
+
+        let monitor = match self.monitors.get_mut(self.selected_monitor) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let mask = tag_mask(tag_index);
+        let new_tagset = monitor.tagset[monitor.selected_tags_index] ^ mask;
+
+        if new_tagset == 0 {
+            return Ok(());
+        }
+
+        monitor.tagset[monitor.selected_tags_index] = new_tagset;
+
+        self.save_selected_tags()?;
+        self.focus(None)?;
+        self.apply_layout()?;
+        self.update_bar()?;
 
         Ok(())
     }
@@ -1212,7 +1122,7 @@ impl WindowManager {
         let selected_tags = self
             .monitors
             .get(self.selected_monitor)
-            .map(|m| m.selected_tags)
+            .map(|m| m.tagset[m.selected_tags_index])
             .unwrap_or(tag_mask(0));
         let desktop = selected_tags.trailing_zeros();
 
@@ -1236,22 +1146,65 @@ impl WindowManager {
             return Ok(());
         }
 
-        if let Some(focused) = self
+        let focused = match self
             .monitors
             .get(self.selected_monitor)
-            .and_then(|m| m.focused_window)
+            .and_then(|m| m.selected_client)
         {
-            let mask = tag_mask(tag_index);
-            self.window_tags.insert(focused, mask);
+            Some(win) => win,
+            None => return Ok(()),
+        };
 
-            if let Err(error) = self.save_client_tag(focused, mask) {
-                eprintln!("Failed to save client tag: {:?}", error);
-            }
+        let mask = tag_mask(tag_index);
 
-            self.update_window_visibility()?;
-            self.apply_layout()?;
-            self.update_bar()?;
+        if let Some(client) = self.clients.get_mut(&focused) {
+            client.tags = mask;
         }
+
+        if let Err(error) = self.save_client_tag(focused, mask) {
+            eprintln!("Failed to save client tag: {:?}", error);
+        }
+
+        self.focus(None)?;
+        self.apply_layout()?;
+        self.update_bar()?;
+
+        Ok(())
+    }
+
+    pub fn toggletag(&mut self, tag_index: usize) -> WmResult<()> {
+        if tag_index >= self.config.tags.len() {
+            return Ok(());
+        }
+
+        let focused = match self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.selected_client)
+        {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let mask = tag_mask(tag_index);
+        let current_tags = self.clients.get(&focused).map(|c| c.tags).unwrap_or(0);
+        let new_tags = current_tags ^ mask;
+
+        if new_tags == 0 {
+            return Ok(());
+        }
+
+        if let Some(client) = self.clients.get_mut(&focused) {
+            client.tags = new_tags;
+        }
+
+        if let Err(error) = self.save_client_tag(focused, new_tags) {
+            eprintln!("Failed to save client tag: {:?}", error);
+        }
+
+        self.focus(None)?;
+        self.apply_layout()?;
+        self.update_bar()?;
 
         Ok(())
     }
@@ -1266,7 +1219,7 @@ impl WindowManager {
         let current = self
             .monitors
             .get(self.selected_monitor)
-            .and_then(|m| m.focused_window);
+            .and_then(|m| m.selected_client);
 
         let next_window = if let Some(current) = current {
             if let Some(current_index) = visible.iter().position(|&w| w == current) {
@@ -1291,108 +1244,10 @@ impl WindowManager {
             )?;
         }
 
-        self.set_focus(next_window)?;
+        self.focus(Some(next_window))?;
 
         if is_tabbed {
             self.update_tab_bars()?;
-        }
-
-        Ok(())
-    }
-
-    fn find_directional_window_candidate(&mut self, focused_window: Window, direction: i32) -> Option<Window> {
-        let visible_windows = self.visible_windows();
-        if visible_windows.len() < 2 {
-            return None;
-        }
-
-        let focused_geometry = self.get_or_query_geometry(focused_window).ok()?;
-        let focused_center_x = focused_geometry.x_position + (focused_geometry.width as i16 / 2);
-        let focused_center_y = focused_geometry.y_position + (focused_geometry.height as i16 / 2);
-
-        let mut candidates = Vec::new();
-
-        for &window in &visible_windows {
-            if window == focused_window {
-                continue;
-            }
-
-            let geometry = match self.get_or_query_geometry(window) {
-                Ok(geometry) => geometry,
-                Err(_) => continue,
-            };
-
-            let center_x = geometry.x_position + (geometry.width as i16 / 2);
-            let center_y = geometry.y_position + (geometry.height as i16 / 2);
-
-            let is_valid_direction = match direction {
-                0 => center_y < focused_center_y,
-                1 => center_y > focused_center_y,
-                2 => center_x < focused_center_x,
-                3 => center_x > focused_center_x,
-                _ => false,
-            };
-
-            if is_valid_direction {
-                let delta_x = (center_x - focused_center_x) as i32;
-                let delta_y = (center_y - focused_center_y) as i32;
-                let distance_squared = delta_x * delta_x + delta_y * delta_y;
-                candidates.push((window, distance_squared));
-            }
-        }
-
-        candidates.iter().min_by_key(|&(_window, distance)| distance).map(|&(window, _distance)| window)
-    }
-
-    pub fn focus_direction(&mut self, direction: i32) -> WmResult<()> {
-        let focused_window = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|monitor| monitor.focused_window)
-        {
-            Some(window) => window,
-            None => return Ok(()),
-        };
-
-        if let Some(target_window) = self.find_directional_window_candidate(focused_window, direction) {
-            self.set_focus(target_window)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn swap_direction(&mut self, direction: i32) -> WmResult<()> {
-        let focused_window = match self
-            .monitors
-            .get(self.selected_monitor)
-            .and_then(|monitor| monitor.focused_window)
-        {
-            Some(window) => window,
-            None => return Ok(()),
-        };
-
-        if let Some(target_window) = self.find_directional_window_candidate(focused_window, direction) {
-            let focused_position = self.windows.iter().position(|&window| window == focused_window);
-            let target_position = self.windows.iter().position(|&window| window == target_window);
-
-            if let (Some(focused_index), Some(target_index)) = (focused_position, target_position) {
-                self.windows.swap(focused_index, target_index);
-                self.apply_layout()?;
-                self.set_focus(focused_window)?;
-
-                if let Ok(geometry) = self.get_or_query_geometry(focused_window) {
-                    self.connection.warp_pointer(
-                        x11rb::NONE,
-                        focused_window,
-                        0,
-                        0,
-                        0,
-                        0,
-                        geometry.width as i16 / 2,
-                        geometry.height as i16 / 2,
-                    )?;
-                }
-            }
         }
 
         Ok(())
@@ -1431,6 +1286,13 @@ impl WindowManager {
 
         let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
 
+        let ignore_modifiers = [
+            0,
+            u16::from(ModMask::LOCK),
+            u16::from(ModMask::M2),
+            u16::from(ModMask::LOCK | ModMask::M2),
+        ];
+
         for &candidate_index in candidates {
             let binding = &self.config.keybindings[candidate_index];
             if keys_pressed < binding.keys.len() {
@@ -1439,17 +1301,20 @@ impl WindowManager {
 
                 if let Some(keycodes) = keysym_to_keycode.get(&next_key.keysym) {
                     if let Some(&keycode) = keycodes.first() {
-                        let key_tuple = (modifier_mask, keycode);
+                        for &ignore_mask in &ignore_modifiers {
+                            let grab_mask = modifier_mask | ignore_mask;
+                            let key_tuple = (grab_mask, keycode);
 
-                        if grabbed_keys.insert(key_tuple) {
-                            self.connection.grab_key(
-                                false,
-                                self.root,
-                                modifier_mask.into(),
-                                keycode,
-                                GrabMode::ASYNC,
-                                GrabMode::ASYNC,
-                            )?;
+                            if grabbed_keys.insert(key_tuple) {
+                                self.connection.grab_key(
+                                    false,
+                                    self.root,
+                                    grab_mask.into(),
+                                    keycode,
+                                    GrabMode::ASYNC,
+                                    GrabMode::ASYNC,
+                                )?;
+                            }
                         }
                     }
                 }
@@ -1458,14 +1323,16 @@ impl WindowManager {
 
         if let Some(keycodes) = keysym_to_keycode.get(&keyboard::keysyms::XK_ESCAPE) {
             if let Some(&keycode) = keycodes.first() {
-                self.connection.grab_key(
-                    false,
-                    self.root,
-                    ModMask::from(0u16),
-                    keycode,
-                    GrabMode::ASYNC,
-                    GrabMode::ASYNC,
-                )?;
+                for &ignore_mask in &ignore_modifiers {
+                    self.connection.grab_key(
+                        false,
+                        self.root,
+                        ModMask::from(ignore_mask),
+                        keycode,
+                        GrabMode::ASYNC,
+                        GrabMode::ASYNC,
+                    )?;
+                }
             }
         }
 
@@ -1482,12 +1349,9 @@ impl WindowManager {
     }
 
     fn kill_client(&self, window: Window) -> WmResult<()> {
-        // Try to send WM_DELETE_WINDOW message first (graceful close)
         if self.send_event(window, self.atoms.wm_delete_window)? {
-            // Window supports WM_DELETE_WINDOW, it will close gracefully
             self.connection.flush()?;
         } else {
-            // Window doesn't support WM_DELETE_WINDOW, forcefully kill it
             eprintln!("Window {} doesn't support WM_DELETE_WINDOW, killing forcefully", window);
             self.connection.kill_client(window)?;
             self.connection.flush()?;
@@ -1496,7 +1360,6 @@ impl WindowManager {
     }
 
     fn send_event(&self, window: Window, protocol: Atom) -> WmResult<bool> {
-        // Check if the window supports this protocol
         let protocols_reply = self.connection.get_property(
             false,
             window,
@@ -1521,7 +1384,6 @@ impl WindowManager {
             return Ok(false);
         }
 
-        // Send a ClientMessage event
         let event = x11rb::protocol::xproto::ClientMessageEvent {
             response_type: x11rb::protocol::xproto::CLIENT_MESSAGE_EVENT,
             format: 32,
@@ -1539,6 +1401,120 @@ impl WindowManager {
         )?;
         self.connection.flush()?;
         Ok(true)
+    }
+
+    fn set_urgent(&mut self, window: Window, urgent: bool) -> WmResult<()> {
+        if let Some(client) = self.clients.get_mut(&window) {
+            client.is_urgent = urgent;
+        }
+
+        let hints_reply = self.connection.get_property(
+            false,
+            window,
+            AtomEnum::WM_HINTS,
+            AtomEnum::WM_HINTS,
+            0,
+            9,
+        )?.reply();
+
+        if let Ok(hints) = hints_reply {
+            if hints.value.len() >= 4 {
+                let mut flags = u32::from_ne_bytes([
+                    hints.value[0],
+                    hints.value[1],
+                    hints.value[2],
+                    hints.value[3],
+                ]);
+
+                if urgent {
+                    flags |= 256;
+                } else {
+                    flags &= !256;
+                }
+
+                let mut new_hints = hints.value.clone();
+                new_hints[0..4].copy_from_slice(&flags.to_ne_bytes());
+
+                self.connection.change_property(
+                    PropMode::REPLACE,
+                    window,
+                    AtomEnum::WM_HINTS,
+                    AtomEnum::WM_HINTS,
+                    32,
+                    new_hints.len() as u32 / 4,
+                    &new_hints,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_window_state(&self, window: Window) -> WmResult<i32> {
+        let reply = self.connection.get_property(
+            false,
+            window,
+            self.atoms.wm_state,
+            self.atoms.wm_state,
+            0,
+            2,
+        )?.reply();
+
+        match reply {
+            Ok(prop) if !prop.value.is_empty() && prop.value.len() >= 4 => {
+                let state = u32::from_ne_bytes([
+                    prop.value[0],
+                    prop.value[1],
+                    prop.value[2],
+                    prop.value[3],
+                ]);
+                Ok(state as i32)
+            }
+            _ => Ok(-1),
+        }
+    }
+
+    fn get_window_atom_property(&self, window: Window, property: Atom) -> WmResult<Option<Atom>> {
+        let reply = self.connection.get_property(
+            false,
+            window,
+            property,
+            AtomEnum::ATOM,
+            0,
+            1,
+        )?.reply();
+
+        match reply {
+            Ok(prop) if !prop.value.is_empty() && prop.value.len() >= 4 => {
+                let atom = u32::from_ne_bytes([
+                    prop.value[0],
+                    prop.value[1],
+                    prop.value[2],
+                    prop.value[3],
+                ]);
+                Ok(Some(atom))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn get_window_text_property(&self, window: Window, atom: Atom) -> WmResult<Option<String>> {
+        let reply = self.connection.get_property(
+            false,
+            window,
+            atom,
+            AtomEnum::ANY,
+            0,
+            1024,
+        )?.reply();
+
+        match reply {
+            Ok(prop) if !prop.value.is_empty() => {
+                let text = String::from_utf8_lossy(&prop.value).to_string();
+                Ok(Some(text.trim_end_matches('\0').to_string()))
+            }
+            _ => Ok(None),
+        }
     }
 
     fn fullscreen(&mut self) -> WmResult<()> {
@@ -1571,7 +1547,9 @@ impl WindowManager {
                 .collect();
 
             for window in floating_windows {
-                let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
+                let monitor_idx = self.clients.get(&window)
+                    .map(|c| c.monitor_index)
+                    .unwrap_or(self.selected_monitor);
                 let monitor = &self.monitors[monitor_idx];
 
                 let (outer_gap_h, outer_gap_v) = if self.gaps_enabled {
@@ -1583,18 +1561,18 @@ impl WindowManager {
                     (0, 0)
                 };
 
-                let window_x = monitor.x + outer_gap_h as i32;
-                let window_y = monitor.y + outer_gap_v as i32;
-                let window_width = monitor.width.saturating_sub(2 * outer_gap_h).saturating_sub(2 * border_width);
-                let window_height = monitor.height.saturating_sub(2 * outer_gap_v).saturating_sub(2 * border_width);
+                let window_x = monitor.screen_x + outer_gap_h as i32;
+                let window_y = monitor.screen_y + outer_gap_v as i32;
+                let window_width = monitor.screen_width.saturating_sub(2 * outer_gap_h as i32).saturating_sub(2 * border_width as i32);
+                let window_height = monitor.screen_height.saturating_sub(2 * outer_gap_v as i32).saturating_sub(2 * border_width as i32);
 
                 self.connection.configure_window(
                     window,
                     &x11rb::protocol::xproto::ConfigureWindowAux::new()
                         .x(window_x)
                         .y(window_y)
-                        .width(window_width)
-                        .height(window_height),
+                        .width(window_width as u32)
+                        .height(window_height as u32),
                 )?;
             }
             self.connection.flush()?;
@@ -1654,6 +1632,11 @@ impl WindowManager {
     }
 
     fn set_window_fullscreen(&mut self, window: Window, fullscreen: bool) -> WmResult<()> {
+        let monitor_idx = self.clients.get(&window)
+            .map(|c| c.monitor_index)
+            .unwrap_or(self.selected_monitor);
+        let monitor = &self.monitors[monitor_idx];
+
         if fullscreen && !self.fullscreen_windows.contains(&window) {
             let bytes = self.atoms.net_wm_state_fullscreen.to_ne_bytes().to_vec();
             self.connection.change_property(
@@ -1666,30 +1649,28 @@ impl WindowManager {
                 &bytes,
             )?;
 
-            self.fullscreen_windows.insert(window);
-
-            let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
-            let monitor = &self.monitors[monitor_idx];
-
-            if self.show_bar {
-                if let Some(bar) = self.bars.get(monitor_idx) {
-                    self.connection.unmap_window(bar.window())?;
-                }
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.is_fullscreen = true;
+                client.old_state = client.is_floating;
+                client.old_border_width = client.border_width;
+                client.border_width = 0;
+                client.is_floating = true;
             }
+
+            self.fullscreen_windows.insert(window);
 
             self.connection.configure_window(
                 window,
                 &x11rb::protocol::xproto::ConfigureWindowAux::new()
                     .border_width(0)
-                    .x(monitor.x)
-                    .y(monitor.y)
-                    .width(monitor.width as u32)
-                    .height(monitor.height as u32)
+                    .x(monitor.screen_x)
+                    .y(monitor.screen_y)
+                    .width(monitor.screen_width as u32)
+                    .height(monitor.screen_height as u32)
                     .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
             )?;
 
             self.connection.flush()?;
-            self.update_bar()?;
         } else if !fullscreen && self.fullscreen_windows.contains(&window) {
             self.connection.change_property(
                 PropMode::REPLACE,
@@ -1703,17 +1684,26 @@ impl WindowManager {
 
             self.fullscreen_windows.remove(&window);
 
-            self.connection.configure_window(
-                window,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .border_width(self.config.border_width),
-            )?;
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.is_fullscreen = false;
+                client.is_floating = client.old_state;
+                client.border_width = client.old_border_width;
 
-            let monitor_idx = *self.window_monitor.get(&window).unwrap_or(&self.selected_monitor);
-            if self.show_bar {
-                if let Some(bar) = self.bars.get(monitor_idx) {
-                    self.connection.map_window(bar.window())?;
-                }
+                let x = client.old_x_position;
+                let y = client.old_y_position;
+                let w = client.old_width;
+                let h = client.old_height;
+                let bw = client.border_width;
+
+                self.connection.configure_window(
+                    window,
+                    &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                        .x(x as i32)
+                        .y(y as i32)
+                        .width(w as u32)
+                        .height(h as u32)
+                        .border_width(bw as u32),
+                )?;
             }
 
             self.apply_layout()?;
@@ -1736,8 +1726,8 @@ impl WindowManager {
         Ok(())
     }
 
-    fn is_transient_window(&self, window: Window) -> bool {
-        let transient_for = self.connection
+    fn get_transient_parent(&self, window: Window) -> Option<Window> {
+        self.connection
             .get_property(
                 false,
                 window,
@@ -1748,16 +1738,336 @@ impl WindowManager {
             )
             .ok()
             .and_then(|cookie| cookie.reply().ok())
-            .filter(|reply| !reply.value.is_empty());
+            .filter(|reply| !reply.value.is_empty())
+            .and_then(|reply| {
+                if reply.value.len() >= 4 {
+                    let parent_window = u32::from_ne_bytes([
+                        reply.value[0],
+                        reply.value[1],
+                        reply.value[2],
+                        reply.value[3],
+                    ]);
+                    Some(parent_window)
+                } else {
+                    None
+                }
+            })
+    }
 
-        transient_for.is_some()
+    fn is_dialog_window(&self, window: Window) -> bool {
+        let window_type_property = self.connection
+            .get_property(
+                false,
+                window,
+                self.atoms.net_wm_window_type,
+                AtomEnum::ATOM,
+                0,
+                32,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok());
+
+        if let Some(reply) = window_type_property {
+            let atoms: Vec<Atom> = reply
+                .value
+                .chunks_exact(4)
+                .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+
+            atoms.contains(&self.atoms.net_wm_window_type_dialog)
+        } else {
+            false
+        }
+    }
+
+    fn get_window_class(&self, window: Window) -> Option<String> {
+        self.connection
+            .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .and_then(|reply| {
+                if reply.value.is_empty() {
+                    None
+                } else {
+                    std::str::from_utf8(&reply.value).ok().map(|s| {
+                        s.split('\0').nth(1).unwrap_or(s.split('\0').next().unwrap_or("")).to_string()
+                    })
+                }
+            })
+    }
+
+    fn get_window_class_instance(&self, window: Window) -> (String, String) {
+        let reply = self.connection
+            .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok());
+
+        if let Some(reply) = reply {
+            if !reply.value.is_empty() {
+                if let Ok(text) = std::str::from_utf8(&reply.value) {
+                    let parts: Vec<&str> = text.split('\0').collect();
+                    let instance = parts.get(0).unwrap_or(&"").to_string();
+                    let class = parts.get(1).unwrap_or(&"").to_string();
+                    return (instance, class);
+                }
+            }
+        }
+
+        (String::new(), String::new())
+    }
+
+    fn apply_rules(&mut self, window: Window) -> WmResult<()> {
+        let (instance, class) = self.get_window_class_instance(window);
+        let title = self.clients.get(&window).map(|c| c.name.clone()).unwrap_or_default();
+
+        let mut rule_tags: Option<u32> = None;
+        let mut rule_floating: Option<bool> = None;
+        let mut rule_monitor: Option<usize> = None;
+
+        for rule in &self.config.window_rules {
+            if rule.matches(&class, &instance, &title) {
+                if rule.tags.is_some() {
+                    rule_tags = rule.tags;
+                }
+                if rule.is_floating.is_some() {
+                    rule_floating = rule.is_floating;
+                }
+                if rule.monitor.is_some() {
+                    rule_monitor = rule.monitor;
+                }
+            }
+        }
+
+        if let Some(client) = self.clients.get_mut(&window) {
+            if let Some(is_floating) = rule_floating {
+                client.is_floating = is_floating;
+                if is_floating {
+                    self.floating_windows.insert(window);
+                } else {
+                    self.floating_windows.remove(&window);
+                }
+            }
+
+            if let Some(monitor_index) = rule_monitor {
+                if monitor_index < self.monitors.len() {
+                    client.monitor_index = monitor_index;
+                }
+            }
+
+            let tags = rule_tags.unwrap_or_else(|| {
+                self.monitors
+                    .get(client.monitor_index)
+                    .map(|m| m.tagset[m.selected_tags_index])
+                    .unwrap_or(tag_mask(0))
+            });
+
+            client.tags = tags;
+        }
+
+        Ok(())
+    }
+
+    fn manage_window(&mut self, window: Window) -> WmResult<()> {
+        let geometry = self.connection.get_geometry(window)?.reply()?;
+        let mut window_x = geometry.x as i32;
+        let mut window_y = geometry.y as i32;
+        let window_width = geometry.width as u32;
+        let window_height = geometry.height as u32;
+
+        let transient_parent = self.get_transient_parent(window);
+        let (window_tags, monitor_index) = if let Some(parent) = transient_parent {
+            if let Some(parent_client) = self.clients.get(&parent) {
+                (parent_client.tags, parent_client.monitor_index)
+            } else {
+                let tags = self.monitors
+                    .get(self.selected_monitor)
+                    .map(|m| m.tagset[m.selected_tags_index])
+                    .unwrap_or(tag_mask(0));
+                (tags, self.selected_monitor)
+            }
+        } else {
+            let selected_tags = self.monitors
+                .get(self.selected_monitor)
+                .map(|m| m.tagset[m.selected_tags_index])
+                .unwrap_or(tag_mask(0));
+            (selected_tags, self.selected_monitor)
+        };
+
+        let monitor = self.monitors[monitor_index].clone();
+        let border_width = self.config.border_width;
+
+        let mut client = Client::new(window, monitor_index, window_tags);
+        client.x_position = window_x as i16;
+        client.y_position = window_y as i16;
+        client.width = window_width as u16;
+        client.height = window_height as u16;
+        client.old_x_position = window_x as i16;
+        client.old_y_position = window_y as i16;
+        client.old_width = window_width as u16;
+        client.old_height = window_height as u16;
+        client.border_width = border_width as u16;
+        client.old_border_width = border_width as u16;
+
+        if window_x + (window_width as i32) + (2 * border_width as i32) > monitor.screen_x + monitor.screen_width as i32 {
+            window_x = monitor.screen_x + monitor.screen_width as i32 - (window_width as i32) - (2 * border_width as i32);
+        }
+        if window_y + (window_height as i32) + (2 * border_width as i32) > monitor.screen_y + monitor.screen_height as i32 {
+            window_y = monitor.screen_y + monitor.screen_height as i32 - (window_height as i32) - (2 * border_width as i32);
+        }
+        window_x = window_x.max(monitor.screen_x);
+        window_y = window_y.max(monitor.screen_y);
+
+        let is_transient = transient_parent.is_some();
+        let is_dialog = self.is_dialog_window(window);
+
+        let class_name = self.get_window_class(window).unwrap_or_default();
+        eprintln!("MapRequest 0x{:x}: class='{}' size={}x{} pos=({},{}) transient={} dialog={}",
+            window, class_name, window_width, window_height, window_x, window_y, is_transient, is_dialog);
+
+        let off_screen_x = window_x + (2 * self.screen.width_in_pixels as i32);
+
+        self.connection.configure_window(
+            window,
+            &ConfigureWindowAux::new()
+                .x(off_screen_x)
+                .y(window_y)
+                .width(window_width)
+                .height(window_height)
+                .border_width(border_width)
+        )?;
+
+        self.connection.change_window_attributes(
+            window,
+            &ChangeWindowAttributesAux::new().event_mask(
+                EventMask::ENTER_WINDOW | EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE
+            ),
+        )?;
+
+        client.is_floating = is_transient || is_dialog;
+
+        self.clients.insert(window, client);
+        self.update_size_hints(window)?;
+        self.update_window_title(window)?;
+        self.apply_rules(window)?;
+
+        let updated_monitor_index = self.clients.get(&window).map(|c| c.monitor_index).unwrap_or(monitor_index);
+        let updated_monitor = self.monitors.get(updated_monitor_index).cloned().unwrap_or(monitor.clone());
+        let is_rule_floating = self.clients.get(&window).map(|c| c.is_floating).unwrap_or(false);
+
+        self.attach_aside(window, updated_monitor_index);
+        self.attach_stack(window, updated_monitor_index);
+
+        self.windows.push(window);
+
+        if is_transient || is_dialog {
+            self.floating_windows.insert(window);
+
+            let (center_x, center_y) = if let Some(parent) = transient_parent {
+                if let Ok(parent_geom) = self.connection.get_geometry(parent)?.reply() {
+                    let parent_center_x = parent_geom.x as i32 + (parent_geom.width as i32 / 2);
+                    let parent_center_y = parent_geom.y as i32 + (parent_geom.height as i32 / 2);
+                    (parent_center_x, parent_center_y)
+                } else {
+                    let monitor_center_x = monitor.screen_x + (monitor.screen_width as i32 / 2);
+                    let monitor_center_y = monitor.screen_y + (monitor.screen_height as i32 / 2);
+                    (monitor_center_x, monitor_center_y)
+                }
+            } else {
+                let monitor_center_x = monitor.screen_x + (monitor.screen_width as i32 / 2);
+                let monitor_center_y = monitor.screen_y + (monitor.screen_height as i32 / 2);
+                (monitor_center_x, monitor_center_y)
+            };
+
+            let positioned_x = center_x - (window_width as i32 / 2);
+            let positioned_y = center_y - (window_height as i32 / 2);
+
+            let clamped_x = positioned_x
+                .max(monitor.screen_x)
+                .min(monitor.screen_x + monitor.screen_width as i32 - window_width as i32);
+            let clamped_y = positioned_y
+                .max(monitor.screen_y)
+                .min(monitor.screen_y + monitor.screen_height as i32 - window_height as i32);
+
+            self.update_geometry_cache(window, CachedGeometry {
+                x_position: clamped_x as i16,
+                y_position: clamped_y as i16,
+                width: window_width as u16,
+                height: window_height as u16,
+                border_width: border_width as u16,
+            });
+
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(clamped_x)
+                    .y(clamped_y)
+                    .width(window_width)
+                    .height(window_height)
+                    .border_width(border_width)
+                    .stack_mode(StackMode::ABOVE),
+            )?;
+        } else if is_rule_floating && !is_transient && !is_dialog {
+            let mut adjusted_x = window_x;
+            let mut adjusted_y = window_y;
+
+            if adjusted_x + (window_width as i32) + (2 * border_width as i32) > updated_monitor.screen_x + updated_monitor.screen_width as i32 {
+                adjusted_x = updated_monitor.screen_x + updated_monitor.screen_width as i32 - (window_width as i32) - (2 * border_width as i32);
+            }
+            if adjusted_y + (window_height as i32) + (2 * border_width as i32) > updated_monitor.screen_y + updated_monitor.screen_height as i32 {
+                adjusted_y = updated_monitor.screen_y + updated_monitor.screen_height as i32 - (window_height as i32) - (2 * border_width as i32);
+            }
+            adjusted_x = adjusted_x.max(updated_monitor.screen_x);
+            adjusted_y = adjusted_y.max(updated_monitor.screen_y);
+
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.x_position = adjusted_x as i16;
+                client.y_position = adjusted_y as i16;
+                client.width = window_width as u16;
+                client.height = window_height as u16;
+            }
+
+            self.update_geometry_cache(window, CachedGeometry {
+                x_position: adjusted_x as i16,
+                y_position: adjusted_y as i16,
+                width: window_width as u16,
+                height: window_height as u16,
+                border_width: border_width as u16,
+            });
+
+            self.connection.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(adjusted_x)
+                    .y(adjusted_y)
+                    .width(window_width)
+                    .height(window_height)
+                    .border_width(border_width)
+                    .stack_mode(StackMode::ABOVE),
+            )?;
+        }
+
+        self.set_wm_state(window, 1)?;
+        if let Err(error) = self.save_client_tag(window, window_tags) {
+            eprintln!("Failed to save client tag for new window: {:?}", error);
+        }
+
+        self.apply_layout()?;
+        self.connection.map_window(window)?;
+        self.update_bar()?;
+        self.focus(Some(window))?;
+
+        if self.layout.name() == "tabbed" {
+            self.update_tab_bars()?;
+        }
+
+        Ok(())
     }
 
     pub fn set_focus(&mut self, window: Window) -> WmResult<()> {
         let old_focused = self.previous_focused;
 
         if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
-            monitor.focused_window = Some(window);
+            monitor.selected_client = Some(window);
         }
 
         self.connection
@@ -1770,6 +2080,394 @@ impl WindowManager {
         if self.layout.name() == "tabbed" {
             self.update_tab_bars()?;
         }
+
+        Ok(())
+    }
+
+    fn unfocus(&self, window: Window) -> WmResult<()> {
+        if !self.windows.contains(&window) {
+            return Ok(());
+        }
+
+        self.connection.change_window_attributes(
+            window,
+            &ChangeWindowAttributesAux::new().border_pixel(self.config.border_unfocused),
+        )?;
+
+        self.connection.grab_button(
+            false,
+            window,
+            EventMask::BUTTON_PRESS.into(),
+            GrabMode::SYNC,
+            GrabMode::SYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            ButtonIndex::ANY,
+            ModMask::ANY,
+        )?;
+
+        Ok(())
+    }
+
+    fn focus(&mut self, window: Option<Window>) -> WmResult<()> {
+        let monitor = self.monitors.get_mut(self.selected_monitor).unwrap();
+        let old_selected = monitor.selected_client;
+
+        if let Some(old_win) = old_selected {
+            if old_selected != window {
+                self.unfocus(old_win)?;
+            }
+        }
+
+        let mut win = window;
+        if win.is_none() || !self.is_visible(win.unwrap()) {
+            let mut current = self.monitors.get(self.selected_monitor)
+                .and_then(|m| m.stack_head);
+
+            while let Some(w) = current {
+                if self.is_visible(w) {
+                    win = Some(w);
+                    break;
+                }
+                current = self.clients.get(&w).and_then(|c| c.stack_next);
+            }
+        }
+
+        if let Some(win) = win {
+            if !self.windows.contains(&win) {
+                return Ok(());
+            }
+
+            let monitor_idx = self.clients.get(&win)
+                .map(|c| c.monitor_index)
+                .unwrap_or(self.selected_monitor);
+            if monitor_idx != self.selected_monitor {
+                self.selected_monitor = monitor_idx;
+            }
+
+            self.detach_stack(win);
+            self.attach_stack(win, monitor_idx);
+
+            self.connection.change_window_attributes(
+                win,
+                &ChangeWindowAttributesAux::new().border_pixel(self.config.border_focused),
+            )?;
+
+            self.connection.ungrab_button(ButtonIndex::ANY, win, ModMask::ANY)?;
+
+            self.connection.set_input_focus(
+                InputFocus::POINTER_ROOT,
+                win,
+                x11rb::CURRENT_TIME,
+            )?;
+
+            if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+                monitor.selected_client = Some(win);
+            }
+
+            self.previous_focused = Some(win);
+        } else {
+            self.connection.set_input_focus(
+                InputFocus::POINTER_ROOT,
+                self.root,
+                x11rb::CURRENT_TIME,
+            )?;
+
+            if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
+                monitor.selected_client = None;
+            }
+        }
+
+        self.restack()?;
+        self.connection.flush()?;
+
+        Ok(())
+    }
+
+    fn restack(&mut self) -> WmResult<()> {
+        let monitor = match self.monitors.get(self.selected_monitor) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let mut windows_to_restack: Vec<Window> = Vec::new();
+
+        if let Some(selected) = monitor.selected_client {
+            if self.floating_windows.contains(&selected) {
+                windows_to_restack.push(selected);
+            }
+        }
+
+        let mut current = monitor.stack_head;
+        while let Some(win) = current {
+            if self.windows.contains(&win) && self.floating_windows.contains(&win) {
+                if Some(win) != monitor.selected_client {
+                    windows_to_restack.push(win);
+                }
+            }
+            current = self.clients.get(&win).and_then(|c| c.stack_next);
+        }
+
+        current = monitor.stack_head;
+        while let Some(win) = current {
+            if self.windows.contains(&win) && !self.floating_windows.contains(&win) {
+                windows_to_restack.push(win);
+            }
+            current = self.clients.get(&win).and_then(|c| c.stack_next);
+        }
+
+        for (i, &win) in windows_to_restack.iter().enumerate() {
+            if i == 0 {
+                self.connection.configure_window(
+                    win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                )?;
+            } else {
+                self.connection.configure_window(
+                    win,
+                    &ConfigureWindowAux::new()
+                        .sibling(windows_to_restack[i - 1])
+                        .stack_mode(StackMode::BELOW),
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn focusstack(&mut self, direction: i32) -> WmResult<()> {
+        let monitor = match self.monitors.get(self.selected_monitor) {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        let selected = match monitor.selected_client {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let selected_tags = monitor.tagset[monitor.selected_tags_index];
+
+        let mut stack_windows: Vec<Window> = Vec::new();
+        let mut current = monitor.clients_head;
+        while let Some(win) = current {
+            if let Some(client) = self.clients.get(&win) {
+                if client.tags & selected_tags != 0 && !client.is_floating {
+                    stack_windows.push(win);
+                }
+                current = client.next;
+            } else {
+                break;
+            }
+        }
+
+        if stack_windows.is_empty() {
+            return Ok(());
+        }
+
+        let current_idx = stack_windows.iter().position(|&w| w == selected);
+
+        let next_window = if let Some(idx) = current_idx {
+            if direction > 0 {
+                if idx + 1 < stack_windows.len() {
+                    stack_windows[idx + 1]
+                } else {
+                    stack_windows[0]
+                }
+            } else {
+                if idx > 0 {
+                    stack_windows[idx - 1]
+                } else {
+                    stack_windows[stack_windows.len() - 1]
+                }
+            }
+        } else {
+            return Ok(());
+        };
+
+        self.focus(Some(next_window))?;
+        self.update_tab_bars()?;
+
+        Ok(())
+    }
+
+    pub fn move_stack(&mut self, direction: i32) -> WmResult<()> {
+        let monitor_index = self.selected_monitor;
+        let monitor = match self.monitors.get(monitor_index) {
+            Some(m) => m.clone(),
+            None => return Ok(()),
+        };
+
+        let selected = match monitor.selected_client {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let selected_client = match self.clients.get(&selected) {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let target = if direction > 0 {
+            let next = self.next_tiled(selected_client.next, &monitor);
+            if next.is_some() {
+                next
+            } else {
+                self.next_tiled(monitor.clients_head, &monitor)
+            }
+        } else {
+            let mut previous = None;
+            let mut current = monitor.clients_head;
+            while let Some(window) = current {
+                if window == selected {
+                    break;
+                }
+                if let Some(client) = self.clients.get(&window) {
+                    let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
+                    if visible_tags != 0 && !client.is_floating {
+                        previous = Some(window);
+                    }
+                    current = client.next;
+                } else {
+                    break;
+                }
+            }
+            if previous.is_none() {
+                let mut last = None;
+                let mut current = monitor.clients_head;
+                while let Some(window) = current {
+                    if let Some(client) = self.clients.get(&window) {
+                        let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
+                        if visible_tags != 0 && !client.is_floating {
+                            last = Some(window);
+                        }
+                        current = client.next;
+                    } else {
+                        break;
+                    }
+                }
+                last
+            } else {
+                previous
+            }
+        };
+
+        let target = match target {
+            Some(t) if t != selected => t,
+            _ => return Ok(()),
+        };
+
+        let mut prev_selected = None;
+        let mut prev_target = None;
+        let mut current = monitor.clients_head;
+
+        while let Some(window) = current {
+            if let Some(client) = self.clients.get(&window) {
+                if client.next == Some(selected) {
+                    prev_selected = Some(window);
+                }
+                if client.next == Some(target) {
+                    prev_target = Some(window);
+                }
+                current = client.next;
+            } else {
+                break;
+            }
+        }
+
+        let selected_next = self.clients.get(&selected).and_then(|c| c.next);
+        let target_next = self.clients.get(&target).and_then(|c| c.next);
+
+        let temp = if selected_next == Some(target) {
+            Some(selected)
+        } else {
+            selected_next
+        };
+
+        if let Some(client) = self.clients.get_mut(&selected) {
+            client.next = if target_next == Some(selected) {
+                Some(target)
+            } else {
+                target_next
+            };
+        }
+
+        if let Some(client) = self.clients.get_mut(&target) {
+            client.next = temp;
+        }
+
+        if let Some(prev) = prev_selected {
+            if prev != target {
+                if let Some(client) = self.clients.get_mut(&prev) {
+                    client.next = Some(target);
+                }
+            }
+        }
+
+        if let Some(prev) = prev_target {
+            if prev != selected {
+                if let Some(client) = self.clients.get_mut(&prev) {
+                    client.next = Some(selected);
+                }
+            }
+        }
+
+        if let Some(monitor) = self.monitors.get_mut(monitor_index) {
+            if monitor.clients_head == Some(selected) {
+                monitor.clients_head = Some(target);
+            } else if monitor.clients_head == Some(target) {
+                monitor.clients_head = Some(selected);
+            }
+        }
+
+        self.apply_layout()?;
+        Ok(())
+    }
+
+    pub fn focus_monitor(&mut self, direction: i32) -> WmResult<()> {
+        if self.monitors.len() <= 1 {
+            return Ok(());
+        }
+
+        let target_monitor = match self.get_adjacent_monitor(direction) {
+            Some(idx) if idx != self.selected_monitor => idx,
+            _ => return Ok(()),
+        };
+
+        let old_selected = self.monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.selected_client);
+
+        if let Some(win) = old_selected {
+            self.unfocus(win)?;
+        }
+
+        self.selected_monitor = target_monitor;
+        self.focus(None)?;
+
+        Ok(())
+    }
+
+    pub fn send_window_to_adjacent_monitor(&mut self, direction: i32) -> WmResult<()> {
+        if self.monitors.len() <= 1 {
+            return Ok(());
+        }
+
+        let selected_window = self.monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.selected_client);
+
+        let window = match selected_window {
+            Some(win) => win,
+            None => return Ok(()),
+        };
+
+        let target_monitor = match self.get_adjacent_monitor(direction) {
+            Some(idx) => idx,
+            None => return Ok(()),
+        };
+
+        self.move_window_to_monitor(window, target_monitor)?;
 
         Ok(())
     }
@@ -1807,63 +2505,146 @@ impl WindowManager {
         Ok(())
     }
 
-    fn move_mouse(&mut self, window: Window) -> WmResult<()> {
-        self.floating_windows.insert(window);
+    fn drag_window(&mut self, window: Window) -> WmResult<()> {
+        let is_fullscreen = self.clients
+            .get(&window)
+            .map(|c| c.is_fullscreen)
+            .unwrap_or(false);
 
-        let geometry = self.connection.get_geometry(window)?.reply()?;
+        if is_fullscreen {
+            return Ok(());
+        }
 
-        self.connection
-            .grab_pointer(
-                false,
-                self.root,
-                (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE).into(),
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-                x11rb::NONE,
-                x11rb::NONE,
-                x11rb::CURRENT_TIME,
-            )?
-            .reply()?;
+        let client_info = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height, c.is_floating, c.monitor_index)
+        });
+
+        let Some((orig_x, orig_y, width, height, was_floating, monitor_idx)) = client_info else {
+            return Ok(());
+        };
+
+        let monitor = self.monitors.get(monitor_idx).cloned();
+        let Some(monitor) = monitor else {
+            return Ok(());
+        };
+
+        let snap = 32;
+        let is_normie = self.layout.name() == "normie";
+
+        if !was_floating && !is_normie {
+            self.toggle_floating()?;
+        }
+
+        self.connection.grab_pointer(
+            false,
+            self.root,
+            (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE |
+             EventMask::BUTTON_PRESS).into(),
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            x11rb::CURRENT_TIME,
+        )?.reply()?;
 
         let pointer = self.connection.query_pointer(self.root)?.reply()?;
-        let (start_x, start_y) = (pointer.root_x, pointer.root_y);
+        let (start_x, start_y) = (pointer.root_x as i32, pointer.root_y as i32);
 
-        self.connection.configure_window(
-            window,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        )?;
+        let mut last_time = 0u32;
 
         loop {
             let event = self.connection.wait_for_event()?;
             match event {
+                Event::ConfigureRequest(_) | Event::MapRequest(_) | Event::Expose(_) => {}
                 Event::MotionNotify(e) => {
-                    let new_x = geometry.x + (e.root_x - start_x);
-                    let new_y = geometry.y + (e.root_y - start_y);
-                    self.connection.configure_window(
-                        window,
-                        &ConfigureWindowAux::new().x(new_x as i32).y(new_y as i32),
-                    )?;
-                    self.connection.flush()?;
+                    if e.time.wrapping_sub(last_time) <= 16 {
+                        continue;
+                    }
+                    last_time = e.time;
+
+                    let mut new_x = orig_x as i32 + (e.root_x as i32 - start_x);
+                    let mut new_y = orig_y as i32 + (e.root_y as i32 - start_y);
+
+                    if (monitor.window_area_x - new_x).abs() < snap {
+                        new_x = monitor.window_area_x;
+                    } else if ((monitor.window_area_x + monitor.window_area_width) - (new_x + width as i32)).abs() < snap {
+                        new_x = monitor.window_area_x + monitor.window_area_width - width as i32;
+                    }
+
+                    if (monitor.window_area_y - new_y).abs() < snap {
+                        new_y = monitor.window_area_y;
+                    } else if ((monitor.window_area_y + monitor.window_area_height) - (new_y + height as i32)).abs() < snap {
+                        new_y = monitor.window_area_y + monitor.window_area_height - height as i32;
+                    }
+
+                    let should_resize = is_normie || self.clients
+                        .get(&window)
+                        .map(|c| c.is_floating)
+                        .unwrap_or(false);
+
+                    if should_resize {
+                        if let Some(client) = self.clients.get_mut(&window) {
+                            client.x_position = new_x as i16;
+                            client.y_position = new_y as i16;
+                        }
+
+                        self.connection.configure_window(
+                            window,
+                            &ConfigureWindowAux::new()
+                                .x(new_x)
+                                .y(new_y),
+                        )?;
+                        self.connection.flush()?;
+                    }
                 }
                 Event::ButtonRelease(_) => break,
                 _ => {}
             }
         }
 
-        self.connection
-            .ungrab_pointer(x11rb::CURRENT_TIME)?
-            .check()?;
-        self.connection
-            .allow_events(Allow::REPLAY_POINTER, x11rb::CURRENT_TIME)?
-            .check()?;
+        self.connection.ungrab_pointer(x11rb::CURRENT_TIME)?.check()?;
+
+        let final_client = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height)
+        });
+
+        if let Some((x, y, w, h)) = final_client {
+            let new_monitor = self.get_monitor_for_rect(x as i32, y as i32, w as i32, h as i32);
+            if new_monitor != monitor_idx {
+                self.move_window_to_monitor(window, new_monitor)?;
+                self.selected_monitor = new_monitor;
+                self.focus(None)?;
+            }
+        }
 
         Ok(())
     }
 
-    fn resize_mouse(&mut self, window: Window) -> WmResult<()> {
-        self.floating_windows.insert(window);
+    fn resize_window_with_mouse(&mut self, window: Window) -> WmResult<()> {
+        let is_fullscreen = self.clients
+            .get(&window)
+            .map(|c| c.is_fullscreen)
+            .unwrap_or(false);
 
-        let geometry = self.connection.get_geometry(window)?.reply()?;
+        if is_fullscreen {
+            return Ok(());
+        }
+
+        let client_info = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height, c.border_width, c.is_floating, c.monitor_index)
+        });
+
+        let Some((orig_x, orig_y, orig_width, orig_height, border_width, was_floating, monitor_idx)) = client_info else {
+            return Ok(());
+        };
+
+        let monitor = self.monitors.get(monitor_idx).cloned();
+        let Some(monitor) = monitor else {
+            return Ok(());
+        };
+
+        let snap = 32;
+        let is_normie = self.layout.name() == "normie";
 
         self.connection.warp_pointer(
             x11rb::NONE,
@@ -1872,54 +2653,115 @@ impl WindowManager {
             0,
             0,
             0,
-            geometry.width as i16,
-            geometry.height as i16,
+            (orig_width + border_width - 1) as i16,
+            (orig_height + border_width - 1) as i16,
         )?;
 
-        self.connection
-            .grab_pointer(
-                false,
-                self.root,
-                (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE).into(),
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-                x11rb::NONE,
-                x11rb::NONE,
-                x11rb::CURRENT_TIME,
-            )?
-            .reply()?;
+        self.connection.grab_pointer(
+            false,
+            self.root,
+            (EventMask::POINTER_MOTION | EventMask::BUTTON_RELEASE |
+             EventMask::BUTTON_PRESS).into(),
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            x11rb::CURRENT_TIME,
+        )?.reply()?;
 
-        self.connection.configure_window(
-            window,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        )?;
+        let mut last_time = 0u32;
 
         loop {
             let event = self.connection.wait_for_event()?;
             match event {
+                Event::ConfigureRequest(_) | Event::MapRequest(_) | Event::Expose(_) => {}
                 Event::MotionNotify(e) => {
-                    let new_width = (e.root_x - geometry.x).max(1) as u32;
-                    let new_height = (e.root_y - geometry.y).max(1) as u32;
+                    if e.time.wrapping_sub(last_time) <= 16 {
+                        continue;
+                    }
+                    last_time = e.time;
 
-                    self.connection.configure_window(
-                        window,
-                        &ConfigureWindowAux::new()
-                            .width(new_width)
-                            .height(new_height),
-                    )?;
-                    self.connection.flush()?;
+                    let new_width = ((e.root_x as i32 - orig_x as i32 - 2 * border_width as i32 + 1).max(1)) as u32;
+                    let new_height = ((e.root_y as i32 - orig_y as i32 - 2 * border_width as i32 + 1).max(1)) as u32;
+
+                    let in_monitor_bounds =
+                        monitor.window_area_x + new_width as i32 >= monitor.window_area_x &&
+                        monitor.window_area_x + new_width as i32 <= monitor.window_area_x + monitor.window_area_width &&
+                        monitor.window_area_y + new_height as i32 >= monitor.window_area_y &&
+                        monitor.window_area_y + new_height as i32 <= monitor.window_area_y + monitor.window_area_height;
+
+                    if in_monitor_bounds {
+                        if !was_floating && !is_normie &&
+                           ((new_width as i32 - orig_width as i32).abs() > snap ||
+                            (new_height as i32 - orig_height as i32).abs() > snap) {
+                            self.toggle_floating()?;
+                        }
+                    }
+
+                    let should_resize = is_normie || self.clients
+                        .get(&window)
+                        .map(|c| c.is_floating)
+                        .unwrap_or(false);
+
+                    if should_resize {
+                        if let Some(client) = self.clients.get(&window) {
+                            let (hint_width, hint_height) = self.apply_size_hints(
+                                client,
+                                new_width as i32,
+                                new_height as i32,
+                            );
+
+                            if let Some(client_mut) = self.clients.get_mut(&window) {
+                                client_mut.width = hint_width as u16;
+                                client_mut.height = hint_height as u16;
+                            }
+
+                            self.connection.configure_window(
+                                window,
+                                &ConfigureWindowAux::new()
+                                    .width(hint_width as u32)
+                                    .height(hint_height as u32),
+                            )?;
+                            self.connection.flush()?;
+                        }
+                    }
                 }
                 Event::ButtonRelease(_) => break,
                 _ => {}
             }
         }
 
-        self.connection
-            .ungrab_pointer(x11rb::CURRENT_TIME)?
-            .check()?;
-        self.connection
-            .allow_events(Allow::REPLAY_POINTER, x11rb::CURRENT_TIME)?
-            .check()?;
+        let final_client = self.clients.get(&window).map(|c| {
+            (c.width, c.border_width)
+        });
+
+        if let Some((w, bw)) = final_client {
+            self.connection.warp_pointer(
+                x11rb::NONE,
+                window,
+                0,
+                0,
+                0,
+                0,
+                (w + bw - 1) as i16,
+                (w + bw - 1) as i16,
+            )?;
+        }
+
+        self.connection.ungrab_pointer(x11rb::CURRENT_TIME)?.check()?;
+
+        let final_client_pos = self.clients.get(&window).map(|c| {
+            (c.x_position, c.y_position, c.width, c.height)
+        });
+
+        if let Some((x, y, w, h)) = final_client_pos {
+            let new_monitor = self.get_monitor_for_rect(x as i32, y as i32, w as i32, h as i32);
+            if new_monitor != monitor_idx {
+                self.move_window_to_monitor(window, new_monitor)?;
+                self.selected_monitor = new_monitor;
+                self.focus(None)?;
+            }
+        }
 
         Ok(())
     }
@@ -2000,88 +2842,8 @@ impl WindowManager {
                     return Ok(None);
                 }
 
-                if self.windows.contains(&event.window) {
-                    return Ok(None);
-                }
-
-                self.connection.map_window(event.window)?;
-                self.connection.change_window_attributes(
-                    event.window,
-                    &ChangeWindowAttributesAux::new().event_mask(EventMask::ENTER_WINDOW | EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE),
-                )?;
-
-                let selected_tags = self
-                    .monitors
-                    .get(self.selected_monitor)
-                    .map(|m| m.selected_tags)
-                    .unwrap_or(tag_mask(0));
-
-                self.windows.push(event.window);
-                self.window_tags.insert(event.window, selected_tags);
-                self.window_monitor
-                    .insert(event.window, self.selected_monitor);
-                self.set_wm_state(event.window, 1)?;
-                if let Err(error) = self.save_client_tag(event.window, selected_tags) {
-                    eprintln!("Failed to save client tag for new window: {:?}", error);
-                }
-
-                let is_transient = self.is_transient_window(event.window);
-                if is_transient {
-                    self.floating_windows.insert(event.window);
-                }
-
-                let is_normie_layout = self.layout.name() == "normie";
-                if is_normie_layout && !is_transient {
-                    let mut pointer_x: i32 = 0;
-                    let mut pointer_y: i32 = 0;
-                    let mut root_return: x11::xlib::Window = 0;
-                    let mut child_return: x11::xlib::Window = 0;
-                    let mut win_x: i32 = 0;
-                    let mut win_y: i32 = 0;
-                    let mut mask_return: u32 = 0;
-
-                    let pointer_queried = unsafe {
-                        x11::xlib::XQueryPointer(
-                            self.display,
-                            self.root as x11::xlib::Window,
-                            &mut root_return,
-                            &mut child_return,
-                            &mut pointer_x,
-                            &mut pointer_y,
-                            &mut win_x,
-                            &mut win_y,
-                            &mut mask_return,
-                        ) != 0
-                    };
-
-                    if pointer_queried {
-                        let window_width = (self.screen.width_in_pixels as f32 * 0.6) as u32;
-                        let window_height = (self.screen.height_in_pixels as f32 * 0.6) as u32;
-
-                        let spawn_x = pointer_x - (window_width as i32 / 2);
-                        let spawn_y = pointer_y - (window_height as i32 / 2);
-
-                        self.connection.configure_window(
-                            event.window,
-                            &ConfigureWindowAux::new()
-                                .x(spawn_x)
-                                .y(spawn_y)
-                                .width(window_width)
-                                .height(window_height)
-                                .border_width(self.config.border_width)
-                                .stack_mode(StackMode::ABOVE),
-                        )?;
-
-                        self.floating_windows.insert(event.window);
-                    }
-                }
-
-                self.apply_layout()?;
-                self.update_bar()?;
-                self.set_focus(event.window)?;
-
-                if self.layout.name() == "tabbed" {
-                    self.update_tab_bars()?;
+                if !self.windows.contains(&event.window) {
+                    self.manage_window(event.window)?;
                 }
             }
             Event::UnmapNotify(event) => {
@@ -2094,12 +2856,65 @@ impl WindowManager {
                     self.remove_window(event.window)?;
                 }
             }
+            Event::PropertyNotify(event) => {
+                if event.state == x11rb::protocol::xproto::Property::DELETE {
+                    return Ok(None);
+                }
+
+                if !self.clients.contains_key(&event.window) {
+                    return Ok(None);
+                }
+
+                if event.atom == AtomEnum::WM_TRANSIENT_FOR.into() {
+                    let is_floating = self.clients
+                        .get(&event.window)
+                        .map(|c| c.is_floating)
+                        .unwrap_or(false);
+
+                    if !is_floating {
+                        if let Some(transient_parent) = self.get_transient_parent(event.window) {
+                            if self.clients.contains_key(&transient_parent) {
+                                if let Some(client) = self.clients.get_mut(&event.window) {
+                                    client.is_floating = true;
+                                }
+                                self.floating_windows.insert(event.window);
+                                self.apply_layout()?;
+                            }
+                        }
+                    }
+                } else if event.atom == AtomEnum::WM_NORMAL_HINTS.into() {
+                    if let Some(client) = self.clients.get_mut(&event.window) {
+                        client.hints_valid = false;
+                    }
+                } else if event.atom == AtomEnum::WM_HINTS.into() {
+                    self.update_window_hints(event.window)?;
+                    self.update_bar()?;
+                }
+
+                if event.atom == self.atoms.wm_name || event.atom == self.atoms.net_wm_name {
+                    let _ = self.update_window_title(event.window);
+                    if self.layout.name() == "tabbed" {
+                        self.update_tab_bars()?;
+                    }
+                }
+
+                if event.atom == self.atoms.net_wm_window_type {
+                    self.update_window_type(event.window)?;
+                }
+            }
             Event::EnterNotify(event) => {
                 if event.mode != x11rb::protocol::xproto::NotifyMode::NORMAL {
                     return Ok(None);
                 }
                 if self.windows.contains(&event.event) {
-                    self.set_focus(event.event)?;
+                    if let Some(client) = self.clients.get(&event.event) {
+                        if client.monitor_index != self.selected_monitor {
+                            self.selected_monitor = client.monitor_index;
+                            self.update_bar()?;
+                        }
+                    }
+                    self.focus(Some(event.event))?;
+                    self.update_tab_bars()?;
                 }
             }
             Event::MotionNotify(event) => {
@@ -2116,7 +2931,8 @@ impl WindowManager {
 
                         let visible = self.visible_windows_on_monitor(monitor_index);
                         if let Some(&win) = visible.first() {
-                            self.set_focus(win)?;
+                            self.focus(Some(win))?;
+                            self.update_tab_bars()?;
                         }
                     }
                 }
@@ -2150,12 +2966,17 @@ impl WindowManager {
                                 Err(err) => {
                                     eprintln!("Config reload error: {}", err);
                                     self.error_message = Some(err.clone());
-                                    let screen_width = self.screen.width_in_pixels;
-                                    let screen_height = self.screen.height_in_pixels;
+                                    let monitor = &self.monitors[self.selected_monitor];
+                                    let monitor_x = monitor.screen_x as i16;
+                                    let monitor_y = monitor.screen_y as i16;
+                                    let screen_width = monitor.screen_width as u16;
+                                    let screen_height = monitor.screen_height as u16;
                                     match self.overlay.show_error(
                                         &self.connection,
                                         &self.font,
                                         &err,
+                                        monitor_x,
+                                        monitor_y,
                                         screen_width,
                                         screen_height,
                                     ) {
@@ -2217,25 +3038,24 @@ impl WindowManager {
                             self.selected_monitor = monitor_index;
                         }
 
-                        let visible_windows: Vec<Window> = self
+                        let visible_windows: Vec<(Window, String)> = self
                             .windows
                             .iter()
-                            .filter(|&&window| {
-                                let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                                if window_monitor_index != monitor_index
-                                    || self.floating_windows.contains(&window)
-                                    || self.fullscreen_windows.contains(&window)
-                                {
-                                    return false;
+                            .filter_map(|&window| {
+                                if let Some(client) = self.clients.get(&window) {
+                                    if client.monitor_index != monitor_index
+                                        || self.floating_windows.contains(&window)
+                                        || self.fullscreen_windows.contains(&window)
+                                    {
+                                        return None;
+                                    }
+                                    let monitor_tags = self.monitors.get(monitor_index).map(|m| m.tagset[m.selected_tags_index]).unwrap_or(0);
+                                    if (client.tags & monitor_tags) != 0 {
+                                        return Some((window, client.name.clone()));
+                                    }
                                 }
-                                let monitor_tags = self.monitors.get(monitor_index).map(|m| m.selected_tags).unwrap_or(0);
-                                if let Some(&tags) = self.window_tags.get(&window) {
-                                    (tags & monitor_tags) != 0
-                                } else {
-                                    false
-                                }
+                                None
                             })
-                            .copied()
                             .collect();
 
                         if let Some(clicked_window) = tab_bar.get_clicked_window(&visible_windows, event.event_x) {
@@ -2243,16 +3063,17 @@ impl WindowManager {
                                 clicked_window,
                                 &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
                             )?;
-                            self.set_focus(clicked_window)?;
+                            self.focus(Some(clicked_window))?;
                             self.update_tab_bars()?;
                         }
                     } else if event.child != x11rb::NONE {
-                        self.set_focus(event.child)?;
+                        self.focus(Some(event.child))?;
+                        self.update_tab_bars()?;
 
                         if event.detail == ButtonIndex::M1.into() {
-                            self.move_mouse(event.child)?;
+                            self.drag_window(event.child)?;
                         } else if event.detail == ButtonIndex::M3.into() {
-                            self.resize_mouse(event.child)?;
+                            self.resize_window_with_mouse(event.child)?;
                         }
                     }
                 }
@@ -2272,7 +3093,129 @@ impl WindowManager {
                     }
                 }
             }
+            Event::ConfigureRequest(event) => {
+                if self.windows.contains(&event.window) {
+                    let monitor_index = self.clients.get(&event.window)
+                        .map(|c| c.monitor_index)
+                        .unwrap_or(self.selected_monitor);
+                    let monitor = &self.monitors[monitor_index];
+                    let is_floating = self.floating_windows.contains(&event.window);
+                    let is_tiling_layout = self.layout.name() != "normie";
+
+                    if is_floating || !is_tiling_layout {
+                        let cached_geom = self.window_geometry_cache.get(&event.window);
+                        let border_width = self.config.border_width as u16;
+
+                        let mut config = ConfigureWindowAux::new();
+                        let value_mask = event.value_mask;
+
+                        if value_mask.contains(ConfigWindow::BORDER_WIDTH) {
+                            config = config.border_width(event.border_width as u32);
+                        }
+
+                        if value_mask.contains(ConfigWindow::X) {
+                            let mut x = event.x as i32;
+                            x = x.max(monitor.screen_x);
+                            if x + event.width as i32 + 2 * border_width as i32 > monitor.screen_x + monitor.screen_width as i32 {
+                                x = monitor.screen_x + monitor.screen_width as i32 - event.width as i32 - 2 * border_width as i32;
+                            }
+                            config = config.x(x);
+                        }
+
+                        if value_mask.contains(ConfigWindow::Y) {
+                            let mut y = event.y as i32;
+                            y = y.max(monitor.screen_y);
+                            if y + event.height as i32 + 2 * border_width as i32 > monitor.screen_y + monitor.screen_height as i32 {
+                                y = monitor.screen_y + monitor.screen_height as i32 - event.height as i32 - 2 * border_width as i32;
+                            }
+                            config = config.y(y);
+                        }
+
+                        if value_mask.contains(ConfigWindow::WIDTH) {
+                            config = config.width(event.width as u32);
+                        }
+
+                        if value_mask.contains(ConfigWindow::HEIGHT) {
+                            config = config.height(event.height as u32);
+                        }
+
+                        if value_mask.contains(ConfigWindow::SIBLING) {
+                            config = config.sibling(event.sibling);
+                        }
+
+                        if value_mask.contains(ConfigWindow::STACK_MODE) {
+                            config = config.stack_mode(event.stack_mode);
+                        }
+
+                        self.connection.configure_window(event.window, &config)?;
+
+                        let final_x = if value_mask.contains(ConfigWindow::X) {
+                            let mut x = event.x as i32;
+                            x = x.max(monitor.screen_x);
+                            if x + event.width as i32 + 2 * border_width as i32 > monitor.screen_x + monitor.screen_width as i32 {
+                                x = monitor.screen_x + monitor.screen_width as i32 - event.width as i32 - 2 * border_width as i32;
+                            }
+                            x as i16
+                        } else {
+                            cached_geom.map(|g| g.x_position).unwrap_or(0)
+                        };
+
+                        let final_y = if value_mask.contains(ConfigWindow::Y) {
+                            let mut y = event.y as i32;
+                            y = y.max(monitor.screen_y);
+                            if y + event.height as i32 + 2 * border_width as i32 > monitor.screen_y + monitor.screen_height as i32 {
+                                y = monitor.screen_y + monitor.screen_height as i32 - event.height as i32 - 2 * border_width as i32;
+                            }
+                            y as i16
+                        } else {
+                            cached_geom.map(|g| g.y_position).unwrap_or(0)
+                        };
+
+                        let final_width = if value_mask.contains(ConfigWindow::WIDTH) { event.width } else { cached_geom.map(|g| g.width).unwrap_or(1) };
+                        let final_height = if value_mask.contains(ConfigWindow::HEIGHT) { event.height } else { cached_geom.map(|g| g.height).unwrap_or(1) };
+
+                        self.update_geometry_cache(event.window, CachedGeometry {
+                            x_position: final_x,
+                            y_position: final_y,
+                            width: final_width,
+                            height: final_height,
+                            border_width: if value_mask.contains(ConfigWindow::BORDER_WIDTH) { event.border_width } else { border_width },
+                        });
+
+                        if is_floating {
+                            let new_monitor = self.get_monitor_for_rect(final_x as i32, final_y as i32, final_width as i32, final_height as i32);
+
+                            if new_monitor != monitor_index {
+                                self.move_window_to_monitor(event.window, new_monitor)?;
+                            }
+                        }
+                    } else {
+                        self.send_configure_notify(event.window)?;
+                    }
+                } else {
+                    let mut config = ConfigureWindowAux::new()
+                        .x(event.x as i32)
+                        .y(event.y as i32)
+                        .width(event.width as u32)
+                        .height(event.height as u32)
+                        .border_width(event.border_width as u32);
+
+                    if event.value_mask.contains(ConfigWindow::SIBLING) {
+                        config = config.sibling(event.sibling);
+                    }
+
+                    if event.value_mask.contains(ConfigWindow::STACK_MODE) {
+                        config = config.stack_mode(event.stack_mode);
+                    }
+
+                    self.connection.configure_window(event.window, &config)?;
+                }
+            }
             Event::ClientMessage(event) => {
+                if !self.clients.contains_key(&event.window) {
+                    return Ok(None);
+                }
+
                 if event.type_ == self.atoms.net_wm_state {
                     if let Some(data) = event.data.as_data32().get(1) {
                         if *data == self.atoms.net_wm_state_fullscreen {
@@ -2286,6 +3229,46 @@ impl WindowManager {
                             self.set_window_fullscreen(event.window, fullscreen)?;
                         }
                     }
+                } else if event.type_ == self.atoms.net_active_window {
+                    let selected_window = self.monitors
+                        .get(self.selected_monitor)
+                        .and_then(|m| m.selected_client);
+
+                    let is_urgent = self.clients
+                        .get(&event.window)
+                        .map(|c| c.is_urgent)
+                        .unwrap_or(false);
+
+                    if Some(event.window) != selected_window && !is_urgent {
+                        self.set_urgent(event.window, true)?;
+                    }
+                }
+            }
+            Event::FocusIn(event) => {
+                let selected_window = self.monitors
+                    .get(self.selected_monitor)
+                    .and_then(|m| m.selected_client);
+
+                if let Some(sel_win) = selected_window {
+                    if event.event != sel_win {
+                        self.set_focus(sel_win)?;
+                    }
+                }
+            }
+            Event::MappingNotify(event) => {
+                if event.request == x11rb::protocol::xproto::Mapping::KEYBOARD {
+                    keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
+                }
+            }
+            Event::ConfigureNotify(event) => {
+                if event.window == self.root {
+                    let old_width = self.screen.width_in_pixels;
+                    let old_height = self.screen.height_in_pixels;
+
+                    if event.width != old_width || event.height != old_height {
+                        self.screen = self.connection.setup().roots[self.screen_number].clone();
+                        self.apply_layout()?;
+                    }
                 }
             }
             _ => {}
@@ -2294,12 +3277,11 @@ impl WindowManager {
     }
 
     fn apply_layout(&mut self) -> WmResult<()> {
-        if self.layout.name() == LayoutType::Normie.as_str() {
-            return Ok(());
-        }
+        let is_normie = self.layout.name() == LayoutType::Normie.as_str();
 
-        let monitor_count = self.monitors.len();
-        for monitor_index in 0..monitor_count {
+        if !is_normie {
+            let monitor_count = self.monitors.len();
+            for monitor_index in 0..monitor_count {
             let monitor = &self.monitors[monitor_index];
             let border_width = self.config.border_width;
 
@@ -2319,31 +3301,21 @@ impl WindowManager {
                 }
             };
 
-            let monitor_selected_tags = monitor.selected_tags;
-            let monitor_x = monitor.x;
-            let monitor_y = monitor.y;
-            let monitor_width = monitor.width;
-            let monitor_height = monitor.height;
+            let monitor_x = monitor.screen_x;
+            let monitor_y = monitor.screen_y;
+            let monitor_width = monitor.screen_width;
+            let monitor_height = monitor.screen_height;
 
-            let visible: Vec<Window> = self
-                .windows
-                .iter()
-                .filter(|&&window| {
-                    let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                    if window_monitor_index != monitor_index
-                        || self.floating_windows.contains(&window)
-                        || self.fullscreen_windows.contains(&window)
-                    {
-                        return false;
-                    }
-                    if let Some(&tags) = self.window_tags.get(&window) {
-                        (tags & monitor_selected_tags) != 0
-                    } else {
-                        false
-                    }
-                })
-                .copied()
-                .collect();
+            let mut visible: Vec<Window> = Vec::new();
+            let mut current = self.next_tiled(monitor.clients_head, monitor);
+            while let Some(window) = current {
+                visible.push(window);
+                if let Some(client) = self.clients.get(&window) {
+                    current = self.next_tiled(client.next, monitor);
+                } else {
+                    break;
+                }
+            }
 
             let bar_height = if self.show_bar {
                 self.bars
@@ -2353,18 +3325,46 @@ impl WindowManager {
             } else {
                 0
             };
-            let usable_height = monitor_height.saturating_sub(bar_height);
+            let usable_height = monitor_height.saturating_sub(bar_height as i32);
+            let master_factor = monitor.master_factor;
+            let num_master = monitor.num_master;
+            let smartgaps_enabled = self.config.smartgaps_enabled;
 
-            let geometries = self
-                .layout
-                .arrange(&visible, monitor_width, usable_height, &gaps);
+            let geometries = self.layout.arrange(
+                &visible,
+                monitor_width as u32,
+                usable_height as u32,
+                &gaps,
+                master_factor,
+                num_master,
+                smartgaps_enabled,
+            );
 
             for (window, geometry) in visible.iter().zip(geometries.iter()) {
-                let adjusted_width = geometry.width.saturating_sub(2 * border_width);
-                let adjusted_height = geometry.height.saturating_sub(2 * border_width);
+                let mut adjusted_width = geometry.width.saturating_sub(2 * border_width);
+                let mut adjusted_height = geometry.height.saturating_sub(2 * border_width);
+
+                if let Some(client) = self.clients.get(window) {
+                    if !client.is_floating {
+                        let (hint_width, hint_height) = self.apply_size_hints(
+                            client,
+                            adjusted_width as i32,
+                            adjusted_height as i32,
+                        );
+                        adjusted_width = hint_width as u32;
+                        adjusted_height = hint_height as u32;
+                    }
+                }
 
                 let adjusted_x = geometry.x_coordinate + monitor_x;
                 let adjusted_y = geometry.y_coordinate + monitor_y + bar_height as i32;
+
+                if let Some(client) = self.clients.get_mut(window) {
+                    client.x_position = adjusted_x as i16;
+                    client.y_position = adjusted_y as i16;
+                    client.width = adjusted_width as u16;
+                    client.height = adjusted_height as u16;
+                }
 
                 self.connection.configure_window(
                     *window,
@@ -2384,6 +3384,12 @@ impl WindowManager {
                     border_width: border_width as u16,
                 });
             }
+            }
+        }
+
+        for monitor_index in 0..self.monitors.len() {
+            let stack_head = self.monitors[monitor_index].stack_head;
+            self.showhide(stack_head)?;
         }
 
         self.connection.flush()?;
@@ -2413,9 +3419,9 @@ impl WindowManager {
                         0.0
                     };
 
-                    let tab_bar_x = (monitor.x + outer_horizontal as i32) as i16;
-                    let tab_bar_y = (monitor.y as f32 + bar_height + outer_vertical as f32) as i16;
-                    let tab_bar_width = monitor.width.saturating_sub(2 * outer_horizontal) as u16;
+                    let tab_bar_x = (monitor.screen_x + outer_horizontal as i32) as i16;
+                    let tab_bar_y = (monitor.screen_y as f32 + bar_height + outer_vertical as f32) as i16;
+                    let tab_bar_width = monitor.screen_width.saturating_sub(2 * outer_horizontal as i32) as u16;
 
                     if let Err(e) = self.tab_bars[monitor_index].reposition(
                         &self.connection,
@@ -2434,16 +3440,15 @@ impl WindowManager {
                 .windows
                 .iter()
                 .any(|&window| {
-                    let window_monitor_index = self.window_monitor.get(&window).copied().unwrap_or(0);
-                    if window_monitor_index != monitor_index
-                        || self.floating_windows.contains(&window)
-                        || self.fullscreen_windows.contains(&window)
-                    {
-                        return false;
-                    }
-                    if let Some(monitor) = self.monitors.get(monitor_index) {
-                        if let Some(&tags) = self.window_tags.get(&window) {
-                            return (tags & monitor.selected_tags) != 0;
+                    if let Some(client) = self.clients.get(&window) {
+                        if client.monitor_index != monitor_index
+                            || self.floating_windows.contains(&window)
+                            || self.fullscreen_windows.contains(&window)
+                        {
+                            return false;
+                        }
+                        if let Some(monitor) = self.monitors.get(monitor_index) {
+                            return (client.tags & monitor.tagset[monitor.selected_tags_index]) != 0;
                         }
                     }
                     false
@@ -2498,26 +3503,484 @@ impl WindowManager {
         Ok(cached)
     }
 
+    fn send_configure_notify(&mut self, window: Window) -> WmResult<()> {
+        let geometry = self.get_or_query_geometry(window)?;
+
+        let event = x11rb::protocol::xproto::ConfigureNotifyEvent {
+            response_type: x11rb::protocol::xproto::CONFIGURE_NOTIFY_EVENT,
+            sequence: 0,
+            event: window,
+            window,
+            above_sibling: x11rb::NONE,
+            x: geometry.x_position,
+            y: geometry.y_position,
+            width: geometry.width,
+            height: geometry.height,
+            border_width: geometry.border_width,
+            override_redirect: false,
+        };
+
+        self.connection.send_event(
+            false,
+            window,
+            x11rb::protocol::xproto::EventMask::STRUCTURE_NOTIFY,
+            event,
+        )?;
+
+        Ok(())
+    }
+
+    fn update_size_hints(&mut self, window: Window) -> WmResult<()> {
+        let size_hints = self.connection
+            .get_property(
+                false,
+                window,
+                x11rb::protocol::xproto::AtomEnum::WM_NORMAL_HINTS,
+                x11rb::protocol::xproto::AtomEnum::WM_SIZE_HINTS,
+                0,
+                18,
+            )?
+            .reply()?;
+
+        if size_hints.value.is_empty() {
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.hints_valid = false;
+            }
+            return Ok(());
+        }
+
+        if size_hints.value.len() < 18 * 4 {
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.hints_valid = false;
+            }
+            return Ok(());
+        }
+
+        let read_u32 = |offset: usize| -> u32 {
+            let bytes = &size_hints.value[offset * 4..(offset + 1) * 4];
+            u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        };
+
+        let flags = read_u32(0);
+
+        const P_SIZE: u32 = 1 << 3;
+        const P_MIN_SIZE: u32 = 1 << 4;
+        const P_MAX_SIZE: u32 = 1 << 5;
+        const P_RESIZE_INC: u32 = 1 << 6;
+        const P_ASPECT: u32 = 1 << 7;
+        const P_BASE_SIZE: u32 = 1 << 8;
+
+        if let Some(client) = self.clients.get_mut(&window) {
+            if flags & P_BASE_SIZE != 0 {
+                client.base_width = read_u32(8) as i32;
+                client.base_height = read_u32(9) as i32;
+            } else if flags & P_MIN_SIZE != 0 {
+                client.base_width = read_u32(5) as i32;
+                client.base_height = read_u32(6) as i32;
+            } else {
+                client.base_width = 0;
+                client.base_height = 0;
+            }
+
+            if flags & P_RESIZE_INC != 0 {
+                client.increment_width = read_u32(10) as i32;
+                client.increment_height = read_u32(11) as i32;
+            } else {
+                client.increment_width = 0;
+                client.increment_height = 0;
+            }
+
+            if flags & P_MAX_SIZE != 0 {
+                client.max_width = read_u32(7) as i32;
+                client.max_height = read_u32(8) as i32;
+            } else {
+                client.max_width = 0;
+                client.max_height = 0;
+            }
+
+            if flags & P_MIN_SIZE != 0 {
+                client.min_width = read_u32(5) as i32;
+                client.min_height = read_u32(6) as i32;
+            } else if flags & P_SIZE != 0 {
+                client.min_width = read_u32(3) as i32;
+                client.min_height = read_u32(4) as i32;
+            } else {
+                client.min_width = 0;
+                client.min_height = 0;
+            }
+
+            if flags & P_ASPECT != 0 {
+                client.min_aspect = (read_u32(12) as f32) / (read_u32(13) as f32).max(1.0);
+                client.max_aspect = (read_u32(14) as f32) / (read_u32(15) as f32).max(1.0);
+            } else {
+                client.min_aspect = 0.0;
+                client.max_aspect = 0.0;
+            }
+
+            client.is_fixed = client.max_width > 0
+                && client.max_height > 0
+                && client.max_width == client.min_width
+                && client.max_height == client.min_height;
+
+            client.hints_valid = true;
+        }
+        Ok(())
+    }
+
+    fn update_window_title(&mut self, window: Window) -> WmResult<()> {
+        let net_name = self.connection
+            .get_property(
+                false,
+                window,
+                self.atoms.net_wm_name,
+                self.atoms.utf8_string,
+                0,
+                256,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok());
+
+        if let Some(name) = net_name {
+            if !name.value.is_empty() {
+                if let Ok(title) = String::from_utf8(name.value.clone()) {
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.name = title;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        let wm_name = self.connection
+            .get_property(
+                false,
+                window,
+                self.atoms.wm_name,
+                x11rb::protocol::xproto::AtomEnum::STRING,
+                0,
+                256,
+            )?
+            .reply()?;
+
+        if !wm_name.value.is_empty() {
+            if let Ok(title) = String::from_utf8(wm_name.value.clone()) {
+                if let Some(client) = self.clients.get_mut(&window) {
+                    client.name = title;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn update_window_hints(&mut self, window: Window) -> WmResult<()> {
+        let hints_reply = self.connection.get_property(
+            false,
+            window,
+            AtomEnum::WM_HINTS,
+            AtomEnum::WM_HINTS,
+            0,
+            9,
+        )?.reply();
+
+        if let Ok(hints) = hints_reply {
+            if hints.value.len() >= 4 {
+                let flags = u32::from_ne_bytes([
+                    hints.value[0],
+                    hints.value[1],
+                    hints.value[2],
+                    hints.value[3],
+                ]);
+
+                let selected_window = self.monitors
+                    .get(self.selected_monitor)
+                    .and_then(|m| m.selected_client);
+
+                if Some(window) == selected_window && (flags & 256) != 0 {
+                    let new_flags = flags & !256;
+                    let mut new_hints = hints.value.clone();
+                    new_hints[0..4].copy_from_slice(&new_flags.to_ne_bytes());
+
+                    self.connection.change_property(
+                        x11rb::protocol::xproto::PropMode::REPLACE,
+                        window,
+                        AtomEnum::WM_HINTS,
+                        AtomEnum::WM_HINTS,
+                        32,
+                        9,
+                        &new_hints,
+                    )?;
+                } else {
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.is_urgent = (flags & 256) != 0;
+                    }
+                }
+
+                if hints.value.len() >= 8 && (flags & 1) != 0 {
+                    let input = i32::from_ne_bytes([
+                        hints.value[4],
+                        hints.value[5],
+                        hints.value[6],
+                        hints.value[7],
+                    ]);
+
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.never_focus = input == 0;
+                    }
+                } else {
+                    if let Some(client) = self.clients.get_mut(&window) {
+                        client.never_focus = false;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn update_window_type(&mut self, window: Window) -> WmResult<()> {
+        if let Ok(Some(state_atom)) = self.get_window_atom_property(window, self.atoms.net_wm_state) {
+            if state_atom == self.atoms.net_wm_state_fullscreen {
+                self.set_window_fullscreen(window, true)?;
+            }
+        }
+
+        if let Ok(Some(type_atom)) = self.get_window_atom_property(window, self.atoms.net_wm_window_type) {
+            if type_atom == self.atoms.net_wm_window_type_dialog {
+                if let Some(client) = self.clients.get_mut(&window) {
+                    client.is_floating = true;
+                }
+                self.floating_windows.insert(window);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn apply_size_hints(&self, client: &Client, mut width: i32, mut height: i32) -> (i32, i32) {
+        if !client.hints_valid {
+            return (width.max(1), height.max(1));
+        }
+
+        if client.min_width > 0 {
+            width = width.max(client.min_width);
+        }
+        if client.min_height > 0 {
+            height = height.max(client.min_height);
+        }
+
+        if client.max_width > 0 {
+            width = width.min(client.max_width);
+        }
+        if client.max_height > 0 {
+            height = height.min(client.max_height);
+        }
+
+        if client.increment_width > 0 {
+            width -= client.base_width;
+            width -= width % client.increment_width;
+            width += client.base_width;
+        }
+        if client.increment_height > 0 {
+            height -= client.base_height;
+            height -= height % client.increment_height;
+            height += client.base_height;
+        }
+
+        if client.min_aspect > 0.0 || client.max_aspect > 0.0 {
+            let actual_aspect = width as f32 / height as f32;
+
+            if client.max_aspect > 0.0 && actual_aspect > client.max_aspect {
+                width = (height as f32 * client.max_aspect) as i32;
+            } else if client.min_aspect > 0.0 && actual_aspect < client.min_aspect {
+                height = (width as f32 / client.min_aspect) as i32;
+            }
+        }
+
+        (width.max(1), height.max(1))
+    }
+
+    fn next_tiled(&self, start: Option<Window>, monitor: &Monitor) -> Option<Window> {
+        let mut current = start;
+        while let Some(window) = current {
+            if let Some(client) = self.clients.get(&window) {
+                let visible_tags = client.tags & monitor.tagset[monitor.selected_tags_index];
+                if visible_tags != 0 && !client.is_floating {
+                    return Some(window);
+                }
+                current = client.next;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    fn next_tagged(&self, start: Option<Window>, tags: u32) -> Option<Window> {
+        let mut current = start;
+        while let Some(window) = current {
+            if let Some(client) = self.clients.get(&window) {
+                let visible_on_tags = (client.tags & tags) != 0;
+                if !client.is_floating && visible_on_tags {
+                    return Some(window);
+                }
+                current = client.next;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    fn attach(&mut self, window: Window, monitor_index: usize) {
+        if let Some(monitor) = self.monitors.get_mut(monitor_index) {
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.next = monitor.clients_head;
+                monitor.clients_head = Some(window);
+            }
+        }
+    }
+
+    fn attach_aside(&mut self, window: Window, monitor_index: usize) {
+        let monitor = match self.monitors.get(monitor_index) {
+            Some(m) => m,
+            None => return,
+        };
+
+        let new_window_tags = self.clients.get(&window).map(|c| c.tags).unwrap_or(0);
+        let first_tagged = self.next_tagged(monitor.clients_head, new_window_tags);
+
+        if first_tagged.is_none() {
+            self.attach(window, monitor_index);
+            return;
+        }
+
+        if let Some(insert_after_window) = first_tagged {
+            if let Some(after_client) = self.clients.get(&insert_after_window) {
+                let old_next = after_client.next;
+                if let Some(new_client) = self.clients.get_mut(&window) {
+                    new_client.next = old_next;
+                }
+                if let Some(after_client_mut) = self.clients.get_mut(&insert_after_window) {
+                    after_client_mut.next = Some(window);
+                }
+            }
+        }
+    }
+
+    fn detach(&mut self, window: Window) {
+        let monitor_index = self.clients.get(&window).map(|c| c.monitor_index);
+        if let Some(monitor_index) = monitor_index {
+            if let Some(monitor) = self.monitors.get_mut(monitor_index) {
+                if monitor.clients_head == Some(window) {
+                    if let Some(client) = self.clients.get(&window) {
+                        monitor.clients_head = client.next;
+                    }
+                } else {
+                    let mut current = monitor.clients_head;
+                    while let Some(current_window) = current {
+                        if let Some(current_client) = self.clients.get(&current_window) {
+                            if current_client.next == Some(window) {
+                                let new_next = self.clients.get(&window).and_then(|c| c.next);
+                                if let Some(current_client_mut) = self.clients.get_mut(&current_window) {
+                                    current_client_mut.next = new_next;
+                                }
+                                break;
+                            }
+                            current = current_client.next;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn attach_stack(&mut self, window: Window, monitor_index: usize) {
+        if let Some(monitor) = self.monitors.get_mut(monitor_index) {
+            if let Some(client) = self.clients.get_mut(&window) {
+                client.stack_next = monitor.stack_head;
+                monitor.stack_head = Some(window);
+            }
+        }
+    }
+
+    fn detach_stack(&mut self, window: Window) {
+        let monitor_index = self.clients.get(&window).map(|c| c.monitor_index);
+        if let Some(monitor_index) = monitor_index {
+            if let Some(monitor) = self.monitors.get_mut(monitor_index) {
+                if monitor.stack_head == Some(window) {
+                    if let Some(client) = self.clients.get(&window) {
+                        monitor.stack_head = client.stack_next;
+                    }
+                    let should_update_selected = monitor.selected_client == Some(window);
+                    let mut new_selected: Option<Window> = None;
+                    if should_update_selected {
+                        let mut stack_current = monitor.stack_head;
+                        while let Some(stack_window) = stack_current {
+                            if let Some(stack_client) = self.clients.get(&stack_window) {
+                                if self.is_window_visible(stack_window) {
+                                    new_selected = Some(stack_window);
+                                    break;
+                                }
+                                stack_current = stack_client.stack_next;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    if should_update_selected {
+                        if let Some(monitor) = self.monitors.get_mut(monitor_index) {
+                            monitor.selected_client = new_selected;
+                        }
+                    }
+                } else {
+                    let mut current = monitor.stack_head;
+                    while let Some(current_window) = current {
+                        if let Some(current_client) = self.clients.get(&current_window) {
+                            if current_client.stack_next == Some(window) {
+                                let new_stack_next = self.clients.get(&window).and_then(|c| c.stack_next);
+                                if let Some(current_client_mut) = self.clients.get_mut(&current_window) {
+                                    current_client_mut.stack_next = new_stack_next;
+                                }
+                                break;
+                            }
+                            current = current_client.stack_next;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn remove_window(&mut self, window: Window) -> WmResult<()> {
         let initial_count = self.windows.len();
 
+        let focused = self
+            .monitors
+            .get(self.selected_monitor)
+            .and_then(|m| m.selected_client);
+
+        if self.clients.contains_key(&window) {
+            self.detach(window);
+            self.detach_stack(window);
+            self.clients.remove(&window);
+        }
+
         self.windows.retain(|&w| w != window);
-        self.window_tags.remove(&window);
-        self.window_monitor.remove(&window);
         self.window_geometry_cache.remove(&window);
         self.floating_windows.remove(&window);
 
         if self.windows.len() < initial_count {
-            let focused = self
-                .monitors
-                .get(self.selected_monitor)
-                .and_then(|m| m.focused_window);
             if focused == Some(window) {
                 let visible = self.visible_windows_on_monitor(self.selected_monitor);
                 if let Some(&new_win) = visible.last() {
-                    self.set_focus(new_win)?;
+                    self.focus(Some(new_win))?;
                 } else if let Some(monitor) = self.monitors.get_mut(self.selected_monitor) {
-                    monitor.focused_window = None;
+                    monitor.selected_client = None;
                 }
             }
 

@@ -16,6 +16,7 @@ pub struct ConfigBuilder {
     pub border_unfocused: u32,
     pub font: String,
     pub gaps_enabled: bool,
+    pub smartgaps_enabled: bool,
     pub gap_inner_horizontal: u32,
     pub gap_inner_vertical: u32,
     pub gap_outer_horizontal: u32,
@@ -25,6 +26,7 @@ pub struct ConfigBuilder {
     pub tags: Vec<String>,
     pub layout_symbols: Vec<crate::LayoutSymbolOverride>,
     pub keybindings: Vec<KeyBinding>,
+    pub window_rules: Vec<crate::WindowRule>,
     pub status_blocks: Vec<BlockConfig>,
     pub scheme_normal: ColorScheme,
     pub scheme_occupied: ColorScheme,
@@ -40,6 +42,7 @@ impl Default for ConfigBuilder {
             border_unfocused: 0xbbbbbb,
             font: "monospace:style=Bold:size=10".to_string(),
             gaps_enabled: true,
+            smartgaps_enabled: true,
             gap_inner_horizontal: 5,
             gap_inner_vertical: 5,
             gap_outer_horizontal: 5,
@@ -49,6 +52,7 @@ impl Default for ConfigBuilder {
             tags: vec!["1".into(), "2".into(), "3".into()],
             layout_symbols: Vec::new(),
             keybindings: Vec::new(),
+            window_rules: Vec::new(),
             status_blocks: Vec::new(),
             scheme_normal: ColorScheme {
                 foreground: 0xffffff,
@@ -84,6 +88,8 @@ pub fn register_api(lua: &Lua) -> Result<SharedBuilder, ConfigError> {
     register_client_module(&lua, &oxwm_table)?;
     register_layout_module(&lua, &oxwm_table)?;
     register_tag_module(&lua, &oxwm_table)?;
+    register_monitor_module(&lua, &oxwm_table)?;
+    register_rule_module(&lua, &oxwm_table, builder.clone())?;
     register_bar_module(&lua, &oxwm_table, builder.clone())?;
     register_misc(&lua, &oxwm_table, builder.clone())?;
 
@@ -184,11 +190,18 @@ fn register_gaps_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Re
         Ok(())
     })?;
 
+    let builder_clone = builder.clone();
+    let set_smart = lua.create_function(move |_, enabled: bool| {
+        builder_clone.borrow_mut().smartgaps_enabled = enabled;
+        Ok(())
+    })?;
+
     gaps_table.set("set_enabled", set_enabled)?;
     gaps_table.set("enable", enable)?;
     gaps_table.set("disable", disable)?;
     gaps_table.set("set_inner", set_inner)?;
     gaps_table.set("set_outer", set_outer)?;
+    gaps_table.set("set_smart", set_smart)?;
     parent.set("gaps", gaps_table)?;
     Ok(())
 }
@@ -242,33 +255,15 @@ fn register_client_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> 
         create_action_table(lua, "FocusStack", Value::Integer(dir as i64))
     })?;
 
-    let focus_direction = lua.create_function(|lua, dir: String| {
-        let dir_int = direction_string_to_int(&dir)?;
-        create_action_table(lua, "FocusDirection", Value::Integer(dir_int))
-    })?;
-
-    let swap_direction = lua.create_function(|lua, dir: String| {
-        let dir_int = direction_string_to_int(&dir)?;
-        create_action_table(lua, "SwapDirection", Value::Integer(dir_int))
-    })?;
-
-    let smart_move = lua.create_function(|lua, dir: String| {
-        let dir_int = direction_string_to_int(&dir)?;
-        create_action_table(lua, "SmartMoveWin", Value::Integer(dir_int))
-    })?;
-
-    let exchange = lua.create_function(|lua, ()| {
-        create_action_table(lua, "ExchangeClient", Value::Nil)
+    let move_stack = lua.create_function(|lua, dir: i32| {
+        create_action_table(lua, "MoveStack", Value::Integer(dir as i64))
     })?;
 
     client_table.set("kill", kill)?;
     client_table.set("toggle_fullscreen", toggle_fullscreen)?;
     client_table.set("toggle_floating", toggle_floating)?;
     client_table.set("focus_stack", focus_stack)?;
-    client_table.set("focus_direction", focus_direction)?;
-    client_table.set("swap_direction", swap_direction)?;
-    client_table.set("smart_move", smart_move)?;
-    client_table.set("exchange", exchange)?;
+    client_table.set("move_stack", move_stack)?;
 
     parent.set("client", client_table)?;
     Ok(())
@@ -298,13 +293,79 @@ fn register_tag_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
         create_action_table(lua, "ViewTag", Value::Integer(idx as i64))
     })?;
 
+    let toggleview = lua.create_function(|lua, idx: i32| {
+        create_action_table(lua, "ToggleView", Value::Integer(idx as i64))
+    })?;
+
     let move_to = lua.create_function(|lua, idx: i32| {
         create_action_table(lua, "MoveToTag", Value::Integer(idx as i64))
     })?;
 
+    let toggletag = lua.create_function(|lua, idx: i32| {
+        create_action_table(lua, "ToggleTag", Value::Integer(idx as i64))
+    })?;
+
     tag_table.set("view", view)?;
+    tag_table.set("toggleview", toggleview)?;
     tag_table.set("move_to", move_to)?;
+    tag_table.set("toggletag", toggletag)?;
     parent.set("tag", tag_table)?;
+    Ok(())
+}
+
+fn register_monitor_module(lua: &Lua, parent: &Table) -> Result<(), ConfigError> {
+    let monitor_table = lua.create_table()?;
+
+    let focus = lua.create_function(|lua, direction: i64| {
+        create_action_table(lua, "FocusMonitor", Value::Integer(direction))
+    })?;
+
+    let tag = lua.create_function(|lua, direction: i64| {
+        create_action_table(lua, "TagMonitor", Value::Integer(direction))
+    })?;
+
+    monitor_table.set("focus", focus)?;
+    monitor_table.set("tag", tag)?;
+    parent.set("monitor", monitor_table)?;
+    Ok(())
+}
+
+fn register_rule_module(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<(), ConfigError> {
+    let rule_table = lua.create_table()?;
+
+    let builder_clone = builder.clone();
+    let add = lua.create_function(move |_, config: Table| {
+        let class: Option<String> = config.get("class").ok();
+        let instance: Option<String> = config.get("instance").ok();
+        let title: Option<String> = config.get("title").ok();
+        let is_floating: Option<bool> = config.get("floating").ok();
+        let monitor: Option<usize> = config.get("monitor").ok();
+
+        let tags: Option<u32> = if let Ok(tag_index) = config.get::<i32>("tag") {
+            if tag_index > 0 {
+                Some(1 << (tag_index - 1))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let rule = crate::WindowRule {
+            class,
+            instance,
+            title,
+            tags,
+            is_floating,
+            monitor,
+        };
+
+        builder_clone.borrow_mut().window_rules.push(rule);
+        Ok(())
+    })?;
+
+    rule_table.set("add", add)?;
+    parent.set("rule", rule_table)?;
     Ok(())
 }
 
@@ -594,6 +655,14 @@ fn register_misc(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<()
         create_action_table(lua, "ToggleGaps", Value::Nil)
     })?;
 
+    let set_master_factor = lua.create_function(|lua, delta: i32| {
+        create_action_table(lua, "SetMasterFactor", Value::Integer(delta as i64))
+    })?;
+
+    let inc_num_master = lua.create_function(|lua, delta: i32| {
+        create_action_table(lua, "IncNumMaster", Value::Integer(delta as i64))
+    })?;
+
     let show_keybinds = lua.create_function(|lua, ()| {
         create_action_table(lua, "ShowKeybindOverlay", Value::Nil)
     })?;
@@ -626,6 +695,8 @@ fn register_misc(lua: &Lua, parent: &Table, builder: SharedBuilder) -> Result<()
     parent.set("restart", restart)?;
     parent.set("recompile", recompile)?;
     parent.set("toggle_gaps", toggle_gaps)?;
+    parent.set("set_master_factor", set_master_factor)?;
+    parent.set("inc_num_master", inc_num_master)?;
     parent.set("show_keybinds", show_keybinds)?;
     parent.set("focus_monitor", focus_monitor)?;
     Ok(())
@@ -707,21 +778,23 @@ fn string_to_action(s: &str) -> mlua::Result<KeyAction> {
         "SpawnTerminal" => Ok(KeyAction::SpawnTerminal),
         "KillClient" => Ok(KeyAction::KillClient),
         "FocusStack" => Ok(KeyAction::FocusStack),
-        "FocusDirection" => Ok(KeyAction::FocusDirection),
-        "SwapDirection" => Ok(KeyAction::SwapDirection),
+        "MoveStack" => Ok(KeyAction::MoveStack),
         "Quit" => Ok(KeyAction::Quit),
         "Restart" => Ok(KeyAction::Restart),
         "Recompile" => Ok(KeyAction::Recompile),
         "ViewTag" => Ok(KeyAction::ViewTag),
+        "ToggleView" => Ok(KeyAction::ToggleView),
+        "MoveToTag" => Ok(KeyAction::MoveToTag),
+        "ToggleTag" => Ok(KeyAction::ToggleTag),
         "ToggleGaps" => Ok(KeyAction::ToggleGaps),
+        "SetMasterFactor" => Ok(KeyAction::SetMasterFactor),
+        "IncNumMaster" => Ok(KeyAction::IncNumMaster),
         "ToggleFullScreen" => Ok(KeyAction::ToggleFullScreen),
         "ToggleFloating" => Ok(KeyAction::ToggleFloating),
         "ChangeLayout" => Ok(KeyAction::ChangeLayout),
         "CycleLayout" => Ok(KeyAction::CycleLayout),
-        "MoveToTag" => Ok(KeyAction::MoveToTag),
         "FocusMonitor" => Ok(KeyAction::FocusMonitor),
-        "SmartMoveWin" => Ok(KeyAction::SmartMoveWin),
-        "ExchangeClient" => Ok(KeyAction::ExchangeClient),
+        "TagMonitor" => Ok(KeyAction::TagMonitor),
         "ShowKeybindOverlay" => Ok(KeyAction::ShowKeybindOverlay),
         _ => Err(mlua::Error::RuntimeError(format!("unknown action '{}'. this is an internal error, please report it", s))),
     }
@@ -750,18 +823,6 @@ fn create_action_table(lua: &Lua, action_name: &str, arg: Value) -> mlua::Result
     table.set("__action", action_name)?;
     table.set("__arg", arg)?;
     Ok(table)
-}
-
-fn direction_string_to_int(dir: &str) -> mlua::Result<i64> {
-    match dir {
-        "up" => Ok(0),
-        "down" => Ok(1),
-        "left" => Ok(2),
-        "right" => Ok(3),
-        _ => Err(mlua::Error::RuntimeError(
-            format!("invalid direction '{}'. must be one of: up, down, left, right", dir)
-        )),
-    }
 }
 
 fn parse_color_value(value: Value) -> mlua::Result<u32> {

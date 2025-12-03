@@ -86,6 +86,9 @@ pub trait Layout {
         screen_width: u32,
         screen_height: u32,
         gaps: &GapConfig,
+        master_factor: f32,
+        num_master: i32,
+        smartgaps_enabled: bool,
     ) -> Vec<WindowGeometry>;
     fn name(&self) -> &'static str;
     fn symbol(&self) -> &'static str;

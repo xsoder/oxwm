@@ -67,6 +67,11 @@
         environment.systemPackages = [
           cfg.package
         ];
+
+        environment.pathsToLink = [
+          "/share/oxwm"
+          "/share/xsessions"
+        ];
       };
     };
   };

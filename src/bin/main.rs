@@ -101,55 +101,9 @@ fn init_config() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = config_directory.join("config.lua");
     std::fs::write(&config_path, config_template)?;
 
-    update_lsp_files()?;
-
     println!("✓ Config created at {:?}", config_path);
-    println!("✓ LSP definitions installed at {:?}/lib/oxwm.lua", config_directory);
     println!("  Edit the file and reload with Mod+Shift+R");
     println!("  No compilation needed - changes take effect immediately!");
-
-    Ok(())
-}
-
-fn update_lsp_files() -> Result<(), Box<dyn std::error::Error>> {
-    let config_directory = get_config_path();
-
-    let system_paths = [
-        PathBuf::from("/usr/share/oxwm/oxwm.lua"),
-        PathBuf::from("/usr/local/share/oxwm/oxwm.lua"),
-    ];
-
-    let system_oxwm_lua = system_paths.iter().find(|path| path.exists());
-
-    let luarc_content = if let Some(system_path) = system_oxwm_lua {
-        format!(
-            r#"{{
-  "workspace.library": [
-    "{}"
-  ]
-}}
-"#,
-            system_path.parent().unwrap().display()
-        )
-    } else {
-        let library_directory = config_directory.join("lib");
-        std::fs::create_dir_all(&library_directory)?;
-
-        let oxwm_lua_template = include_str!("../../templates/oxwm.lua");
-        let oxwm_lua_path = library_directory.join("oxwm.lua");
-        std::fs::write(&oxwm_lua_path, oxwm_lua_template)?;
-
-        r#"{
-  "workspace.library": [
-    "lib"
-  ]
-}
-"#
-        .to_string()
-    };
-
-    let luarc_path = config_directory.join(".luarc.json");
-    std::fs::write(&luarc_path, luarc_content)?;
 
     Ok(())
 }

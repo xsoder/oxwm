@@ -9,4 +9,5 @@ result
 src/config.rs
 
 # Notes
+notes/
 *.md

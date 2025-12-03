@@ -1,4 +1,5 @@
 pub mod bar;
+pub mod client;
 pub mod config;
 pub mod errors;
 pub mod keyboard;
@@ -11,6 +12,7 @@ pub mod window_manager;
 pub mod prelude {
     pub use crate::ColorScheme;
     pub use crate::LayoutSymbolOverride;
+    pub use crate::WindowRule;
     pub use crate::bar::{BlockCommand, BlockConfig};
     pub use crate::keyboard::{Arg, KeyAction, handlers::KeyBinding, keysyms};
     pub use x11rb::protocol::xproto::KeyButMask;
@@ -23,6 +25,25 @@ pub struct LayoutSymbolOverride {
 }
 
 #[derive(Clone)]
+pub struct WindowRule {
+    pub class: Option<String>,
+    pub instance: Option<String>,
+    pub title: Option<String>,
+    pub tags: Option<u32>,
+    pub is_floating: Option<bool>,
+    pub monitor: Option<usize>,
+}
+
+impl WindowRule {
+    pub fn matches(&self, class: &str, instance: &str, title: &str) -> bool {
+        let class_matches = self.class.as_ref().map_or(true, |c| class.contains(c.as_str()));
+        let instance_matches = self.instance.as_ref().map_or(true, |i| instance.contains(i.as_str()));
+        let title_matches = self.title.as_ref().map_or(true, |t| title.contains(t.as_str()));
+        class_matches && instance_matches && title_matches
+    }
+}
+
+#[derive(Clone)]
 pub struct Config {
     // Appearance
     pub border_width: u32,
@@ -32,6 +53,7 @@ pub struct Config {
 
     // Gaps
     pub gaps_enabled: bool,
+    pub smartgaps_enabled: bool,
     pub gap_inner_horizontal: u32,
     pub gap_inner_vertical: u32,
     pub gap_outer_horizontal: u32,
@@ -49,6 +71,9 @@ pub struct Config {
 
     // Keybindings
     pub keybindings: Vec<crate::keyboard::handlers::Key>,
+
+    // Window rules
+    pub window_rules: Vec<WindowRule>,
 
     // Status bar
     pub status_blocks: Vec<crate::bar::BlockConfig>,
@@ -86,6 +111,7 @@ impl Default for Config {
             border_unfocused: 0xbbbbbb,
             font: "monospace:size=10".to_string(),
             gaps_enabled: false,
+            smartgaps_enabled: true,
             gap_inner_horizontal: 0,
             gap_inner_vertical: 0,
             gap_outer_horizontal: 0,
@@ -147,30 +173,6 @@ impl Default for Config {
                     keysyms::XK_K,
                     KeyAction::FocusStack,
                     Arg::Int(1),
-                ),
-                KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_K,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(0), // UP
-                ),
-                KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_J,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(1), // DOWN
-                ),
-                KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_H,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(2), // LEFT
-                ),
-                KeyBinding::single_key(
-                    vec![MODKEY, SHIFT],
-                    keysyms::XK_L,
-                    KeyAction::ExchangeClient,
-                    Arg::Int(3), // RIGHT
                 ),
                 KeyBinding::single_key(
                     vec![MODKEY],
@@ -281,6 +283,7 @@ impl Default for Config {
                     Arg::Int(8),
                 ),
             ],
+            window_rules: vec![],
             status_blocks: vec![crate::bar::BlockConfig {
                 format: "{}".to_string(),
                 command: crate::bar::BlockCommand::DateTime("%a, %b %d - %-I:%M %P".to_string()),
