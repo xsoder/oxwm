@@ -2565,6 +2565,10 @@ impl WindowManager {
         let snap = 32;
         let is_normie = self.layout.name() == "normie";
 
+        if !was_floating && !is_normie {
+            self.toggle_floating()?;
+        }
+
         self.connection.warp_pointer(
             x11rb::NONE,
             window,
@@ -2602,20 +2606,6 @@ impl WindowManager {
 
                     let new_width = ((e.root_x as i32 - orig_x as i32 - 2 * border_width as i32 + 1).max(1)) as u32;
                     let new_height = ((e.root_y as i32 - orig_y as i32 - 2 * border_width as i32 + 1).max(1)) as u32;
-
-                    let in_monitor_bounds =
-                        monitor.window_area_x + new_width as i32 >= monitor.window_area_x &&
-                        monitor.window_area_x + new_width as i32 <= monitor.window_area_x + monitor.window_area_width &&
-                        monitor.window_area_y + new_height as i32 >= monitor.window_area_y &&
-                        monitor.window_area_y + new_height as i32 <= monitor.window_area_y + monitor.window_area_height;
-
-                    if in_monitor_bounds {
-                        if !was_floating && !is_normie &&
-                           ((new_width as i32 - orig_width as i32).abs() > snap ||
-                            (new_height as i32 - orig_height as i32).abs() > snap) {
-                            self.toggle_floating()?;
-                        }
-                    }
 
                     let should_resize = is_normie || self.clients
                         .get(&window)
@@ -2974,18 +2964,31 @@ impl WindowManager {
                     } else if event.child != x11rb::NONE {
                         self.focus(Some(event.child))?;
                         self.update_tab_bars()?;
-                        self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
 
-                        if event.detail == ButtonIndex::M1.into() {
+                        let state_clean = u16::from(event.state) & !(u16::from(ModMask::LOCK) | u16::from(ModMask::M2));
+                        let modkey_held = state_clean & u16::from(self.config.modkey) != 0;
+
+                        if modkey_held && event.detail == ButtonIndex::M1.into() {
                             self.drag_window(event.child)?;
-                        } else if event.detail == ButtonIndex::M3.into() {
+                        } else if modkey_held && event.detail == ButtonIndex::M3.into() {
                             self.resize_window_with_mouse(event.child)?;
+                        } else {
+                            self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                         }
                     } else if self.windows.contains(&event.event) {
-                        // child is NONE but event.event is a managed window (click on border/frame)
                         self.focus(Some(event.event))?;
                         self.update_tab_bars()?;
-                        self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
+
+                        let state_clean = u16::from(event.state) & !(u16::from(ModMask::LOCK) | u16::from(ModMask::M2));
+                        let modkey_held = state_clean & u16::from(self.config.modkey) != 0;
+
+                        if modkey_held && event.detail == ButtonIndex::M1.into() {
+                            self.drag_window(event.event)?;
+                        } else if modkey_held && event.detail == ButtonIndex::M3.into() {
+                            self.resize_window_with_mouse(event.event)?;
+                        } else {
+                            self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
+                        }
                     } else {
                         self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                     }
