@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{ErrorKind, Result};
 use std::process::Command;
 
@@ -106,112 +105,135 @@ pub fn modifiers_to_mask(modifiers: &[KeyButMask]) -> u16 {
         .fold(0u16, |acc, &modifier| acc | u16::from(modifier))
 }
 
-fn build_keysym_maps(
+pub struct KeyboardMapping {
+    pub syms: Vec<Keysym>,
+    pub keysyms_per_keycode: u8,
+    pub min_keycode: Keycode,
+}
+
+impl KeyboardMapping {
+    pub fn keycode_to_keysym(&self, keycode: Keycode) -> Keysym {
+        if keycode < self.min_keycode {
+            return 0;
+        }
+        let index = (keycode - self.min_keycode) as usize * self.keysyms_per_keycode as usize;
+        self.syms.get(index).copied().unwrap_or(0)
+    }
+
+    pub fn find_keycode(&self, keysym: Keysym, min_keycode: Keycode, max_keycode: Keycode) -> Option<Keycode> {
+        for keycode in min_keycode..=max_keycode {
+            let index = (keycode - self.min_keycode) as usize * self.keysyms_per_keycode as usize;
+            if let Some(&sym) = self.syms.get(index) {
+                if sym == keysym {
+                    return Some(keycode);
+                }
+            }
+        }
+        None
+    }
+}
+
+pub fn get_keyboard_mapping(
     connection: &impl Connection,
-) -> std::result::Result<(HashMap<Keysym, Vec<Keycode>>, HashMap<Keycode, Keysym>), X11Error> {
+) -> std::result::Result<KeyboardMapping, X11Error> {
     let setup = connection.setup();
     let min_keycode = setup.min_keycode;
     let max_keycode = setup.max_keycode;
 
-    let keyboard_mapping = connection
+    let mapping = connection
         .get_keyboard_mapping(min_keycode, max_keycode - min_keycode + 1)?
         .reply()?;
 
-    let mut keysym_to_keycode: HashMap<Keysym, Vec<Keycode>> = HashMap::new();
-    let mut keycode_to_keysym: HashMap<Keycode, Keysym> = HashMap::new();
-    let keysyms_per_keycode = keyboard_mapping.keysyms_per_keycode;
-
-    for keycode in min_keycode..=max_keycode {
-        let index = (keycode - min_keycode) as usize * keysyms_per_keycode as usize;
-
-        for i in 0..keysyms_per_keycode as usize {
-            if let Some(&keysym) = keyboard_mapping.keysyms.get(index + i) {
-                if keysym != 0 {
-                    keysym_to_keycode
-                        .entry(keysym)
-                        .or_insert_with(Vec::new)
-                        .push(keycode);
-                    keycode_to_keysym.entry(keycode).or_insert(keysym);
-                }
-            }
-        }
-    }
-
-    Ok((keysym_to_keycode, keycode_to_keysym))
+    Ok(KeyboardMapping {
+        syms: mapping.keysyms,
+        keysyms_per_keycode: mapping.keysyms_per_keycode,
+        min_keycode,
+    })
 }
 
-pub fn setup_keybinds(
+pub fn grab_keys(
     connection: &impl Connection,
     root: Window,
     keybindings: &[KeyBinding],
-) -> std::result::Result<(), X11Error> {
-    use std::collections::HashSet;
+    current_key: usize,
+) -> std::result::Result<KeyboardMapping, X11Error> {
+    let setup = connection.setup();
+    let min_keycode = setup.min_keycode;
+    let max_keycode = setup.max_keycode;
 
-    let (keysym_to_keycode, _) = build_keysym_maps(connection)?;
-    let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
+    let mapping = get_keyboard_mapping(connection)?;
 
-    let ignore_modifiers = [
-        0,
+    connection.ungrab_key(x11rb::protocol::xproto::Grab::ANY, root, ModMask::ANY)?;
+
+    let modifiers = [
+        0u16,
         u16::from(ModMask::LOCK),
         u16::from(ModMask::M2),
         u16::from(ModMask::LOCK | ModMask::M2),
     ];
 
-    for keybinding in keybindings {
-        if keybinding.keys.is_empty() {
-            continue;
-        }
+    for keycode in min_keycode..=max_keycode {
+        for keybinding in keybindings {
+            if current_key >= keybinding.keys.len() {
+                continue;
+            }
 
-        let first_key = &keybinding.keys[0];
-        let modifier_mask = modifiers_to_mask(&first_key.modifiers);
-
-        if let Some(keycodes) = keysym_to_keycode.get(&first_key.keysym) {
-            if let Some(&keycode) = keycodes.first() {
-                for &ignore_mask in &ignore_modifiers {
-                    let grab_mask = modifier_mask | ignore_mask;
-                    let key_tuple = (grab_mask, keycode);
-
-                    if grabbed_keys.insert(key_tuple) {
-                        connection.grab_key(
-                            false,
-                            root,
-                            grab_mask.into(),
-                            keycode,
-                            GrabMode::ASYNC,
-                            GrabMode::ASYNC,
-                        )?;
-                    }
+            let key = &keybinding.keys[current_key];
+            if key.keysym == mapping.keycode_to_keysym(keycode) {
+                let modifier_mask = modifiers_to_mask(&key.modifiers);
+                for &ignore_mask in &modifiers {
+                    connection.grab_key(
+                        true,
+                        root,
+                        (modifier_mask | ignore_mask).into(),
+                        keycode,
+                        GrabMode::ASYNC,
+                        GrabMode::ASYNC,
+                    )?;
                 }
             }
         }
     }
 
-    Ok(())
+    if current_key > 0 {
+        if let Some(escape_keycode) = mapping.find_keycode(keysyms::XK_ESCAPE, min_keycode, max_keycode) {
+            connection.grab_key(
+                true,
+                root,
+                ModMask::ANY,
+                escape_keycode,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+            )?;
+        }
+    }
+
+    connection.flush()?;
+    Ok(mapping)
 }
 
 pub fn handle_key_press(
     event: KeyPressEvent,
     keybindings: &[KeyBinding],
     keychord_state: &KeychordState,
-    connection: &impl Connection,
-) -> std::result::Result<KeychordResult, X11Error> {
-    let (_, keycode_to_keysym) = build_keysym_maps(connection)?;
-    let event_keysym = keycode_to_keysym.get(&event.detail).copied().unwrap_or(0);
+    mapping: &KeyboardMapping,
+) -> KeychordResult {
+    let keysym = mapping.keycode_to_keysym(event.detail);
 
-    if event_keysym == keysyms::XK_ESCAPE {
-        return Ok(match keychord_state {
+    if keysym == keysyms::XK_ESCAPE {
+        return match keychord_state {
             KeychordState::InProgress { .. } => KeychordResult::Cancelled,
             KeychordState::Idle => KeychordResult::None,
-        });
+        };
     }
 
-    Ok(match keychord_state {
-        KeychordState::Idle => handle_first_key(event, event_keysym, keybindings),
+    match keychord_state {
+        KeychordState::Idle => handle_first_key(event, keysym, keybindings),
         KeychordState::InProgress {
             candidates,
             keys_pressed,
-        } => handle_next_key(event, event_keysym, keybindings, candidates, *keys_pressed),
-    })
+        } => handle_next_key(event, keysym, keybindings, candidates, *keys_pressed),
+    }
 }
 
 fn handle_first_key(

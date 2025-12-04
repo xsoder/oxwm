@@ -147,6 +147,8 @@ pub struct WindowManager {
     display: *mut x11::xlib::Display,
     font: crate::bar::font::Font,
     keychord_state: keyboard::handlers::KeychordState,
+    current_key: usize,
+    keyboard_mapping: Option<keyboard::KeyboardMapping>,
     error_message: Option<String>,
     overlay: ErrorOverlay,
     keybind_overlay: KeybindOverlay,
@@ -303,6 +305,8 @@ impl WindowManager {
             display,
             font,
             keychord_state: keyboard::handlers::KeychordState::Idle,
+            current_key: 0,
+            keyboard_mapping: None,
             error_message: None,
             overlay,
             keybind_overlay,
@@ -509,7 +513,7 @@ impl WindowManager {
     pub fn run(&mut self) -> WmResult<bool> {
         println!("oxwm started on display {}", self.screen_number);
 
-        keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
+        self.grab_keys()?;
         self.update_bar()?;
 
         let mut last_bar_update = std::time::Instant::now();
@@ -1253,98 +1257,13 @@ impl WindowManager {
         Ok(())
     }
 
-    fn grab_next_keys(&self, candidates: &[usize], keys_pressed: usize) -> WmResult<()> {
-        use std::collections::HashMap;
-        use x11rb::protocol::xproto::Keycode;
-
-        let setup = self.connection.setup();
-        let min_keycode = setup.min_keycode;
-        let max_keycode = setup.max_keycode;
-
-        let keyboard_mapping = self
-            .connection
-            .get_keyboard_mapping(min_keycode, max_keycode - min_keycode + 1)?
-            .reply()?;
-
-        let mut keysym_to_keycode: HashMap<keyboard::keysyms::Keysym, Vec<Keycode>> =
-            HashMap::new();
-        let keysyms_per_keycode = keyboard_mapping.keysyms_per_keycode;
-
-        for keycode in min_keycode..=max_keycode {
-            let index = (keycode - min_keycode) as usize * keysyms_per_keycode as usize;
-            for i in 0..keysyms_per_keycode as usize {
-                if let Some(&keysym) = keyboard_mapping.keysyms.get(index + i) {
-                    if keysym != 0 {
-                        keysym_to_keycode
-                            .entry(keysym)
-                            .or_insert_with(Vec::new)
-                            .push(keycode);
-                    }
-                }
-            }
-        }
-
-        let mut grabbed_keys: HashSet<(u16, Keycode)> = HashSet::new();
-
-        let ignore_modifiers = [
-            0,
-            u16::from(ModMask::LOCK),
-            u16::from(ModMask::M2),
-            u16::from(ModMask::LOCK | ModMask::M2),
-        ];
-
-        for &candidate_index in candidates {
-            let binding = &self.config.keybindings[candidate_index];
-            if keys_pressed < binding.keys.len() {
-                let next_key = &binding.keys[keys_pressed];
-                let modifier_mask = keyboard::handlers::modifiers_to_mask(&next_key.modifiers);
-
-                if let Some(keycodes) = keysym_to_keycode.get(&next_key.keysym) {
-                    if let Some(&keycode) = keycodes.first() {
-                        for &ignore_mask in &ignore_modifiers {
-                            let grab_mask = modifier_mask | ignore_mask;
-                            let key_tuple = (grab_mask, keycode);
-
-                            if grabbed_keys.insert(key_tuple) {
-                                self.connection.grab_key(
-                                    false,
-                                    self.root,
-                                    grab_mask.into(),
-                                    keycode,
-                                    GrabMode::ASYNC,
-                                    GrabMode::ASYNC,
-                                )?;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(keycodes) = keysym_to_keycode.get(&keyboard::keysyms::XK_ESCAPE) {
-            if let Some(&keycode) = keycodes.first() {
-                for &ignore_mask in &ignore_modifiers {
-                    self.connection.grab_key(
-                        false,
-                        self.root,
-                        ModMask::from(ignore_mask),
-                        keycode,
-                        GrabMode::ASYNC,
-                        GrabMode::ASYNC,
-                    )?;
-                }
-            }
-        }
-
-        self.connection.flush()?;
-        Ok(())
-    }
-
-    fn ungrab_chord_keys(&self) -> WmResult<()> {
-        self.connection
-            .ungrab_key(x11rb::protocol::xproto::Grab::ANY, self.root, ModMask::ANY)?;
-        keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
-        self.connection.flush()?;
+    fn grab_keys(&mut self) -> WmResult<()> {
+        self.keyboard_mapping = Some(keyboard::grab_keys(
+            &self.connection,
+            self.root,
+            &self.config.keybindings,
+            self.current_key,
+        )?);
         Ok(())
     }
 
@@ -2797,21 +2716,8 @@ impl WindowManager {
                     && !self.keybind_overlay.should_suppress_input()
                 {
                     use crate::keyboard::keysyms;
-                    let keyboard_mapping = self
-                        .connection
-                        .get_keyboard_mapping(
-                            self.connection.setup().min_keycode,
-                            self.connection.setup().max_keycode
-                                - self.connection.setup().min_keycode
-                                + 1,
-                        )?
-                        .reply()?;
-
-                    let min_keycode = self.connection.setup().min_keycode;
-                    let keysyms_per_keycode = keyboard_mapping.keysyms_per_keycode;
-                    let index = (e.detail - min_keycode) as usize * keysyms_per_keycode as usize;
-
-                    if let Some(&keysym) = keyboard_mapping.keysyms.get(index) {
+                    if let Some(mapping) = &self.keyboard_mapping {
+                        let keysym = mapping.keycode_to_keysym(e.detail);
                         if keysym == keysyms::XK_ESCAPE || keysym == keysyms::XK_Q {
                             if let Err(error) = self.keybind_overlay.hide(&self.connection) {
                                 eprintln!("Failed to hide keybind overlay: {:?}", error);
@@ -2938,17 +2844,22 @@ impl WindowManager {
                 }
             }
             Event::KeyPress(event) => {
+                let Some(mapping) = &self.keyboard_mapping else {
+                    return Ok(None);
+                };
+
                 let result = keyboard::handle_key_press(
                     event,
                     &self.config.keybindings,
                     &self.keychord_state,
-                    &self.connection,
-                )?;
+                    mapping,
+                );
 
                 match result {
                     keyboard::handlers::KeychordResult::Completed(action, arg) => {
                         self.keychord_state = keyboard::handlers::KeychordState::Idle;
-                        self.ungrab_chord_keys()?;
+                        self.current_key = 0;
+                        self.grab_keys()?;
                         self.update_bar()?;
 
                         match action {
@@ -2989,25 +2900,19 @@ impl WindowManager {
                         }
                     }
                     keyboard::handlers::KeychordResult::InProgress(candidates) => {
-                        let keys_pressed = match &self.keychord_state {
-                            keyboard::handlers::KeychordState::Idle => 1,
-                            keyboard::handlers::KeychordState::InProgress {
-                                keys_pressed, ..
-                            } => keys_pressed + 1,
-                        };
-
+                        self.current_key += 1;
                         self.keychord_state = keyboard::handlers::KeychordState::InProgress {
                             candidates: candidates.clone(),
-                            keys_pressed,
+                            keys_pressed: self.current_key,
                         };
-
-                        self.grab_next_keys(&candidates, keys_pressed)?;
+                        self.grab_keys()?;
                         self.update_bar()?;
                     }
                     keyboard::handlers::KeychordResult::Cancelled
                     | keyboard::handlers::KeychordResult::None => {
                         self.keychord_state = keyboard::handlers::KeychordState::Idle;
-                        self.ungrab_chord_keys()?;
+                        self.current_key = 0;
+                        self.grab_keys()?;
                         self.update_bar()?;
                     }
                 }
@@ -3069,12 +2974,20 @@ impl WindowManager {
                     } else if event.child != x11rb::NONE {
                         self.focus(Some(event.child))?;
                         self.update_tab_bars()?;
+                        self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
 
                         if event.detail == ButtonIndex::M1.into() {
                             self.drag_window(event.child)?;
                         } else if event.detail == ButtonIndex::M3.into() {
                             self.resize_window_with_mouse(event.child)?;
                         }
+                    } else if self.windows.contains(&event.event) {
+                        // child is NONE but event.event is a managed window (click on border/frame)
+                        self.focus(Some(event.event))?;
+                        self.update_tab_bars()?;
+                        self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
+                    } else {
+                        self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                     }
                 }
             }
@@ -3257,7 +3170,7 @@ impl WindowManager {
             }
             Event::MappingNotify(event) => {
                 if event.request == x11rb::protocol::xproto::Mapping::KEYBOARD {
-                    keyboard::setup_keybinds(&self.connection, self.root, &self.config.keybindings)?;
+                    self.grab_keys()?;
                 }
             }
             Event::ConfigureNotify(event) => {
