@@ -1,4 +1,4 @@
-.TH OXWM 1 "2025-10-30" "oxwm 0.4.0" "User Commands"
+.TH OXWM 1 "2025-12-08" "oxwm 0.8.0" "User Commands"
 .SH NAME
 oxwm \- a dynamic tiling window manager for X11 written in Rust
 .SH SYNOPSIS
@@ -6,14 +6,14 @@ oxwm \- a dynamic tiling window manager for X11 written in Rust
 [\fIOPTIONS\fR]
 .SH DESCRIPTION
 .B oxwm
-is a lightweight, dynamic tiling window manager for X11 inspired by dwm but ditching the suckless philosophy. Configuration is done via a runtime-loadable config file in RON format, allowing instant hot-reload without recompilation.
+is a lightweight, dynamic tiling window manager for X11 inspired by dwm but ditching the suckless philosophy. Configuration is done via a runtime-loadable Lua config file, allowing instant hot-reload without recompilation.
 .PP
-Features include tag-based workspaces, configurable gaps, a modular status bar, keychord support, and persistent window state across restarts.
+Features include tag-based workspaces, multiple layouts (tiling, floating, monocle, grid, tabbed), configurable gaps, a modular status bar, keychord support, window rules, autostart commands, multi-monitor support, and persistent window state across restarts.
 .SH OPTIONS
 .TP
 .B \-\-init
 Create default config file at
-.IR ~/.config/oxwm/config.ron
+.IR ~/.config/oxwm/config.lua
 .TP
 .B \-\-config \fIPATH\fR
 Use a custom config file at the specified path
@@ -26,34 +26,40 @@ Print help message and exit
 .SH CONFIGURATION
 .B oxwm
 reads its configuration from
-.IR ~/.config/oxwm/config.ron .
+.IR ~/.config/oxwm/config.lua .
 If no config exists on first launch, a default template will be created automatically.
 .PP
-The config file uses RON (Rusty Object Notation) format and supports:
+The config file uses Lua and provides a comprehensive API for customization:
 .IP \(bu 2
 Keybindings (including multi-key keychords)
 .IP \(bu 2
-Colors and appearance
+Colors and appearance (borders, gaps)
 .IP \(bu 2
-Status bar blocks (battery, RAM, datetime, shell commands)
+Status bar blocks (battery, RAM, datetime, shell commands, static text)
 .IP \(bu 2
-Gaps and borders
+Window rules (per-application settings)
 .IP \(bu 2
-Terminal and application settings
+Autostart commands
 .IP \(bu 2
-Variable definitions with #DEFINE
+Layout symbols
+.IP \(bu 2
+Tag names (supports Unicode/Nerd Font icons)
 .PP
 After editing the config, reload with
 .B Mod+Shift+R
-\(en no compilation required.
+\(en no compilation or X restart required.
+.PP
+LSP support is available via the
+.I ~/.config/oxwm/oxwm.lua
+type definitions file for autocomplete in editors.
 .SH DEFAULT KEYBINDINGS
 The default modifier key is
 .B Super
-(Mod4). All bindings are customizable in config.ron.
+(Mod4). All bindings are customizable in config.lua.
 .SS Window Management
 .TP
 .B Super+Return
-Spawn terminal (default: st)
+Spawn terminal (default: alacritty)
 .TP
 .B Super+Q
 Kill focused window
@@ -61,30 +67,40 @@ Kill focused window
 .B Super+J, Super+K
 Cycle focus down/up through windows
 .TP
+.B Super+Shift+J, Super+Shift+K
+Move window down/up in stack (swap position)
+.TP
 .B Super+Shift+Space
 Toggle floating mode for focused window
 .TP
 .B Super+Shift+F
 Toggle fullscreen for focused window
-.TP
-.B Super+Control+H/J/K/L
-Move floating window left/down/up/right
-.TP
-.B Super+Shift+H/J/K/L
-Exchange focused window with neighbor in direction
 .SS Layouts
 .TP
 .B Super+F
-Switch to floating layout
+Switch to normie (floating) layout
 .TP
 .B Super+C
 Switch to tiling layout
 .TP
+.B Super+N
+Cycle through available layouts
+.TP
 .B Super+A
 Toggle gaps on/off
+.SS Master Area (Tiling Layout)
 .TP
-.B Alt+N
-Cycle through available layouts
+.B Super+H
+Decrease master area width
+.TP
+.B Super+L
+Increase master area width
+.TP
+.B Super+I
+Increment number of master windows
+.TP
+.B Super+P
+Decrement number of master windows
 .SS Tags (Workspaces)
 .TP
 .B Super+1..9
@@ -92,6 +108,12 @@ View tag 1-9
 .TP
 .B Super+Shift+1..9
 Move focused window to tag 1-9
+.TP
+.B Super+Control+1..9
+Toggle multi-tag viewing (view multiple tags simultaneously)
+.TP
+.B Super+Control+Shift+1..9
+Toggle window on multiple tags (sticky window)
 .SS Monitors
 .TP
 .B Super+Comma
@@ -99,6 +121,12 @@ Focus previous monitor
 .TP
 .B Super+Period
 Focus next monitor
+.TP
+.B Super+Shift+Comma
+Send window to previous monitor
+.TP
+.B Super+Shift+Period
+Send window to next monitor
 .SS Launchers
 .TP
 .B Super+D
@@ -113,32 +141,229 @@ Quit oxwm
 .TP
 .B Super+Shift+R
 Hot reload oxwm (reload config without restarting X)
-.SS Keychord Example
 .TP
-.B Super+Space, T
-Spawn terminal (example keychord: two-key sequence)
+.B Super+Shift+/
+Show keybindings overlay
+.SH MOUSE BINDINGS
+.TP
+.B Super+Button1 (drag)
+Move window in floating mode
+.TP
+.B Super+Button3 (drag)
+Resize window in floating mode
+.PP
+Clicking on a tag number in the status bar switches to that tag.
+.SH LAYOUTS
+.B oxwm
+provides the following layouts:
+.TP
+.B Tiling
+Master/stack layout with adjustable master area size and number of master windows.
+.TP
+.B Normie
+Floating-by-default layout where windows can be freely positioned.
+.TP
+.B Monocle
+Fullscreen stacking layout showing one window at a time per tag.
+.TP
+.B Grid
+Equal-sized grid layout distributing windows evenly.
+.TP
+.B Tabbed
+Tabbed container layout with a tab bar for switching between windows.
+.SH KEYCHORDS
+.B oxwm
+supports multi-key sequences called keychords. These allow binding commands to sequences like "Super+Space then T".
+.PP
+Example keychord in config.lua:
+.PP
+.EX
+    oxwm.key.chord({
+        { modifiers = { "Mod4" }, key = "space" },
+        { modifiers = {}, key = "t" },
+    }, oxwm.spawn_terminal)
+.EE
 .PP
 Press
 .B Escape
 to cancel any in-progress keychord sequence.
-.SH KEYCHORDS
-.B oxwm
-supports multi-key sequences called keychords. These allow binding complex commands to sequences like "Super+a then f".
-.PP
-Example keychord in config.ron:
+.SH WINDOW RULES
+Window rules allow per-application settings based on window class, instance, or title:
 .PP
 .EX
-    (keys: [
-        (modifiers: [Mod4], key: A),
-        (modifiers: [], key: F),
-    ], action: ToggleFloating),
+    oxwm.rule.add({
+        class = "Firefox",
+        floating = false,
+        tag = 2,
+    })
 .EE
 .PP
-This binds "Super+a followed by f" to toggle floating mode.
+Rule properties:
+.IP \(bu 2
+.B class
+\- Match window class (substring)
+.IP \(bu 2
+.B instance
+\- Match window instance (substring)
+.IP \(bu 2
+.B title
+\- Match window title (substring)
+.IP \(bu 2
+.B floating
+\- Force floating mode (true/false)
+.IP \(bu 2
+.B tag
+\- Auto-assign to specific tag (1-9)
+.IP \(bu 2
+.B monitor
+\- Auto-assign to specific monitor
+.SH STATUS BAR
+The status bar displays tags, layout indicator, window title, and customizable blocks.
+.SS Block Types
+.TP
+.B DateTime
+Date/time with customizable format string
+.TP
+.B RAM
+RAM usage display (used/total)
+.TP
+.B Battery
+Battery status with charging/discharging/full states
+.TP
+.B Shell
+Execute shell command and display output
+.TP
+.B Static
+Static text display
+.SS Block Configuration
+Each block supports:
+.IP \(bu 2
+.B color
+\- Text color (hex: #RRGGBB or 0xRRGGBB)
+.IP \(bu 2
+.B underline
+\- Underline color
+.IP \(bu 2
+.B interval
+\- Update interval in seconds
+.SS Color Schemes
+Tag colors can be customized for three states:
+.IP \(bu 2
+.B Normal
+\- Unoccupied tags
+.IP \(bu 2
+.B Occupied
+\- Tags containing windows
+.IP \(bu 2
+.B Selected
+\- Currently viewed tag
+.SH LUA API
+The configuration uses the following Lua API modules:
+.SS Core Functions
+.TP
+.B oxwm.set_terminal(term)
+Set terminal emulator
+.TP
+.B oxwm.set_modkey(modkey)
+Set modifier key (Mod1-5, Shift, Control)
+.TP
+.B oxwm.set_tags(tags)
+Define workspace tag names
+.TP
+.B oxwm.autostart(cmd)
+Add autostart command
+.TP
+.B oxwm.spawn(cmd)
+Spawn command/program
+.TP
+.B oxwm.spawn_terminal()
+Spawn configured terminal
+.TP
+.B oxwm.quit()
+Quit window manager
+.TP
+.B oxwm.restart()
+Restart window manager
+.TP
+.B oxwm.show_keybinds()
+Show keybindings overlay
+.SS Key Bindings (oxwm.key)
+.TP
+.B oxwm.key.bind(modifiers, key, action)
+Single key binding
+.TP
+.B oxwm.key.chord(keyseq, action)
+Multi-key sequence binding
+.SS Border (oxwm.border)
+.TP
+.B oxwm.border.set_width(pixels)
+.TP
+.B oxwm.border.set_focused_color(color)
+.TP
+.B oxwm.border.set_unfocused_color(color)
+.SS Gaps (oxwm.gaps)
+.TP
+.B oxwm.gaps.set_enabled(bool)
+.TP
+.B oxwm.gaps.set_inner(h, v)
+.TP
+.B oxwm.gaps.set_outer(h, v)
+.TP
+.B oxwm.gaps.set_smart(bool)
+Enable smart gaps (no gaps with single window)
+.SS Client (oxwm.client)
+.TP
+.B oxwm.client.kill()
+.TP
+.B oxwm.client.toggle_fullscreen()
+.TP
+.B oxwm.client.toggle_floating()
+.TP
+.B oxwm.client.focus_stack(direction)
+.TP
+.B oxwm.client.move_stack(direction)
+.SS Layout (oxwm.layout)
+.TP
+.B oxwm.layout.set(name)
+Set specific layout ("tiling", "normie", "monocle", "grid", "tabbed")
+.TP
+.B oxwm.layout.cycle()
+.SS Tag (oxwm.tag)
+.TP
+.B oxwm.tag.view(index)
+.TP
+.B oxwm.tag.toggleview(index)
+.TP
+.B oxwm.tag.move_to(index)
+.TP
+.B oxwm.tag.toggletag(index)
+.SS Monitor (oxwm.monitor)
+.TP
+.B oxwm.monitor.focus(direction)
+Focus monitor (-1 prev, 1 next)
+.TP
+.B oxwm.monitor.tag(direction)
+Move window to monitor
+.SS Bar (oxwm.bar)
+.TP
+.B oxwm.bar.set_font(font)
+Set bar font (XFT format)
+.TP
+.B oxwm.bar.set_blocks(blocks)
+Set status bar blocks
+.TP
+.B oxwm.bar.set_scheme_normal(fg, bg, ul)
+.TP
+.B oxwm.bar.set_scheme_occupied(fg, bg, ul)
+.TP
+.B oxwm.bar.set_scheme_selected(fg, bg, ul)
 .SH FILES
 .TP
-.I ~/.config/oxwm/config.ron
+.I ~/.config/oxwm/config.lua
 Main configuration file
+.TP
+.I ~/.config/oxwm/oxwm.lua
+LSP type definitions for editor autocomplete
 .TP
 .I /usr/share/xsessions/oxwm.desktop
 X session desktop entry (if installed via package manager)
@@ -146,6 +371,12 @@ X session desktop entry (if installed via package manager)
 .TP
 .B DISPLAY
 X11 display to connect to (standard X11 variable)
+.TP
+.B XDG_CONFIG_HOME
+Custom config directory (default: ~/.config)
+.TP
+.B HOME
+Home directory for config location
 .SH EXAMPLES
 .TP
 Start oxwm normally:
@@ -160,7 +391,7 @@ Initialize config file:
 .TP
 Use custom config:
 .EX
-    oxwm --config ~/my-oxwm-config.ron
+    oxwm --config ~/my-oxwm-config.lua
 .EE
 .TP
 Test in Xephyr (nested X server):
@@ -184,7 +415,8 @@ Report bugs at: https://github.com/tonybanters/oxwm/issues
 .BR X (7),
 .BR dwm (1),
 .BR dmenu (1),
-.BR xrandr (1)
+.BR xrandr (1),
+.BR lua (1)
 .SH AUTHORS
 Written by Tony (tonybtw).
 .PP
