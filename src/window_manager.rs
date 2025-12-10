@@ -3309,61 +3309,57 @@ impl WindowManager {
             return Ok(());
         }
 
+        use crate::size_hints::{flags::*, offset::*};
+
         let read_u32 = |offset: usize| -> u32 {
             let bytes = &size_hints.value[offset * 4..(offset + 1) * 4];
             u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
         };
 
-        let flags = read_u32(0);
-
-        const P_MIN_SIZE: u32 = 1 << 4;
-        const P_MAX_SIZE: u32 = 1 << 5;
-        const P_RESIZE_INC: u32 = 1 << 6;
-        const P_ASPECT: u32 = 1 << 7;
-        const P_BASE_SIZE: u32 = 1 << 8;
+        let flags = read_u32(FLAGS);
 
         if let Some(client) = self.clients.get_mut(&window) {
             if flags & P_BASE_SIZE != 0 {
-                client.base_width = read_u32(15) as i32;
-                client.base_height = read_u32(16) as i32;
+                client.base_width = read_u32(BASE_WIDTH) as i32;
+                client.base_height = read_u32(BASE_HEIGHT) as i32;
             } else if flags & P_MIN_SIZE != 0 {
-                client.base_width = read_u32(5) as i32;
-                client.base_height = read_u32(6) as i32;
+                client.base_width = read_u32(MIN_WIDTH) as i32;
+                client.base_height = read_u32(MIN_HEIGHT) as i32;
             } else {
                 client.base_width = 0;
                 client.base_height = 0;
             }
 
             if flags & P_RESIZE_INC != 0 {
-                client.increment_width = read_u32(9) as i32;
-                client.increment_height = read_u32(10) as i32;
+                client.increment_width = read_u32(WIDTH_INC) as i32;
+                client.increment_height = read_u32(HEIGHT_INC) as i32;
             } else {
                 client.increment_width = 0;
                 client.increment_height = 0;
             }
 
             if flags & P_MAX_SIZE != 0 {
-                client.max_width = read_u32(7) as i32;
-                client.max_height = read_u32(8) as i32;
+                client.max_width = read_u32(MAX_WIDTH) as i32;
+                client.max_height = read_u32(MAX_HEIGHT) as i32;
             } else {
                 client.max_width = 0;
                 client.max_height = 0;
             }
 
             if flags & P_MIN_SIZE != 0 {
-                client.min_width = read_u32(5) as i32;
-                client.min_height = read_u32(6) as i32;
+                client.min_width = read_u32(MIN_WIDTH) as i32;
+                client.min_height = read_u32(MIN_HEIGHT) as i32;
             } else if flags & P_BASE_SIZE != 0 {
-                client.min_width = read_u32(15) as i32;
-                client.min_height = read_u32(16) as i32;
+                client.min_width = read_u32(BASE_WIDTH) as i32;
+                client.min_height = read_u32(BASE_HEIGHT) as i32;
             } else {
                 client.min_width = 0;
                 client.min_height = 0;
             }
 
             if flags & P_ASPECT != 0 {
-                client.min_aspect = (read_u32(12) as f32) / (read_u32(11) as f32).max(1.0);
-                client.max_aspect = (read_u32(13) as f32) / (read_u32(14) as f32).max(1.0);
+                client.min_aspect = (read_u32(MIN_ASPECT_Y) as f32) / (read_u32(MIN_ASPECT_X) as f32).max(1.0);
+                client.max_aspect = (read_u32(MAX_ASPECT_X) as f32) / (read_u32(MAX_ASPECT_Y) as f32).max(1.0);
             } else {
                 client.min_aspect = 0.0;
                 client.max_aspect = 0.0;
