@@ -61,6 +61,8 @@ impl KeybindOverlay {
         connection: &RustConnection,
         font: &Font,
         keybindings: &[KeyBinding],
+        monitor_x: i16,
+        monitor_y: i16,
         screen_width: u16,
         screen_height: u16,
     ) -> Result<(), X11Error> {
@@ -93,8 +95,8 @@ impl KeybindOverlay {
         let height =
             title_height + (self.keybindings.len() as u16 * line_height) + (PADDING as u16 * 2);
 
-        let x = ((screen_width - width) / 2) as i16;
-        let y = ((screen_height - height) / 2) as i16;
+        let x = monitor_x + ((screen_width - width) / 2) as i16;
+        let y = monitor_y + ((screen_height - height) / 2) as i16;
 
         self.base.configure(connection, x, y, width, height)?;
 
@@ -113,13 +115,15 @@ impl KeybindOverlay {
         connection: &RustConnection,
         font: &Font,
         keybindings: &[KeyBinding],
+        monitor_x: i16,
+        monitor_y: i16,
         screen_width: u16,
         screen_height: u16,
     ) -> Result<(), X11Error> {
         if self.base.is_visible {
             self.hide(connection)?;
         } else {
-            self.show(connection, font, keybindings, screen_width, screen_height)?;
+            self.show(connection, font, keybindings, monitor_x, monitor_y, screen_width, screen_height)?;
         }
         Ok(())
     }
