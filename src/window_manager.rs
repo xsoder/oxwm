@@ -837,6 +837,8 @@ impl WindowManager {
                     &self.connection,
                     &self.font,
                     &self.config.keybindings,
+                    monitor.screen_x as i16,
+                    monitor.screen_y as i16,
                     monitor.screen_width as u16,
                     monitor.screen_height as u16,
                 )?;
@@ -2572,7 +2574,9 @@ impl WindowManager {
                     use crate::keyboard::keysyms;
                     if let Some(mapping) = &self.keyboard_mapping {
                         let keysym = mapping.keycode_to_keysym(e.detail);
-                        if keysym == keysyms::XK_ESCAPE || keysym == keysyms::XK_Q {
+                        let is_escape = keysym == keysyms::XK_ESCAPE;
+                        let is_q = keysym == keysyms::XK_Q || keysym == 0x0051;
+                        if is_escape || is_q {
                             if let Err(error) = self.keybind_overlay.hide(&self.connection) {
                                 eprintln!("Failed to hide keybind overlay: {:?}", error);
                             }
@@ -2582,6 +2586,7 @@ impl WindowManager {
                 return Ok(None);
             }
             Event::ButtonPress(ref e) if e.event == self.keybind_overlay.window() => {
+                self.connection.allow_events(Allow::REPLAY_POINTER, e.time)?;
                 return Ok(None);
             }
             Event::Expose(ref expose_event) if expose_event.window == self.keybind_overlay.window() => {
@@ -2768,6 +2773,12 @@ impl WindowManager {
                 }
             }
             Event::ButtonPress(event) => {
+                if self.keybind_overlay.is_visible() && event.event != self.keybind_overlay.window() {
+                    if let Err(error) = self.keybind_overlay.hide(&self.connection) {
+                        eprintln!("Failed to hide keybind overlay: {:?}", error);
+                    }
+                }
+
                 let is_bar_click = self
                     .bars
                     .iter()
