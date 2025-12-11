@@ -2421,12 +2421,10 @@ impl WindowManager {
             return Ok(());
         };
 
-        let monitor = self.monitors.get(monitor_idx).cloned();
-        let Some(monitor) = monitor else {
+        if self.monitors.get(monitor_idx).is_none() {
             return Ok(());
-        };
+        }
 
-        let snap = 32;
         let is_normie = self.layout.name() == "normie";
 
         if !was_floating && !is_normie {
@@ -2831,9 +2829,15 @@ impl WindowManager {
                         let modkey_held = state_clean & u16::from(self.config.modkey) != 0;
 
                         if modkey_held && event.detail == ButtonIndex::M1.into() {
-                            self.drag_window(event.child)?;
+                            if self.clients.contains_key(&event.child) {
+                                self.drag_window(event.child)?;
+                            }
+                            self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                         } else if modkey_held && event.detail == ButtonIndex::M3.into() {
-                            self.resize_window_with_mouse(event.child)?;
+                            if self.clients.contains_key(&event.child) {
+                                self.resize_window_with_mouse(event.child)?;
+                            }
+                            self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                         } else {
                             self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                         }
@@ -2846,8 +2850,10 @@ impl WindowManager {
 
                         if modkey_held && event.detail == ButtonIndex::M1.into() {
                             self.drag_window(event.event)?;
+                            self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                         } else if modkey_held && event.detail == ButtonIndex::M3.into() {
                             self.resize_window_with_mouse(event.event)?;
+                            self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                         } else {
                             self.connection.allow_events(Allow::REPLAY_POINTER, event.time)?;
                         }
